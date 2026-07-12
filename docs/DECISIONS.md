@@ -48,3 +48,17 @@ North star: operator’s responsibilities stay in **harmonious balance** via a d
 1. Global looper for Grok  
 2. Persona full + public projection  
 3. Swarm entry + tests + privacy ignore  
+
+## Eve host decision (2026-07-13)
+
+**Verdict:** Treat [Vercel Eve](https://vercel.com/eve) as an **optional bridge**, not a kernel rewrite.
+
+| Decision | Rationale |
+|----------|-----------|
+| **Adopt** Eve for channels + tool approval + cron schedules | Matches operator needs: remote communication, remote control/approval, morning/evening cadence ([EVE-FIT.md](EVE-FIT.md)) |
+| **Adapt** tools that call pure ensembly modules / CLI | Keeps unit tests + offline dogfood; Eve owns durability UX |
+| **Refuse** full persona / vault on Vercel Eve by default | Privacy default-deny + sovereignty gist |
+| **Refuse** rewriting day/privacy/realm into Eve-only prompts | Iron-peak stays pure Node ESM |
+| **Refuse** game sim on Eve | WASM world is local host |
+
+**Near-term:** document + dogfood CLI/game first; prototype Eve out-of-tree or `bridge/eve/` only after turn dogfood. Confidence: 80%.

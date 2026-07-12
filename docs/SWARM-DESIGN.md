@@ -48,8 +48,24 @@ node bin/swarm.js day --date 2026-07-12 --stdout --no-write
 - `src/approvals.js` — durable wait snapshot (Stately/Eve-inspired idle resume)
 - `src/turn.js` — `swarm turn` / `approve` / `deny`
 - `src/graph.js` — serializable game graph + mermaid + `public/watch/`
+- `src/game/*` + `crates/peram-core` + `public/game/` — interactive world (session SoT; WASM mirrors focus)
 - Roadmap: [arch-design/coming-next.md](arch-design/coming-next.md)
+
+## Eve bridge (optional, not the kernel)
+
+**[EVE-FIT.md](EVE-FIT.md)** — what [Vercel Eve](https://vercel.com/eve) should own:
+
+| Eve owns | Kernel keeps |
+|----------|----------------|
+| Channels (Slack/web) operator chat | Day / balance / privacy pure functions |
+| Tool approval UI + durable park | Approvals **IR** + offline CLI approve/deny |
+| Cron schedules (morning digest, HITL nag) | Plan *content* assembly |
+| Sandbox for untrusted digital chores | Physical realm classification |
+| — | Game of Peram WASM immersion |
+| — | Full private persona (never cloud by default) |
+
+Pattern: Eve **calls** `swarm` tools with redacted I/O; never rewrite looper into prompts-only.
 
 ## ⚡ Fusion surplus
 
-Shared `DomainEvent` + LoopCard + Graph IR across life-os / collab-finder / ensembly — implement when a second consumer appears.
+Shared `DomainEvent` + LoopCard + Graph IR across life-os / collab-finder / ensembly — implement when a second consumer appears. Eve channel payloads should speak that IR, not invent a second graph.

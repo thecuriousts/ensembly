@@ -68,6 +68,7 @@ npm run game          # thin shell + WASM world
 |------------|--------------|
 | DOM, keyboard, voice API | Entity positions, seek, props, bind |
 | HITL session store (Node CLI parity) | Layout, draw snapshot |
+| Optional Eve cloud bridge (channels/schedules) — see [EVE-FIT.md](EVE-FIT.md) | — not in engine |
 | Graph JSON fetch | Simulation tick |
 
 When adding features: prefer **Rust world API + buffer fields** over new JS sim modules.

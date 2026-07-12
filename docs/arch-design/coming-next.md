@@ -58,10 +58,12 @@ flowchart LR
     D[day loop]
     P[privacy classify]
     B[balance inject]
-  end
-  subgraph open["Next altitude B/C"]
     T[turn surface]
     G[game graph]
+    W[WASM world]
+  end
+  subgraph open["Next altitude B/C"]
+    E[Eve bridge]
     M[multiplayer voice]
   end
   shipped --> open
@@ -73,10 +75,12 @@ flowchart LR
 | Privacy default-deny | A | Finance/medical private; pushable gated | `src/privacy.js`, `test/privacy.test.js` |
 | Looper phases/budgets | A | ORIENT→…→DONE with budgets | `src/loop.js`, `test/loop.test.js` |
 | Public/private persona split | A | Full local, projection public | `public/persona/`, `private/` gitignored |
-| Physical pickup queue | B→ | Realm tag + turn lists physical | `src/realm.js`, `src/turn.js` |
-| Durable approve/deny | B→ | Idle snapshot resume | `src/approvals.js` |
-| Game graph watch | B→ | Nodes/edges + mermaid/HTML | `src/graph.js`, `public/watch/` |
-| Eve / multiplayer voice | C | Documented only | §0b + SN-5/6; Non-goals near-term |
+| Physical pickup queue | A− | Realm tag + turn lists physical | `src/realm.js`, `src/turn.js` |
+| Durable approve/deny | A− | Idle snapshot resume | `src/approvals.js` |
+| Game graph watch | A− | Nodes/edges + mermaid/HTML | `src/graph.js`, `public/watch/` |
+| Immersive game world | A− | Env/sprites/props + WASM focus SoT | `public/game/`, `crates/peram-core`, `npm run game` |
+| Eve bridge map | B | Fit doc: channels/HITL/schedules only | [EVE-FIT.md](../EVE-FIT.md), SN-5 |
+| Multiplayer voice room | C | Ascent only | SN-6 |
 
 **Plain rule:** Digital automates; human touches physical world + authorizations.
 
@@ -156,7 +160,7 @@ sequenceDiagram
 | Force | P(horizon) | Effect on us | Response | Confidence |
 |-------|------------|--------------|----------|------------|
 | Stately agent HITL idle resume | high | Pattern for durable wait | Mirror snapshot events; optional adapter later | 75% |
-| Vercel Eve approvals / fs agent | med | Productized human gates | Pattern only until SN chooses Eve | 60% |
+| Vercel Eve channels + approvals + schedules | high | Remote comms / HITL / cron digests | Bridge only; see EVE-FIT — not kernel rewrite | 85% |
 | Graph viz (`@statelyai/graph`) | med | Play-view polish | IR first; layout peer optional | 70% |
 | Voice multiplayer rooms | med | Watch + join | SN backlog; not gate MVP | 55% |
 | Privacy regulation / family data | high | Leak cost extreme | Default-deny + ignore + classifier | 90% |
@@ -172,14 +176,16 @@ flowchart TD
   subgraph avoid["Refuse — drag"]
     A1[Unattended bank or email]
     A2[Commit private persona]
-    A3[Rewrite onto Eve before dogfood]
+    A3[Rewrite kernel onto Eve before dogfood]
     A4[Legacy webpack as product UI]
+    A5[Upload private persona to Eve cloud]
   end
   subgraph build["Build toward 2036"]
     B1[Turn surface physical + HITL]
     B2[Idle snapshot resume]
-    B3[Game graph watch]
+    B3[Game graph plus WASM world]
     B4[Autonomous digital chores]
+    B5[Eve channel bridge redacted]
   end
 ```
 
@@ -187,7 +193,8 @@ flowchart TD
 |--------|----------------|
 | 24/7 unattended external mutate | Background digital work with HITL gates |
 | Defeatist “game pillar dies” | Game of Peram as north-star play surface |
-| Scope-creep multiplayer first | Dogfood day+turn+graph before voice room |
+| Scope-creep multiplayer first | Dogfood day+turn+graph+game before voice room |
+| Eve as persona vault | Eve as channel + approval + schedule bridge |
 
 ---
 
@@ -284,23 +291,36 @@ flowchart TB
 
 ---
 
-### SN-5 · Optional Stately / Eve adapters (later)
+### SN-5 · Eve bridge (channels · remote approval · schedules)
 
-**Problem:** Want industry HITL patterns without rewrite thrash.
+**Problem:** Operator needs **remote communication**, **approve/deny away from CLI**, and **cron digests** without rewriting the kernel or leaking private persona.
 
 ```mermaid
-flowchart LR
-  snap[Our snapshot] -.->|adapter| st[Stately agent idle]
-  snap -.->|adapter| eve[Eve approvals]
+flowchart TB
+  sched[Eve schedules cron] --> tools[Tools wrap swarm]
+  tools --> ch[Channels Slack web]
+  ch --> human[Operator]
+  human -->|approve deny| appr[Eve tool approval]
+  appr --> ir[approvals IR]
+  tools --> kernel[day realm privacy pure]
+  kernel -.->|never| vault[private persona vault]
 ```
 
 | File | Work |
 |------|------|
-| `docs/arch-design/*` | contracts only until chosen |
+| [docs/EVE-FIT.md](../EVE-FIT.md) | **Fit map shipped** — adopt/adapt/refuse |
+| `docs/DECISIONS.md` | Eve host decision logged |
+| future `bridge/eve/` or out-of-tree | Prototype tools + one channel + morning schedule (redacted fixtures) |
+| `src/approvals.js` | Keep IR; dual-write adapter when prototype lands |
 
-**Done when:** Documented mapping of snapshot events ↔ Stately/Eve; no forced runtime.
+**Adopt on Eve:** channels (user comms), tool `approval` (remote control), `schedules/` (cadence).  
+**Keep local:** day/privacy/realm pure functions, WASM game, private vault.  
+**Full map:** [EVE-FIT.md](../EVE-FIT.md).
 
-**Verify:** Doc review; no broken day path.
+**Done when (docs gate — met):** Fit matrix + privacy refuse rules + sequence in EVE-FIT.  
+**Done when (code gate — later):** Prototype posts turn digest on a channel; one gated tool maps to approve/deny; morning cron fires without uploading `private/`.
+
+**Verify:** Doc review now; later `eve eval` + privacy checklist on tool outputs.
 
 ---
 
@@ -329,10 +349,11 @@ flowchart TB
 
 | Locked in | Deferred |
 |-----------|----------|
-| Day plan automation | Full Eve init |
-| Physical + approval turn | Voice multiplayer |
-| Graph IR + mermaid/HTML | `@statelyai/graph` layout peers required |
-| Privacy default-deny | Live bank/email |
+| Day plan automation | Eve production deploy |
+| Physical + approval turn + game world | Voice multiplayer room |
+| Graph IR + mermaid/HTML + WASM play | `@statelyai/graph` layout peers required |
+| Eve fit map (SN-5 docs) | Eve code bridge with real Slack |
+| Privacy default-deny | Live bank/email; private vault on cloud |
 
 ---
 
@@ -343,15 +364,18 @@ gantt
   title ensembly Game of Peram near-term
   dateFormat YYYY-MM-DD
   section Dogfood
-  SN1_tests_day           :done, sn1, 2026-07-13, 1d
+  SN1_tests_day           :done, sn1, 2026-07-12, 1d
   section Turn
-  SN2_physical_realm      :active, sn2, 2026-07-13, 1d
-  SN3_approve_deny        :sn3, after sn2, 1d
+  SN2_physical_realm      :done, sn2, 2026-07-13, 1d
+  SN3_approve_deny        :done, sn3, 2026-07-13, 1d
   section Watch
-  SN4_game_graph          :sn4, after sn3, 1d
+  SN4_game_graph          :done, sn4, 2026-07-13, 1d
+  SN4b_wasm_world         :done, sn4b, 2026-07-13, 1d
+  section Bridge
+  SN5_eve_fit_docs        :done, sn5d, 2026-07-13, 1d
+  SN5_eve_prototype       :sn5p, 2026-07-14, 14d
   section Ascent
-  SN5_adapters            :sn5, after sn4, 7d
-  SN6_multiplayer_voice   :sn6, after sn5, 30d
+  SN6_multiplayer_voice   :sn6, after sn5p, 30d
 ```
 
 ---
@@ -373,7 +397,9 @@ gantt
 | When | What |
 |------|------|
 | 2026-07-12 | Swarm MVP: day loop, privacy, persona split, looper global |
-| 2026-07-13 | Tag `v0.1.0` at legacy tip; this roadmap + turn/graph altitude |
+| 2026-07-13 | Tag `v0.1.0` at legacy tip; turn/graph altitude |
+| 2026-07-13 | Immersive game world + WASM focus SoT; `npm run game` |
+| 2026-07-13 | Eve fit map: channels/HITL/schedules adopt; kernel refuse rewrite ([EVE-FIT.md](../EVE-FIT.md)) |
 
 ---
 
@@ -390,12 +416,17 @@ mindmap
       graph
       privacy
       loop
+      game
+    crates
+      peram-core
     bin
       swarm
     docs
       arch-design
+      EVE-FIT
       PRIVACY
     public
+      game
       watch
       persona
     test
@@ -410,7 +441,9 @@ mindmap
 | [Stately agent docs (next)](https://github.com/statelyai/agent/tree/next/docs) | HITL / durable agent patterns |
 | [Stately graph package](https://stately.ai/docs/packages/graph) | Graph IR inspiration |
 | [Stately graph layout](https://stately.ai/docs/packages/graph/layout) | Layout adapters later |
-| [Vercel Eve](https://vercel.com/eve) | Filesystem agent + approval UX inspiration |
+| [Vercel Eve](https://vercel.com/eve) | Optional bridge: channels, approvals, schedules |
+| [EVE-FIT.md](../EVE-FIT.md) | Project decision map adopt/adapt/refuse |
+| [Introducing eve](https://vercel.com/blog/introducing-eve) | Product primitives + durable HITL |
 | [looper skill](~/.grok/skills/looper/SKILL.md) | Outer loop budgets/phases |
 | [PRIVACY.md](../PRIVACY.md) | Push boundary |
 | [SWARM-DESIGN.md](../SWARM-DESIGN.md) | Day cycle iron-peak |

@@ -37,7 +37,7 @@ Interactive engagement must feel like a **game** (focus, select, approve/deny, h
 
 ## Thrive ascent (2036)
 
-Kernel: pure session + control plane. Bridge: WASM layout + WebGPU view. Boundary: human physical + HITL. Multiplayer voice room stays ascent SN.
+Kernel: pure session + control plane. Bridge: WASM layout + WebGPU view. Optional cloud bridge: [Eve](EVE-FIT.md) for channels/approvals/schedules only. Boundary: human physical + HITL. Multiplayer voice room stays ascent SN.
 
 ## Refuse vs build
 

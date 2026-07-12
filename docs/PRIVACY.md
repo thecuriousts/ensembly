@@ -17,7 +17,7 @@ Ensembly is a **life swarm control plane**. It may *read* private operator conte
 1. **Default deny** — actions are private/non-pushable until classified public.
 2. **Finance area** is always local-only (details never in public plans beyond placeholders).
 3. **Keyword scrub** — medical, debt/bank, identity-document patterns force private.
-4. **HITL** — external email, job submit, calendar mutate, finance transfer, shared git push, publish-private require human pause (listed in daily plan).
+4. **HITL** — external email, job submit, calendar mutate, finance transfer, shared git push, publish-private require human pause (listed in daily plan). Optional cloud bridge ([EVE-FIT.md](EVE-FIT.md)): Eve channels may surface **redacted** turn digests and park tool approvals; **never** host full `private/persona` or finance/medical vaults on Eve by default.
 5. **Sources** — `~/life-os/private/llm.txt` and collab-finder `data/` may be read/copied into ignored paths only; never committed.
 
 ## Enforcement
