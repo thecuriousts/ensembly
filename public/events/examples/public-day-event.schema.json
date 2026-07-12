@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ensembly.local/schemas/public-day-event.json",
+  "title": "PublicDayEvent",
+  "description": "Publicly sharable swarm event — no private action bodies or PII.",
+  "type": "object",
+  "required": ["id", "kind", "visibility", "summary", "created_at"],
+  "properties": {
+    "id": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["day_plan_generated", "project_incepted", "public_action_proposed", "loop_phase", "balance_report"]
+    },
+    "visibility": { "const": "public" },
+    "summary": { "type": "string", "maxLength": 280 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "areas": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["Career", "Health", "Finance", "Learning", "Relationships", "Systems", "Creative"]
+      }
+    },
+    "refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Public paths or project ids only"
+    }
+  },
+  "additionalProperties": false
+}

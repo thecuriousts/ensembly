@@ -1,0 +1,43 @@
+{
+  "date": "2026-07-12",
+  "area_counts": {
+    "Career": 2,
+    "Systems": 1,
+    "Relationships": 0,
+    "Health": 0,
+    "Finance": 0,
+    "Learning": 0,
+    "Creative": 0
+  },
+  "extra_candidates": [
+    {
+      "id": "apply-high-signal",
+      "title": "Prepare high-signal FT application packet (public CV path)",
+      "area": "Career",
+      "importance": 4,
+      "urgency": 4,
+      "public": true,
+      "kind": "job_application_submit"
+    },
+    {
+      "id": "ship-swarm-docs",
+      "title": "Ship ensembly swarm README + privacy contract (OSS)",
+      "area": "Systems",
+      "importance": 3,
+      "urgency": 3,
+      "public": true
+    },
+    {
+      "id": "noise-scroll",
+      "title": "Endless social scroll",
+      "area": "Learning",
+      "importance": 1,
+      "urgency": 1,
+      "public": true
+    }
+  ],
+  "notes": [
+    "Representative local state for tests and dry runs",
+    "Relationships/Health starved in area_counts to exercise balance inject"
+  ]
+}

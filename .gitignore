@@ -1,10 +1,27 @@
-# Don't check auto-generated stuff into git
-coverage
-build
-node_modules
+# Dependencies & build
+node_modules/
+coverage/
+build/
+dist/
 stats.json
-
-# Cruft
+npm-debug.log*
 .DS_Store
-npm-debug.log
-.idea
+.idea/
+
+# --- Privacy contract: local-only (never push) ---
+# Full operator persona, private actions, local state, copied life data
+private/
+data/
+data/local/
+data/private/
+*.local.json
+*.private.md
+*.private.json
+.env
+.env.*
+!.env.example
+
+# Agent / scratch (local only)
+.agents/
+.scratch/
+tmp/
