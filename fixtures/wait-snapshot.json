@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "status": "idle_waiting",
+  "phase": "HITL_WAIT",
+  "pending": [
+    {
+      "id": "auth-apply-high-signal",
+      "actionId": "apply-high-signal",
+      "title": "Prepare high-signal FT application packet (public CV path)",
+      "kind": "job_application_submit",
+      "area": "Career",
+      "realm": "digital",
+      "status": "pending",
+      "createdAt": "2026-07-13T00:00:00.000Z",
+      "updatedAt": "2026-07-13T00:00:00.000Z",
+      "reason": "HITL required"
+    },
+    {
+      "id": "auth-finance-demo",
+      "actionId": "runway-private",
+      "title": "Runway & admin (local only)",
+      "kind": "finance_transfer",
+      "area": "Finance",
+      "realm": "digital",
+      "status": "pending",
+      "createdAt": "2026-07-13T00:00:00.000Z",
+      "updatedAt": "2026-07-13T00:00:00.000Z",
+      "reason": "finance HITL"
+    }
+  ],
+  "history": [],
+  "updatedAt": "2026-07-13T00:00:00.000Z",
+  "meta": { "source": "fixtures" }
+}

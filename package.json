@@ -13,8 +13,10 @@
   "scripts": {
     "swarm:day": "node bin/swarm.js day",
     "swarm:day:stdout": "node bin/swarm.js day --stdout --no-write",
+    "swarm:turn": "node bin/swarm.js turn",
+    "swarm:graph": "node bin/swarm.js graph --html",
     "test": "node --test test/*.test.js",
-    "start": "node bin/swarm.js day"
+    "start": "node bin/swarm.js turn"
   },
   "repository": {
     "type": "git",

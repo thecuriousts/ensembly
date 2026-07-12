@@ -42,6 +42,14 @@ npm run swarm:day:stdout
 node bin/swarm.js day --date 2026-07-12 --stdout --no-write
 ```
 
+## Operator turn + Game of Peram
+
+- `src/realm.js` — physical vs digital (friction kill: humans only for body-world)
+- `src/approvals.js` — durable wait snapshot (Stately/Eve-inspired idle resume)
+- `src/turn.js` — `swarm turn` / `approve` / `deny`
+- `src/graph.js` — serializable game graph + mermaid + `public/watch/`
+- Roadmap: [arch-design/coming-next.md](arch-design/coming-next.md)
+
 ## ⚡ Fusion surplus
 
-A shared `DomainEvent` + `LoopCard` JSON schema under `public/events/` would let life-os / collab-finder / ensembly interoperate without re-parsing markdown — implement when a second consumer appears.
+Shared `DomainEvent` + LoopCard + Graph IR across life-os / collab-finder / ensembly — implement when a second consumer appears.

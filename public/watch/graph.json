@@ -1,0 +1,605 @@
+{
+  "version": 1,
+  "date": "2026-07-12",
+  "meta": {
+    "nodeCount": 32,
+    "edgeCount": 37,
+    "snapshotStatus": "idle_waiting",
+    "generator": "ensembly/src/graph.js"
+  },
+  "nodes": [
+    {
+      "id": "phase-ORIENT",
+      "type": "phase",
+      "label": "ORIENT",
+      "kind": "phase",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "phase-PLAN",
+      "type": "phase",
+      "label": "PLAN",
+      "kind": "phase",
+      "position": {
+        "x": 220,
+        "y": 0
+      }
+    },
+    {
+      "id": "phase-HITL_WAIT",
+      "type": "phase",
+      "label": "HITL_WAIT",
+      "kind": "phase",
+      "position": {
+        "x": 440,
+        "y": 0
+      }
+    },
+    {
+      "id": "game-peram",
+      "type": "game",
+      "label": "Game of Peram 2026-07-12",
+      "kind": "root",
+      "position": {
+        "x": 660,
+        "y": 0
+      }
+    },
+    {
+      "id": "project-family-presence",
+      "type": "project",
+      "label": "Protected family presence blocks",
+      "area": "Relationships",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 0,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-healthy-self-energy",
+      "type": "project",
+      "label": "Healthy Self Energy foundation",
+      "area": "Health",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 220,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-apply-high-signal",
+      "type": "project",
+      "label": "Prepare high-signal FT application packet (public CV path)",
+      "area": "Career",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 440,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-runway-private",
+      "type": "project",
+      "label": "Runway & admin (local only)",
+      "area": "Finance",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 660,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-ensembly-swarm",
+      "type": "project",
+      "label": "ensembly life swarm control plane",
+      "area": "Systems",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 0,
+        "y": 160
+      }
+    },
+    {
+      "id": "project-collab-finder",
+      "type": "project",
+      "label": "collab-finder dual-fit opportunities",
+      "area": "Career",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 220,
+        "y": 160
+      }
+    },
+    {
+      "id": "project-ship-swarm-docs",
+      "type": "project",
+      "label": "Ship ensembly swarm README + privacy contract (OSS)",
+      "area": "Systems",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 440,
+        "y": 160
+      }
+    },
+    {
+      "id": "project-skills-looper",
+      "type": "project",
+      "label": "skills library + looper global",
+      "area": "Systems",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 660,
+        "y": 160
+      }
+    },
+    {
+      "id": "action-apply-high-signal",
+      "type": "action",
+      "label": "Prepare high-signal FT application packet (public CV path)",
+      "area": "Career",
+      "realm": "digital",
+      "hitl": true,
+      "kind": "action",
+      "position": {
+        "x": 0,
+        "y": 240
+      }
+    },
+    {
+      "id": "hitl-apply-high-signal",
+      "type": "hitl",
+      "label": "HITL: Prepare high-signal FT application packet (public CV path)",
+      "kind": "hitl_wait",
+      "position": {
+        "x": 220,
+        "y": 240
+      }
+    },
+    {
+      "id": "action-family-presence",
+      "type": "physical",
+      "label": "Protected family presence blocks",
+      "area": "Relationships",
+      "realm": "physical",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 440,
+        "y": 240
+      }
+    },
+    {
+      "id": "action-healthy-self-energy",
+      "type": "physical",
+      "label": "Healthy Self Energy foundation",
+      "area": "Health",
+      "realm": "physical",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 660,
+        "y": 240
+      }
+    },
+    {
+      "id": "action-runway-private",
+      "type": "action",
+      "label": "Runway & admin (local only)",
+      "area": "Finance",
+      "realm": "digital",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 0,
+        "y": 320
+      }
+    },
+    {
+      "id": "action-ensembly-swarm",
+      "type": "action",
+      "label": "ensembly life swarm control plane",
+      "area": "Systems",
+      "realm": "digital",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 220,
+        "y": 320
+      }
+    },
+    {
+      "id": "action-collab-finder",
+      "type": "action",
+      "label": "collab-finder dual-fit opportunities",
+      "area": "Career",
+      "realm": "digital",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 440,
+        "y": 320
+      }
+    },
+    {
+      "id": "action-ship-swarm-docs",
+      "type": "action",
+      "label": "Ship ensembly swarm README + privacy contract (OSS)",
+      "area": "Systems",
+      "realm": "digital",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 660,
+        "y": 320
+      }
+    },
+    {
+      "id": "auth-auth-apply-high-signal",
+      "type": "hitl",
+      "label": "pending: Prepare high-signal FT application packet (public CV path)",
+      "status": "pending",
+      "kind": "authorization",
+      "position": {
+        "x": 0,
+        "y": 400
+      }
+    },
+    {
+      "id": "slot-0600-0630",
+      "type": "schedule",
+      "label": "06:00-06:30 Wake",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 220,
+        "y": 400
+      }
+    },
+    {
+      "id": "slot-0630-0730",
+      "type": "schedule",
+      "label": "06:30-07:30 Morning outdoor family + light",
+      "non_negotiable": true,
+      "kind": "schedule",
+      "position": {
+        "x": 440,
+        "y": 400
+      }
+    },
+    {
+      "id": "slot-0730-0800",
+      "type": "schedule",
+      "label": "07:30-08:00 Breakfast",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 660,
+        "y": 400
+      }
+    },
+    {
+      "id": "slot-0800-1000",
+      "type": "schedule",
+      "label": "08:00-10:00 Family support time",
+      "non_negotiable": true,
+      "kind": "schedule",
+      "position": {
+        "x": 0,
+        "y": 480
+      }
+    },
+    {
+      "id": "slot-1000-1300",
+      "type": "schedule",
+      "label": "10:00-13:00 Deep focus block 1",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 220,
+        "y": 480
+      }
+    },
+    {
+      "id": "slot-1300-1400",
+      "type": "schedule",
+      "label": "13:00-14:00 Lunch",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 440,
+        "y": 480
+      }
+    },
+    {
+      "id": "slot-1400-1500",
+      "type": "schedule",
+      "label": "14:00-15:00 Lighter movement + nap + play",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 660,
+        "y": 480
+      }
+    },
+    {
+      "id": "slot-1700-1800",
+      "type": "schedule",
+      "label": "17:00-18:00 Evening outdoor family",
+      "non_negotiable": true,
+      "kind": "schedule",
+      "position": {
+        "x": 0,
+        "y": 560
+      }
+    },
+    {
+      "id": "slot-1815-1900",
+      "type": "schedule",
+      "label": "18:15-19:00 Second focused session",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 220,
+        "y": 560
+      }
+    },
+    {
+      "id": "slot-1900-2200",
+      "type": "schedule",
+      "label": "19:00-22:00 Dinner + family wind-down",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 440,
+        "y": 560
+      }
+    },
+    {
+      "id": "slot-2200-0600",
+      "type": "schedule",
+      "label": "22:00-06:00 Sleep",
+      "non_negotiable": true,
+      "kind": "schedule",
+      "position": {
+        "x": 660,
+        "y": 560
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-phase-ORIENT-phase-PLAN-phase_transition",
+      "source": "phase-ORIENT",
+      "target": "phase-PLAN",
+      "kind": "phase_transition"
+    },
+    {
+      "id": "e-phase-PLAN-phase-HITL_WAIT-phase_transition",
+      "source": "phase-PLAN",
+      "target": "phase-HITL_WAIT",
+      "kind": "phase_transition"
+    },
+    {
+      "id": "e-game-peram-phase-HITL_WAIT-contains",
+      "source": "game-peram",
+      "target": "phase-HITL_WAIT",
+      "kind": "contains"
+    },
+    {
+      "id": "e-game-peram-project-family-presence-project",
+      "source": "game-peram",
+      "target": "project-family-presence",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-healthy-self-energy-project",
+      "source": "game-peram",
+      "target": "project-healthy-self-energy",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-apply-high-signal-project",
+      "source": "game-peram",
+      "target": "project-apply-high-signal",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-runway-private-project",
+      "source": "game-peram",
+      "target": "project-runway-private",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-ensembly-swarm-project",
+      "source": "game-peram",
+      "target": "project-ensembly-swarm",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-collab-finder-project",
+      "source": "game-peram",
+      "target": "project-collab-finder",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-ship-swarm-docs-project",
+      "source": "game-peram",
+      "target": "project-ship-swarm-docs",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-skills-looper-project",
+      "source": "game-peram",
+      "target": "project-skills-looper",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-action-apply-high-signal-digital_action",
+      "source": "game-peram",
+      "target": "action-apply-high-signal",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-action-apply-high-signal-hitl-apply-high-signal-requires_auth",
+      "source": "action-apply-high-signal",
+      "target": "hitl-apply-high-signal",
+      "kind": "requires_auth"
+    },
+    {
+      "id": "e-game-peram-action-family-presence-physical_pickup",
+      "source": "game-peram",
+      "target": "action-family-presence",
+      "kind": "physical_pickup"
+    },
+    {
+      "id": "e-game-peram-action-healthy-self-energy-physical_pickup",
+      "source": "game-peram",
+      "target": "action-healthy-self-energy",
+      "kind": "physical_pickup"
+    },
+    {
+      "id": "e-game-peram-action-runway-private-digital_action",
+      "source": "game-peram",
+      "target": "action-runway-private",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-game-peram-action-ensembly-swarm-digital_action",
+      "source": "game-peram",
+      "target": "action-ensembly-swarm",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-game-peram-action-collab-finder-digital_action",
+      "source": "game-peram",
+      "target": "action-collab-finder",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-game-peram-action-ship-swarm-docs-digital_action",
+      "source": "game-peram",
+      "target": "action-ship-swarm-docs",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-action-apply-high-signal-auth-auth-apply-high-signal-authorization",
+      "source": "action-apply-high-signal",
+      "target": "auth-auth-apply-high-signal",
+      "kind": "authorization"
+    },
+    {
+      "id": "e-game-peram-slot-0600-0630-schedule",
+      "source": "game-peram",
+      "target": "slot-0600-0630",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-0630-0730-schedule",
+      "source": "game-peram",
+      "target": "slot-0630-0730",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-0630-0730-action-rhythm-outdoor_family_light-assigned",
+      "source": "slot-0630-0730",
+      "target": "action-rhythm-outdoor_family_light",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-0730-0800-schedule",
+      "source": "game-peram",
+      "target": "slot-0730-0800",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-0800-1000-schedule",
+      "source": "game-peram",
+      "target": "slot-0800-1000",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-0800-1000-action-rhythm-family_support-assigned",
+      "source": "slot-0800-1000",
+      "target": "action-rhythm-family_support",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-1000-1300-schedule",
+      "source": "game-peram",
+      "target": "slot-1000-1300",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-1000-1300-action-apply-high-signal-assigned",
+      "source": "slot-1000-1300",
+      "target": "action-apply-high-signal",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-1300-1400-schedule",
+      "source": "game-peram",
+      "target": "slot-1300-1400",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-1400-1500-schedule",
+      "source": "game-peram",
+      "target": "slot-1400-1500",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-1700-1800-schedule",
+      "source": "game-peram",
+      "target": "slot-1700-1800",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-1700-1800-action-rhythm-evening_family-assigned",
+      "source": "slot-1700-1800",
+      "target": "action-rhythm-evening_family",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-1815-1900-schedule",
+      "source": "game-peram",
+      "target": "slot-1815-1900",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-1815-1900-action-ensembly-swarm-assigned",
+      "source": "slot-1815-1900",
+      "target": "action-ensembly-swarm",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-1900-2200-schedule",
+      "source": "game-peram",
+      "target": "slot-1900-2200",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-2200-0600-schedule",
+      "source": "game-peram",
+      "target": "slot-2200-0600",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-2200-0600-action-rhythm-sleep-assigned",
+      "source": "slot-2200-0600",
+      "target": "action-rhythm-sleep",
+      "kind": "assigned"
+    }
+  ]
+}

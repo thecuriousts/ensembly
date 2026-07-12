@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Game of Peram — watch</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1.5rem; background: #0b1020; color: #e8ecf4; }
+    h1 { font-size: 1.25rem; }
+    .meta { opacity: 0.8; font-size: 0.9rem; }
+    .panel { background: #141a2e; border-radius: 12px; padding: 1rem; margin-top: 1rem; }
+    pre.json { overflow: auto; max-height: 240px; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <h1>Game of Peram — live watch</h1>
+  <p class="meta">nodes: 32 · edges: 37 · snapshot: idle_waiting</p>
+  <div class="panel">
+    <pre class="mermaid">
+flowchart TB
+  phase_ORIENT([ORIENT])
+  phase_PLAN([PLAN])
+  phase_HITL_WAIT([HITL_WAIT])
+  game_peram((Game of Peram 2026-07-12))
+  project_family_presence[Protected family presence blocks]
+  project_healthy_self_energy[Healthy Self Energy foundation]
+  project_apply_high_signal[Prepare high-signal FT application packet (public CV path)]
+  project_runway_private[Runway & admin (local only)]
+  project_ensembly_swarm[ensembly life swarm control plane]
+  project_collab_finder[collab-finder dual-fit opportunities]
+  project_ship_swarm_docs[Ship ensembly swarm README + privacy contract (OSS)]
+  project_skills_looper[skills library + looper global]
+  action_apply_high_signal[Prepare high-signal FT application packet (public CV path)]
+  hitl_apply_high_signal{{HITL: Prepare high-signal FT application packet (public CV p}}
+  action_family_presence[[Protected family presence blocks]]
+  action_healthy_self_energy[[Healthy Self Energy foundation]]
+  action_runway_private[Runway & admin (local only)]
+  action_ensembly_swarm[ensembly life swarm control plane]
+  action_collab_finder[collab-finder dual-fit opportunities]
+  action_ship_swarm_docs[Ship ensembly swarm README + privacy contract (OSS)]
+  auth_auth_apply_high_signal{{pending: Prepare high-signal FT application packet (public C}}
+  slot_0600_0630[(06:00-06:30 Wake)]
+  slot_0630_0730[(06:30-07:30 Morning outdoor family + light)]
+  slot_0730_0800[(07:30-08:00 Breakfast)]
+  slot_0800_1000[(08:00-10:00 Family support time)]
+  slot_1000_1300[(10:00-13:00 Deep focus block 1)]
+  slot_1300_1400[(13:00-14:00 Lunch)]
+  slot_1400_1500[(14:00-15:00 Lighter movement + nap + play)]
+  slot_1700_1800[(17:00-18:00 Evening outdoor family)]
+  slot_1815_1900[(18:15-19:00 Second focused session)]
+  slot_1900_2200[(19:00-22:00 Dinner + family wind-down)]
+  slot_2200_0600[(22:00-06:00 Sleep)]
+  phase_ORIENT -->|phase_transition| phase_PLAN
+  phase_PLAN -->|phase_transition| phase_HITL_WAIT
+  game_peram -->|contains| phase_HITL_WAIT
+  game_peram -->|project| project_family_presence
+  game_peram -->|project| project_healthy_self_energy
+  game_peram -->|project| project_apply_high_signal
+  game_peram -->|project| project_runway_private
+  game_peram -->|project| project_ensembly_swarm
+  game_peram -->|project| project_collab_finder
+  game_peram -->|project| project_ship_swarm_docs
+  game_peram -->|project| project_skills_looper
+  game_peram -->|digital_action| action_apply_high_signal
+  action_apply_high_signal -->|requires_auth| hitl_apply_high_signal
+  game_peram -->|physical_pickup| action_family_presence
+  game_peram -->|physical_pickup| action_healthy_self_energy
+  game_peram -->|digital_action| action_runway_private
+  game_peram -->|digital_action| action_ensembly_swarm
+  game_peram -->|digital_action| action_collab_finder
+  game_peram -->|digital_action| action_ship_swarm_docs
+  action_apply_high_signal -->|authorization| auth_auth_apply_high_signal
+  game_peram -->|schedule| slot_0600_0630
+  game_peram -->|schedule| slot_0630_0730
+  slot_0630_0730 -->|assigned| action_rhythm_outdoor_family_light
+  game_peram -->|schedule| slot_0730_0800
+  game_peram -->|schedule| slot_0800_1000
+  slot_0800_1000 -->|assigned| action_rhythm_family_support
+  game_peram -->|schedule| slot_1000_1300
+  slot_1000_1300 -->|assigned| action_apply_high_signal
+  game_peram -->|schedule| slot_1300_1400
+  game_peram -->|schedule| slot_1400_1500
+  game_peram -->|schedule| slot_1700_1800
+  slot_1700_1800 -->|assigned| action_rhythm_evening_family
+  game_peram -->|schedule| slot_1815_1900
+  slot_1815_1900 -->|assigned| action_ensembly_swarm
+  game_peram -->|schedule| slot_1900_2200
+  game_peram -->|schedule| slot_2200_0600
+  slot_2200_0600 -->|assigned| action_rhythm_sleep
+    </pre>
+  </div>
+  <div class="panel">
+    <h2>Graph IR</h2>
+    <pre class="json">{
+  "version": 1,
+  "date": "2026-07-12",
+  "meta": {
+    "nodeCount": 32,
+    "edgeCount": 37,
+    "snapshotStatus": "idle_waiting",
+    "generator": "ensembly/src/graph.js"
+  },
+  "nodes": [
+    {
+      "id": "phase-ORIENT",
+      "type": "phase",
+      "label": "ORIENT",
+      "kind": "phase",
+      "position": {
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": "phase-PLAN",
+      "type": "phase",
+      "label": "PLAN",
+      "kind": "phase",
+      "position": {
+        "x": 220,
+        "y": 0
+      }
+    },
+    {
+      "id": "phase-HITL_WAIT",
+      "type": "phase",
+      "label": "HITL_WAIT",
+      "kind": "phase",
+      "position": {
+        "x": 440,
+        "y": 0
+      }
+    },
+    {
+      "id": "game-peram",
+      "type": "game",
+      "label": "Game of Peram 2026-07-12",
+      "kind": "root",
+      "position": {
+        "x": 660,
+        "y": 0
+      }
+    },
+    {
+      "id": "project-family-presence",
+      "type": "project",
+      "label": "Protected family presence blocks",
+      "area": "Relationships",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 0,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-healthy-self-energy",
+      "type": "project",
+      "label": "Healthy Self Energy foundation",
+      "area": "Health",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 220,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-apply-high-signal",
+      "type": "project",
+      "label": "Prepare high-signal FT application packet (public CV path)",
+      "area": "Career",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 440,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-runway-private",
+      "type": "project",
+      "label": "Runway &amp; admin (local only)",
+      "area": "Finance",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 660,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-ensembly-swarm",
+      "type": "project",
+      "label": "ensembly life swarm control plane",
+      "area": "Systems",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 0,
+        "y": 160
+      }
+    },
+    {
+      "id": "project-collab-finder",
+      "type": "project",
+      "label": "collab-finder dual-fit opportunities",
+      "area": "Career",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 220,
+        "y": 160
+      }
+    },
+    {
+      "id": "project-ship-swarm-docs",
+      "type": "project",
+      "label": "Ship ensembly swarm README + privacy contract (OSS)",
+      "area": "Systems",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 440,
+        "y": 160
+      }
+    },
+    {
+      "id": "project-skills-looper",
+      "type": "project",
+      "label": "skills library + looper global",
+      "area": "Systems",
+      "visibility": "public",
+      "kind": "project",
+      "position": {
+        "x": 660,
+        "y": 160
+      }
+    },
+    {
+      "id": "action-apply-high-signal",
+      "type": "action",
+      "label": "Prepare high-signal FT application packet (public CV path)",
+      "area": "Career",
+      "realm": "digital",
+      "hitl": true,
+      "kind": "action",
+      "position": {
+        "x": 0,
+        "y": 240
+      }
+    },
+    {
+      "id": "hitl-apply-high-signal",
+      "type": "hitl",
+      "label": "HITL: Prepare high-signal FT application packet (public CV path)",
+      "kind": "hitl_wait",
+      "position": {
+        "x": 220,
+        "y": 240
+      }
+    },
+    {
+      "id": "action-family-presence",
+      "type": "physical",
+      "label": "Protected family presence blocks",
+      "area": "Relationships",
+      "realm": "physical",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 440,
+        "y": 240
+      }
+    },
+    {
+      "id": "action-healthy-self-energy",
+      "type": "physical",
+      "label": "Healthy Self Energy foundation",
+      "area": "Health",
+      "realm": "physical",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 660,
+        "y": 240
+      }
+    },
+    {
+      "id": "action-runway-private",
+      "type": "action",
+      "label": "Runway &amp; admin (local only)",
+      "area": "Finance",
+      "realm": "digital",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 0,
+        "y": 320
+      }
+    },
+    {
+      "id": "action-ensembly-swarm",
+      "type": "action",
+      "label": "ensembly life swarm control plane",
+      "area": "Systems",
+      "realm": "digital",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 220,
+        "y": 320
+      }
+    },
+    {
+      "id": "action-collab-finder",
+      "type": "action",
+      "label": "collab-finder dual-fit opportunities",
+      "area": "Career",
+      "realm": "digital",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 440,
+        "y": 320
+      }
+    },
+    {
+      "id": "action-ship-swarm-docs",
+      "type": "action",
+      "label": "Ship ensembly swarm README + privacy contract (OSS)",
+      "area": "Systems",
+      "realm": "digital",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 660,
+        "y": 320
+      }
+    },
+    {
+      "id": "auth-auth-apply-high-signal",
+      "type": "hitl",
+      "label": "pending: Prepare high-signal FT application packet (public CV path)",
+      "status": "pending",
+      "kind": "authorization",
+      "position": {
+        "x": 0,
+        "y": 400
+      }
+    },
+    {
+      "id": "slot-0600-0630",
+      "type": "schedule",
+      "label": "06:00-06:30 Wake",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 220,
+        "y": 400
+      }
+    },
+    {
+      "id": "slot-0630-0730",
+      "type": "schedule",
+      "label": "06:30-07:30 Morning outdoor family + light",
+      "non_negotiable": true,
+      "kind": "schedule",
+      "position": {
+        "x": 440,
+        "y": 400
+      }
+    },
+    {
+      "id": "slot-0730-0800",
+      "type": "schedule",
+      "label": "07:30-08:00 Breakfast",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 660,
+        "y": 400
+      }
+    },
+    {
+      "id": "slot-0800-1000",
+      "type": "schedule",
+      "label": "08:00-10:00 Family support time",
+      "non_negotiable": true,
+      "kind": "schedule",
+      "position": {
+        "x": 0,
+        "y": 480
+      }
+    },
+    {
+      "id": "slot-1000-1300",
+      "type": "schedule",
+      "label": "10:00-13:00 Deep focus block 1",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 220,
+        "y": 480
+      }
+    },
+    {
+      "id": "slot-1300-1400",
+      "type": "schedule",
+      "label": "13:00-14:00 Lunch",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 440,
+        "y": 480
+      }
+    },
+    {
+      "id": "slot-1400-1500",
+      "type": "schedule",
+      "label": "14:00-15:00 Lighter movement + nap + play",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 660,
+        "y": 480
+      }
+    },
+    {
+      "id": "slot-1700-1800",
+      "type": "schedule",
+      "label": "17:00-18:00 Evening outdoor family",
+      "non_negotiable": true,
+      "kind": "schedule",
+      "position": {
+        "x": 0,
+        "y": 560
+      }
+    },
+    {
+      "id": "slot-1815-1900",
+      "type": "schedule",
+      "label": "18:15-19:00 Second focused session",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 220,
+        "y": 560
+      }
+    },
+    {
+      "id": "slot-1900-2200",
+      "type": "schedule",
+      "label": "19:00-22:00 Dinner + family wind-down",
+      "non_negotiable": false,
+      "kind": "schedule",
+      "position": {
+        "x": 440,
+        "y": 560
+      }
+    },
+    {
+      "id": "slot-2200-0600",
+      "type": "schedule",
+      "label": "22:00-06:00 Sleep",
+      "non_negotiable": true,
+      "kind": "schedule",
+      "position": {
+        "x": 660,
+        "y": 560
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-phase-ORIENT-phase-PLAN-phase_transition",
+      "source": "phase-ORIENT",
+      "target": "phase-PLAN",
+      "kind": "phase_transition"
+    },
+    {
+      "id": "e-phase-PLAN-phase-HITL_WAIT-phase_transition",
+      "source": "phase-PLAN",
+      "target": "phase-HITL_WAIT",
+      "kind": "phase_transition"
+    },
+    {
+      "id": "e-game-peram-phase-HITL_WAIT-contains",
+      "source": "game-peram",
+      "target": "phase-HITL_WAIT",
+      "kind": "contains"
+    },
+    {
+      "id": "e-game-peram-project-family-presence-project",
+      "source": "game-peram",
+      "target": "project-family-presence",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-healthy-self-energy-project",
+      "source": "game-peram",
+      "target": "project-healthy-self-energy",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-apply-high-signal-project",
+      "source": "game-peram",
+      "target": "project-apply-high-signal",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-runway-private-project",
+      "source": "game-peram",
+      "target": "project-runway-private",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-ensembly-swarm-project",
+      "source": "game-peram",
+      "target": "project-ensembly-swarm",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-collab-finder-project",
+      "source": "game-peram",
+      "target": "project-collab-finder",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-ship-swarm-docs-project",
+      "source": "game-peram",
+      "target": "project-ship-swarm-docs",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-skills-looper-project",
+      "source": "game-peram",
+      "target": "project-skills-looper",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-action-apply-high-signal-digital_action",
+      "source": "game-peram",
+      "target": "action-apply-high-signal",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-action-apply-high-signal-hitl-apply-high-signal-requires_auth",
+      "source": "action-apply-high-signal",
+      "target": "hitl-apply-high-signal",
+      "kind": "requires_auth"
+    },
+    {
+      "id": "e-game-peram-action-family-presence-physical_pickup",
+      "source": "game-peram",
+      "target": "action-family-presence",
+      "kind": "physical_pickup"
+    },
+    {
+      "id": "e-game-peram-action-healthy-self-energy-physical_pickup",
+      "source": "game-peram",
+      "target": "action-healthy-self-energy",
+      "kind": "physical_pickup"
+    },
+    {
+      "id": "e-game-peram-action-runway-private-digital_action",
+      "source": "game-peram",
+      "target": "action-runway-private",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-game-peram-action-ensembly-swarm-digital_action",
+      "source": "game-peram",
+      "target": "action-ensembly-swarm",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-game-peram-action-collab-finder-digital_action",
+      "source": "game-peram",
+      "target": "action-collab-finder",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-game-peram-action-ship-swarm-docs-digital_action",
+      "source": "game-peram",
+      "target": "action-ship-swarm-docs",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-action-apply-high-signal-auth-auth-apply-high-signal-authorization",
+      "source": "action-apply-high-signal",
+      "target": "auth-auth-apply-high-signal",
+      "kind": "authorization"
+    },
+    {
+      "id": "e-game-peram-slot-0600-0630-schedule",
+      "source": "game-peram",
+      "target": "slot-0600-0630",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-0630-0730-schedule",
+      "source": "game-peram",
+      "target": "slot-0630-0730",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-0630-0730-action-rhythm-outdoor_family_light-assigned",
+      "source": "slot-0630-0730",
+      "target": "action-rhythm-outdoor_family_light",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-0730-0800-schedule",
+      "source": "game-peram",
+      "target": "slot-0730-0800",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-0800-1000-schedule",
+      "source": "game-peram",
+      "target": "slot-0800-1000",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-0800-1000-action-rhythm-family_support-assigned",
+      "source": "slot-0800-1000",
+      "target": "action-rhythm-family_support",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-1000-1300-schedule",
+      "source": "game-peram",
+      "target": "slot-1000-1300",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-1000-1300-action-apply-high-signal-assigned",
+      "source": "slot-1000-1300",
+      "target": "action-apply-high-signal",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-1300-1400-schedule",
+      "source": "game-peram",
+      "target": "slot-1300-1400",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-1400-1500-schedule",
+      "source": "game-peram",
+      "target": "slot-1400-1500",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-1700-1800-schedule",
+      "source": "game-peram",
+      "target": "slot-1700-1800",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-1700-1800-action-rhythm-evening_family-assigned",
+      "source": "slot-1700-1800",
+      "target": "action-rhythm-evening_family",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-1815-1900-schedule",
+      "source": "game-peram",
+      "target": "slot-1815-1900",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-1815-1900-action-ensembly-swarm-assigned",
+      "source": "slot-1815-1900",
+      "target": "action-ensembly-swarm",
+      "kind": "assigned"
+    },
+    {
+      "id": "e-game-peram-slot-1900-2200-schedule",
+      "source": "game-peram",
+      "target": "slot-1900-2200",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-game-peram-slot-2200-0600-schedule",
+      "source": "game-peram",
+      "target": "slot-2200-0600",
+      "kind": "schedule"
+    },
+    {
+      "id": "e-slot-2200-0600-action-rhythm-sleep-assigned",
+      "source": "slot-2200-0600",
+      "target": "action-rhythm-sleep",
+      "kind": "assigned"
+    }
+  ]
+}</pre>
+  </div>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+  </script>
+</body>
+</html>

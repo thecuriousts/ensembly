@@ -30,3 +30,4 @@ Ensembly is a **life swarm control plane**. It may *read* private operator conte
 ## What may be pushed
 
 - Swarm source, tests, docs, public persona projection, public event examples, fixtures that contain **no secrets**.
+- Public sovereignty **gist** only (`public/thinking/`, `src/sovereignty-gist.js`) — not full private thinking packs under `private/thinking/`.

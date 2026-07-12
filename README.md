@@ -1,72 +1,94 @@
-# ensembly
+# ensembly — Game of Peram
 
-**Persona-driven autonomous life swarm** — daily self-organization that balances career, family presence, health capacity, and systems work under a **privacy-safe** control loop.
+**Persona-driven life swarm** that removes digital friction: the agent curates, prioritizes, balances, and classifies; **you** only pick up the **physical world** and grant **authorizations**. Watch the play state as a **game graph**.
 
-This repo is no longer the legacy react-boilerplate demo (moved to `legacy/`). The product is a **runnable swarm day cycle**.
+Legacy react-boilerplate lives under `legacy/`. Product = control plane + operator turn + graph watch.
 
 ## Quick start
 
 ```bash
 # Node >= 20
 npm test
-npm run swarm:day              # writes private/state/plans/<date>-daily-plan.md
-npm run swarm:day:stdout       # print plan only (no write)
-node bin/swarm.js day --date 2026-07-12 --stdout --no-write
+npm run swarm:turn             # physical pickups + pending approvals (default start)
+npm run swarm:day              # full daily plan
+npm run swarm:day:stdout
+npm run swarm:graph            # mermaid + public/watch/index.html
+node bin/swarm.js approve <id>
+node bin/swarm.js deny <id>
 ```
 
-## What one run produces
+## Operator turn (primary human surface)
 
-A **daily swarm plan** with:
+```bash
+node bin/swarm.js turn --fixture fixtures/state-sample.json --stdout
+```
 
-1. **Loop control** — looper phases, budgets, pause reason  
-2. **Projects** — inception / prioritization (Eisenhower + balance weights)  
-3. **Actions** — curated, bounded (not an unbounded dump)  
-4. **Schedule & balance** — rhythm blocks + non-negotiable presence  
-5. **Privacy split** — public vs private + HITL gates  
+You get:
 
-## Persona
+1. **Physical world pickups** — errands, outdoor family, body/presence (agents cannot do these)  
+2. **Pending authorizations** — approve/deny resumes a durable wait snapshot (`private/state/wait-snapshot.json`)  
+3. Snapshot **status/phase** advances on decision (not just flags in a long plan)
+
+## Day plan (digital automation)
+
+Still produces Projects / Actions / Schedule & balance / Privacy split via looper phases.
+
+## Game graph watch
+
+```bash
+node bin/swarm.js graph --stdout          # mermaid
+node bin/swarm.js graph --html            # public/watch/index.html + graph.json
+```
+
+Serializable IR: nodes (phase, action, physical, hitl, schedule) + edges + grid layout positions. Inspired by [Stately graph](https://stately.ai/docs/packages/graph); no hard peer required.
+
+## Roadmap
+
+Architecture backlog (stellar-roadmap): [docs/arch-design/coming-next.md](docs/arch-design/coming-next.md) — Game of Peram thrive picture, SN cards, multiplayer/voice ascent.
+
+## Persona & privacy
 
 | Artifact | Path | Git |
 |----------|------|-----|
-| Full operator persona | `private/persona/full.{md,json}` | **ignored** (local only) |
-| Public-safe projection | `public/persona/projection.{md,json}` | tracked |
+| Full operator persona | `private/persona/` | **ignored** |
+| Public projection | `public/persona/` | tracked |
 
-Full persona is derived from the operator’s local life context (`~/life-os/private/llm.txt`) and collab-finder distillation themes. Only the scrubbed projection is commit-eligible. See [docs/PRIVACY.md](docs/PRIVACY.md).
-
-## Privacy contract (short)
-
-- **Readable/copyable locally:** private inputs, full persona, private actions  
-- **Never pushed:** `private/`, `data/local/`, `data/private/`, secrets  
-- **Pushable:** source, tests, docs, public persona, public event examples  
+- **Never pushed:** `private/`, `data/`, secrets  
+- **Pushable:** code, tests, docs, public persona, public watch IR  
 - Classifier: `src/privacy.js` (default-deny)
+
+See [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Architecture
 
 ```text
-bin/swarm.js          CLI entry
-src/day.js            day orchestration + runDailySwarm
-src/loop.js           looper-shaped phases / budgets / HITL
-src/prioritize.js     Eisenhower + balance weights
-src/balance.js        non-negotiable inject + schedule
-src/privacy.js        public vs private classification
-src/ingest.js         load persona/state
-src/plan-format.js    markdown artifact
-public/persona/       public projection
-private/              local-only (gitignored)
-legacy/               old webpack app (not the product)
+bin/swarm.js           day | turn | approve | deny | graph
+src/day.js             day cycle
+src/realm.js           physical vs digital
+src/approvals.js       durable idle snapshot approve/deny
+src/turn.js            operator turn surface
+src/graph.js           game graph IR + mermaid + HTML
+src/loop.js            looper phases / budgets
+src/privacy.js         public vs private
+public/watch/          graph watch surface
+docs/arch-design/      stellar roadmap
 ```
-
-Design notes: [docs/SWARM-DESIGN.md](docs/SWARM-DESIGN.md) · decisions: [docs/DECISIONS.md](docs/DECISIONS.md)
 
 ## Skills
 
-Implementation is grounded in:
+stellar-roadmap · fusion-sage · ai-optimization · higher-order-decision-architect · looper
 
-- **looper** — bounded outer loop (globally available for Grok at `~/.grok/skills/looper`)  
-- **ai-optimization** — slim context packs  
-- **fusion-sage** — fused daily-plan abstraction + surplus  
-- **higher-order-decision-architect** — privacy/architecture choices  
+## Sovereignty gist (public)
+
+AI sovereignty doctrine (ZDR, model liquidity, owned context flywheel) as a short public gist:
+
+- [public/thinking/sovereignty-gist.md](public/thinking/sovereignty-gist.md)
+- `src/sovereignty-gist.js` (step ids + assurance helpers)
+
+**Credit:** Study notes inspired by Palantir — [*Institutional Sovereignty in the Age of AI*](https://www.palantir.com/ai-sovereignty-is-your-alpha/) ([PDF](https://www.palantir.com/assets/xrfr7uokpv1b/7BF74dqccPeVFMHRmy7FO3/2a33ff9b4f9e11ba904445e637095960/Palantir_-_Institutional_Sovereignty_in_the_Age_of_AI.pdf)). Not affiliated with Palantir.
+
+Detailed personal mapping stays **local-only** under gitignored `private/thinking/`.
 
 ## License
 
-MIT (see LICENSE.md). Operator private data is not part of the license grant and must not be published.
+MIT (see LICENSE.md). Operator private data is not part of the license grant.

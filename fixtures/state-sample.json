@@ -1,5 +1,5 @@
 {
-  "date": "2026-07-12",
+  "date": "2026-07-13",
   "area_counts": {
     "Career": 2,
     "Systems": 1,
@@ -17,7 +17,9 @@
       "importance": 4,
       "urgency": 4,
       "public": true,
-      "kind": "job_application_submit"
+      "kind": "job_application_submit",
+      "realm": "digital",
+      "tags": ["digital"]
     },
     {
       "id": "ship-swarm-docs",
@@ -25,7 +27,30 @@
       "area": "Systems",
       "importance": 3,
       "urgency": 3,
-      "public": true
+      "public": true,
+      "realm": "digital"
+    },
+    {
+      "id": "grocery-errand",
+      "title": "Grocery errand — turmeric veg fish for family meals",
+      "area": "Relationships",
+      "importance": 3,
+      "urgency": 3,
+      "public": false,
+      "kind": "physical_errand",
+      "realm": "physical",
+      "tags": ["physical", "errand"]
+    },
+    {
+      "id": "evening-outdoor",
+      "title": "Evening outdoor family walk (cooler window)",
+      "area": "Relationships",
+      "importance": 4,
+      "urgency": 3,
+      "public": false,
+      "kind": "outdoor",
+      "realm": "physical",
+      "tags": ["physical"]
     },
     {
       "id": "noise-scroll",
@@ -33,11 +58,12 @@
       "area": "Learning",
       "importance": 1,
       "urgency": 1,
-      "public": true
+      "public": true,
+      "realm": "digital"
     }
   ],
   "notes": [
     "Representative local state for tests and dry runs",
-    "Relationships/Health starved in area_counts to exercise balance inject"
+    "Includes physical errands + HITL digital apply for operator turn"
   ]
 }

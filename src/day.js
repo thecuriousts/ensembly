@@ -8,6 +8,7 @@ import { loadPersona, loadLocalState, resolveRoot } from './ingest.js';
 import { prioritize, mergeCandidates } from './prioritize.js';
 import { ensureBalance, proposeSchedule, balanceScore, countByArea } from './balance.js';
 import { partitionByVisibility, classifyItem } from './privacy.js';
+import { enrichWithRealm } from './realm.js';
 import { runDayLoop, needsHitl } from './loop.js';
 import { formatDailyPlan } from './plan-format.js';
 
@@ -28,10 +29,12 @@ export function buildDayPlan(persona, state = {}, opts = {}) {
   });
 
   const balanced = ensureBalance(ranked, persona);
-  const withPrivacy = balanced.items.map((item) => ({
-    ...item,
-    classification: classifyItem(item),
-  }));
+  const withPrivacy = enrichWithRealm(
+    balanced.items.map((item) => ({
+      ...item,
+      classification: classifyItem(item),
+    })),
+  );
 
   // Actions for the day: top N after balance, prefer one primary career + non-negotiables
   const actions = selectDailyActions(withPrivacy, persona);
