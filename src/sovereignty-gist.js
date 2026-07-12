@@ -4,7 +4,7 @@
  * Credits — inspired by Palantir Technologies white paper:
  *   "Institutional Sovereignty in the Age of AI" (15 steps)
  *   Landing: https://www.palantir.com/ai-sovereignty-is-your-alpha/
- *   PDF: https://www.palantir.com/assets/xrfr7uokpv1b/7BF74dqccPeVFMHRmy7FO3/2a33ff9b4f9e11ba904445e637095960/Palantir_-_Institutional_Sovereignty_in_the_Age_of_AI.pdf
+ *   PDF: https://assets.ctfassets.net/xrfr7uokpv1b/yF0AXklHQd7K3SqKICNTM/e9f9167d1b3c7cce56ab3b8c4cc572da/Palantir_-_Institutional_Sovereignty_in_the_Age_of_AI.pdf
  * Not affiliated with Palantir. Full personal mapping: private/thinking/ (gitignored).
  *
  * @see public/thinking/sovereignty-gist.md

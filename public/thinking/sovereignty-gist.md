@@ -9,7 +9,7 @@ This gist is **study notes** inspired by Palantir Technologies’ white paper:
 
 - **Title:** *Institutional Sovereignty in the Age of AI* (15 steps to compound alpha)
 - **Landing:** [AI Sovereignty Is Your Alpha](https://www.palantir.com/ai-sovereignty-is-your-alpha/)
-- **PDF:** [Palantir — Institutional Sovereignty in the Age of AI](https://www.palantir.com/assets/xrfr7uokpv1b/7BF74dqccPeVFMHRmy7FO3/2a33ff9b4f9e11ba904445e637095960/Palantir_-_Institutional_Sovereignty_in_the_Age_of_AI.pdf)
+- **PDF:** [Palantir — Institutional Sovereignty in the Age of AI](https://assets.ctfassets.net/xrfr7uokpv1b/yF0AXklHQd7K3SqKICNTM/e9f9167d1b3c7cce56ab3b8c4cc572da/Palantir_-_Institutional_Sovereignty_in_the_Age_of_AI.pdf)
 
 © concepts belong to Palantir Technologies. This repository is **not affiliated** with Palantir. Adaptation here maps public doctrine (ZDR, model liquidity, context flywheel, etc.) onto the ensembly control plane for personal / operator use.
 

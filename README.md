@@ -85,7 +85,7 @@ AI sovereignty doctrine (ZDR, model liquidity, owned context flywheel) as a shor
 - [public/thinking/sovereignty-gist.md](public/thinking/sovereignty-gist.md)
 - `src/sovereignty-gist.js` (step ids + assurance helpers)
 
-**Credit:** Study notes inspired by Palantir — [*Institutional Sovereignty in the Age of AI*](https://www.palantir.com/ai-sovereignty-is-your-alpha/) ([PDF](https://www.palantir.com/assets/xrfr7uokpv1b/7BF74dqccPeVFMHRmy7FO3/2a33ff9b4f9e11ba904445e637095960/Palantir_-_Institutional_Sovereignty_in_the_Age_of_AI.pdf)). Not affiliated with Palantir.
+**Credit:** Study notes inspired by Palantir — [*Institutional Sovereignty in the Age of AI*](https://www.palantir.com/ai-sovereignty-is-your-alpha/) ([PDF](https://assets.ctfassets.net/xrfr7uokpv1b/yF0AXklHQd7K3SqKICNTM/e9f9167d1b3c7cce56ab3b8c4cc572da/Palantir_-_Institutional_Sovereignty_in_the_Age_of_AI.pdf)). Not affiliated with Palantir.
 
 Detailed personal mapping stays **local-only** under gitignored `private/thinking/`.
 
