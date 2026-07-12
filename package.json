@@ -1,7 +1,7 @@
 {
   "name": "ensembly",
   "version": "0.2.0",
-  "description": "Persona-driven autonomous life swarm — daily self-organization with privacy-safe control loop",
+  "description": "Game of Peram — life swarm that clears digital thrash so you claim body-world work, clear auth gates, and grow",
   "type": "module",
   "private": true,
   "engines": {
