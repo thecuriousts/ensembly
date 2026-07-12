@@ -51,14 +51,27 @@ North star: operator’s responsibilities stay in **harmonious balance** via a d
 
 ## Eve host decision (2026-07-13)
 
-**Verdict:** Treat [Vercel Eve](https://vercel.com/eve) as an **optional bridge**, not a kernel rewrite.
+**Verdict:** Treat [Vercel Eve](https://vercel.com/eve) as the **production remote bridge** (channels + approval + schedules), not a kernel rewrite and **not a disposable prototype**.
 
 | Decision | Rationale |
 |----------|-----------|
-| **Adopt** Eve for channels + tool approval + cron schedules | Matches operator needs: remote communication, remote control/approval, morning/evening cadence ([EVE-FIT.md](EVE-FIT.md)) |
-| **Adapt** tools that call pure ensembly modules / CLI | Keeps unit tests + offline dogfood; Eve owns durability UX |
+| **Adopt** Eve for channels + tool approval + cron schedules | Production remote operator surface: communication, approve/deny, cadence ([EVE-FIT.md](EVE-FIT.md)) |
+| **Adapt** tools that call pure ensembly modules / CLI | Kernel stays tested and offline-capable; Eve owns durable UX |
 | **Refuse** full persona / vault on Vercel Eve by default | Privacy default-deny + sovereignty gist |
 | **Refuse** rewriting day/privacy/realm into Eve-only prompts | Iron-peak stays pure Node ESM |
-| **Refuse** game sim on Eve | WASM world is local host |
+| **Refuse** game sim on Eve | WASM world is local/desktop host |
+| **Refuse** “prototype theater” | When Eve ships, it ships production-grade for real life use |
 
-**Near-term:** document + dogfood CLI/game first; prototype Eve out-of-tree or `bridge/eve/` only after turn dogfood. Confidence: 80%.
+**Order:** CLI + game must already be daily-grade; Eve bridge is the next production host for remote life ops — built once, hardened, privacy-reviewed. Confidence: 85%.
+
+## Product seriousness (2026-07-13)
+
+**Verdict:** ensembly is **production life infrastructure** for operator growth — not a hobby demo.
+
+Binding: [AGENTS.md](../AGENTS.md) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md)
+
+| Refuse | Build toward |
+|--------|----------------|
+| Joke UX, fake polish, throwaway stubs | Fun Game of Peram that tells the truth |
+| “MVP then rewrite” | Day-0 production paths + tests + privacy |
+| Feature tourism | Impact on real days and capacity |

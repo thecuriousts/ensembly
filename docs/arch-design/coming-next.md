@@ -11,7 +11,7 @@
 
 ## 0. Mission (one sentence)
 
-Remove digital friction so the swarm automates curate/plan/classify while the operator only picks up **physical world** work and grants **approvals** — and can watch the agent play the **Game of Peram** as a graph.
+Remove digital friction so the swarm automates curate/plan/classify while the operator only picks up **physical world** work and grants **approvals** — and plays the **Game of Peram** as a truthful, engaging world. **Production life infrastructure** (see [PRODUCT-CHARTER.md](../PRODUCT-CHARTER.md), [AGENTS.md](../../AGENTS.md)) — not a hobby demo.
 
 ---
 
@@ -308,19 +308,20 @@ flowchart TB
 
 | File | Work |
 |------|------|
-| [docs/EVE-FIT.md](../EVE-FIT.md) | **Fit map shipped** — adopt/adapt/refuse |
-| `docs/DECISIONS.md` | Eve host decision logged |
-| future `bridge/eve/` or out-of-tree | Prototype tools + one channel + morning schedule (redacted fixtures) |
-| `src/approvals.js` | Keep IR; dual-write adapter when prototype lands |
+| [docs/EVE-FIT.md](../EVE-FIT.md) | Fit map + production sequence (no prototype theater) |
+| [docs/PRODUCT-CHARTER.md](../PRODUCT-CHARTER.md) · [AGENTS.md](../../AGENTS.md) | Binding product law |
+| `docs/DECISIONS.md` | Eve host + seriousness decisions |
+| `bridge/eve/` (production app) | Channels + tools + schedules; redacted I/O; CI + evals |
+| `src/approvals.js` | IR dual-write with Eve approval sessions |
 
 **Adopt on Eve:** channels (user comms), tool `approval` (remote control), `schedules/` (cadence).  
 **Keep local:** day/privacy/realm pure functions, WASM game, private vault.  
-**Full map:** [EVE-FIT.md](../EVE-FIT.md).
+**Full map:** [EVE-FIT.md](../EVE-FIT.md). **No prototype theater** — production bar from first merge.
 
-**Done when (docs gate — met):** Fit matrix + privacy refuse rules + sequence in EVE-FIT.  
-**Done when (code gate — later):** Prototype posts turn digest on a channel; one gated tool maps to approve/deny; morning cron fires without uploading `private/`.
+**Done when (docs gate — met):** Fit matrix + privacy refuse + production sequence; charter + AGENTS.md.  
+**Done when (code gate):** Production channel posts true turn digest; gated approve/deny dual-writes IR; morning/evening cron reliable; privacy checklist green; operator would trust a real auth gate.
 
-**Verify:** Doc review now; later `eve eval` + privacy checklist on tool outputs.
+**Verify:** `eve eval` + privacy checklist + operator dogfood of real pending items.
 
 ---
 
@@ -352,8 +353,9 @@ flowchart TB
 | Day plan automation | Eve production deploy |
 | Physical + approval turn + game world | Voice multiplayer room |
 | Graph IR + mermaid/HTML + WASM play | `@statelyai/graph` layout peers required |
-| Eve fit map (SN-5 docs) | Eve code bridge with real Slack |
+| Eve fit map + product charter (SN-5 docs) | Eve production bridge (channel + cron + gated approve) |
 | Privacy default-deny | Live bank/email; private vault on cloud |
+| Production bar (AGENTS.md) | Multiplayer room before remote turn is lived |
 
 ---
 
@@ -400,6 +402,7 @@ gantt
 | 2026-07-13 | Tag `v0.1.0` at legacy tip; turn/graph altitude |
 | 2026-07-13 | Immersive game world + WASM focus SoT; `npm run game` |
 | 2026-07-13 | Eve fit map: channels/HITL/schedules adopt; kernel refuse rewrite ([EVE-FIT.md](../EVE-FIT.md)) |
+| 2026-07-13 | Product charter + AGENTS.md: production-grade life infrastructure; no hobby/prototype theater |
 
 ---
 

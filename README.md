@@ -2,7 +2,9 @@
 
 **Persona-driven life swarm** that removes digital friction: the agent curates, prioritizes, balances, and classifies; **you** only pick up the **physical world** and grant **authorizations**. Play and watch state as a **game world + graph**.
 
-Legacy react-boilerplate lives under `legacy/`. Product = **control plane** + **operator turn** + **immersive game** + optional **cloud bridge**.
+This is **production life infrastructure** — not a hobby demo or joke MVP. Fun, engagement, and real growth impact are requirements. See **[docs/PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md)** and **[AGENTS.md](AGENTS.md)**.
+
+Legacy react-boilerplate lives under `legacy/`. Product = **control plane** + **operator turn** + **immersive game** + **production Eve bridge** (when shipped — not a throwaway prototype).
 
 ## Quick start
 
@@ -80,7 +82,7 @@ Serializable IR: nodes (phase, action, physical, hitl, schedule) + edges + layou
 | Full private persona on cloud | **Refuse** | Projections only — [PRIVACY.md](docs/PRIVACY.md) |
 | Game of Peram WASM world | **No** | Local/browser (later desktop) |
 
-Kernel first; Eve is an optional host adapter (roadmap SN-5), not the product rewrite.
+Kernel first; Eve is the production remote host for comms/approval/schedules (roadmap SN-5), not a kernel rewrite and not a disposable prototype.
 
 ## Roadmap
 

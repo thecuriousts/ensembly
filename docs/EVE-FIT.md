@@ -165,16 +165,21 @@ Eve is a **host adapter**, same altitude as “optional Stately adapter” — n
 
 ---
 
-## 7. Recommended sequence
+## 7. Production sequence (no prototype theater)
 
-| Step | Work | Gate |
-|------|------|------|
-| 1 | This doc + roadmap SN-5 expand (done when committed) | Review |
-| 2 | Prototype Eve app **out of tree** or `bridge/eve/` with redacted fixtures only | Privacy review |
-| 3 | One channel (Slack or web) + `list_operator_turn` + morning schedule | Dogfood 1 week |
-| 4 | Gate one real side-effect tool (e.g. draft-only, not send) with approval | HITL UX |
-| 5 | Dual-write or adapter: Eve approval ↔ `private/state/wait-snapshot.json` | IR stability |
-| 6 | Do **not** start SN-6 multiplayer room until 3–5 dogfooded | Scope lock |
+This is a **production bridge**, not a throwaway spike. Ship thin vertical slices that are **real for daily life**, privacy-reviewed, tested, and reversible — not demos you delete.
+
+| Step | Work | Production gate |
+|------|------|-----------------|
+| 1 | Fit map + charter (docs) | Done — this file + [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) + [AGENTS.md](../AGENTS.md) |
+| 2 | `bridge/eve/` (in-repo) or monorepo app with **redacted-only** fixtures and CI | `eve eval` / typecheck green; privacy checklist on every tool output |
+| 3 | **One** production channel (Slack *or* web) + `list_operator_turn` | Operator gets a true physical+pending digest they use for real days |
+| 4 | Morning + evening **schedules** posting that digest | Cron fires in prod; empty/failure paths loud |
+| 5 | Gated tools: approve/deny mapped to approvals IR (dual-write) | Durable park; reject path; idempotent; never auto-mutate bank/email |
+| 6 | Optional: draft-only external tools behind approval | Still no unattended send |
+| 7 | SN-6 multiplayer only after remote turn is *lived* for real | Scope lock |
+
+**Bar:** if the operator would not trust it with a real pending authorization, it is not “done enough to merge.”
 
 ---
 
@@ -205,4 +210,4 @@ Eve is a **host adapter**, same altitude as “optional Stately adapter” — n
 
 ---
 
-**Footer plain rule:** Eve talks to the human and waits for yes/no; ensembly kernel still decides what is physical, private, and planned.
+**Footer plain rule:** Eve talks to the human and waits for yes/no; ensembly kernel still decides what is physical, private, and planned. Build the bridge for real life — production-grade, not a hobby demo.

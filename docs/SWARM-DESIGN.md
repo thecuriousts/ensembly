@@ -4,7 +4,7 @@
 
 **Life swarm control plane** = persona model + Eisenhower/balance prioritizer + privacy classifier + looper outer day cycle → one **daily self-organization artifact**.
 
-Legacy react-boilerplate UI is **not** the product (`legacy/`). The product is `bin/swarm.js day`.
+Legacy react-boilerplate UI is **not** the product (`legacy/`). The product is the **control plane + turn + Game of Peram + production remote bridge** — production life infrastructure ([PRODUCT-CHARTER.md](PRODUCT-CHARTER.md), [AGENTS.md](../AGENTS.md)), not a hobby demo.
 
 ## Skills grounding
 
