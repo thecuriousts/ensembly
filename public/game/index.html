@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Game of Peram</title>
+    <meta name="description" content="Immersive life-swarm game world — courtyard, sprites, props." />
+    <link rel="stylesheet" href="/game/styles.css" />
+    <link rel="modulepreload" href="/game/main.js" />
+    <link rel="modulepreload" href="/game/world-render.js" />
+    <link rel="modulepreload" href="/src/game/world/scene.js" />
+    <link rel="preload" href="/game/sample-graph.json" as="fetch" crossorigin />
+  </head>
+  <body class="world-mode">
+    <a class="skip" href="#command">Skip to command</a>
+
+    <!-- PRIMARY: full-bleed game world -->
+    <canvas id="stage" aria-label="Game of Peram world"></canvas>
+
+    <!-- SECONDARY: minimal HUD chrome over the world -->
+    <div id="hud" class="hud-overlay">
+      <header class="topbar glass">
+        <div class="brand">
+          <span class="ember" aria-hidden="true"></span>
+          <div>
+            <p class="callsign">GAME OF PERAM</p>
+            <p class="biome" id="biome">—</p>
+          </div>
+        </div>
+        <div class="telemetry">
+          <div class="t-cell"><span class="t-k">Focus</span><span class="t-v" id="focus">—</span></div>
+          <div class="t-cell warn"><span class="t-k">Pending</span><span class="t-v" id="pending">0</span></div>
+          <div class="t-cell"><span class="t-k">Mode</span><span class="t-v" id="mode">nav</span></div>
+          <div class="t-cell"><span class="t-k">Tick</span><span class="t-v mono" id="tick">0</span></div>
+          <div class="t-cell"><span class="t-k">GPU</span><span class="t-v mono" id="backend">…</span></div>
+          <div class="t-cell"><span class="t-k">Engine</span><span class="t-v mono" id="engine">…</span></div>
+        </div>
+      </header>
+
+      <aside class="rail glass" aria-label="Beacon list">
+        <p class="rail-title">Beacons</p>
+        <p id="focus-live" class="sr-only" aria-live="polite"></p>
+        <p id="msg" class="rail-msg" role="status" hidden></p>
+        <ol id="radar" class="radar"></ol>
+        <p class="hint">Tab next · click row · A/D HITL · ? help</p>
+      </aside>
+
+      <footer class="bottombar glass">
+        <div class="hotkeys">
+          <kbd>Tab</kbd><span>next</span>
+          <kbd>↑↓←→</kbd><span>move focus</span>
+          <kbd class="ember-key">A</kbd><span>approve</span>
+          <kbd class="ember-key">D</kbd><span>deny</span>
+          <kbd>U</kbd><span>undo</span>
+          <kbd>V</kbd><span>voice</span>
+        </div>
+        <div class="command-row">
+          <button type="button" id="btn-voice" class="btn ghost">Voice</button>
+          <form id="voice-form" class="command-form">
+            <label class="sr-only" for="command">Command</label>
+            <input id="command" type="text" placeholder="Command: next · approve · help" autocomplete="off" />
+            <button type="submit" class="btn primary">Run</button>
+          </form>
+        </div>
+        <p id="status" class="status-line"></p>
+        <p id="voice-avail" class="status-line dim"></p>
+      </footer>
+    </div>
+
+    <dialog id="help" class="help-dialog">
+      <form method="dialog" class="help-card">
+        <header>
+          <h2>World controls</h2>
+          <button type="submit" class="btn ghost" value="close">Esc</button>
+        </header>
+        <pre id="help-body"></pre>
+      </form>
+    </dialog>
+
+    <script type="module" src="/game/main.js"></script>
+  </body>
+</html>

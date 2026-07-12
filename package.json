@@ -15,8 +15,13 @@
     "swarm:day:stdout": "node bin/swarm.js day --stdout --no-write",
     "swarm:turn": "node bin/swarm.js turn",
     "swarm:graph": "node bin/swarm.js graph --html",
+    "build:wasm": "bash scripts/build-wasm.sh",
+    "game": "node scripts/serve-game.mjs",
+    "game:serve": "node scripts/serve-game.mjs",
+    "game:smoke": "node scripts/smoke-game.mjs",
     "test": "node --test test/*.test.js",
-    "start": "node bin/swarm.js turn"
+    "test:rust": "cargo test --manifest-path crates/peram-core/Cargo.toml",
+    "start": "node scripts/serve-game.mjs"
   },
   "repository": {
     "type": "git",

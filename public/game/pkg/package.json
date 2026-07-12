@@ -1,0 +1,17 @@
+{
+  "name": "peram-core",
+  "type": "module",
+  "description": "Game of Peram hot-path layout/sim (Rust → WASM)",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "peram_core_bg.wasm",
+    "peram_core.js",
+    "peram_core.d.ts"
+  ],
+  "main": "peram_core.js",
+  "types": "peram_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

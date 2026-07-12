@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "date": "2026-07-13",
+  "meta": {
+    "nodeCount": 8,
+    "edgeCount": 7,
+    "snapshotStatus": "idle_waiting",
+    "generator": "fixtures/sample-game"
+  },
+  "nodes": [
+    { "id": "game-peram", "type": "game", "label": "Game of Peram", "kind": "root", "position": { "x": 0, "y": 0 } },
+    { "id": "phase-ORIENT", "type": "phase", "label": "ORIENT", "kind": "phase", "position": { "x": 220, "y": 0 } },
+    { "id": "phase-HITL_WAIT", "type": "phase", "label": "HITL_WAIT", "kind": "phase", "position": { "x": 440, "y": 0 } },
+    { "id": "action-ship", "type": "action", "label": "Ship ensembly OSS", "realm": "digital", "kind": "action", "position": { "x": 0, "y": 100 } },
+    { "id": "action-grocery", "type": "physical", "label": "Grocery errand", "realm": "physical", "kind": "action", "position": { "x": 220, "y": 100 } },
+    { "id": "action-apply", "type": "action", "label": "FT application packet", "realm": "digital", "hitl": true, "kind": "action", "position": { "x": 440, "y": 100 } },
+    { "id": "hitl-apply", "type": "hitl", "label": "HITL: Apply", "kind": "hitl_wait", "status": "pending", "position": { "x": 660, "y": 100 } },
+    { "id": "slot-family", "type": "schedule", "label": "17:00 Family outdoor", "kind": "schedule", "position": { "x": 220, "y": 200 } }
+  ],
+  "edges": [
+    { "id": "e1", "source": "game-peram", "target": "phase-ORIENT", "kind": "contains" },
+    { "id": "e2", "source": "phase-ORIENT", "target": "phase-HITL_WAIT", "kind": "phase_transition" },
+    { "id": "e3", "source": "game-peram", "target": "action-ship", "kind": "digital_action" },
+    { "id": "e4", "source": "game-peram", "target": "action-grocery", "kind": "physical_pickup" },
+    { "id": "e5", "source": "action-apply", "target": "hitl-apply", "kind": "requires_auth" },
+    { "id": "e6", "source": "slot-family", "target": "action-grocery", "kind": "assigned" },
+    { "id": "e7", "source": "game-peram", "target": "action-apply", "kind": "digital_action" }
+  ],
+  "pending": [
+    {
+      "id": "auth-apply-high-signal",
+      "actionId": "apply",
+      "title": "FT application packet",
+      "status": "pending"
+    }
+  ]
+}

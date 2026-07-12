@@ -7,15 +7,43 @@ Legacy react-boilerplate lives under `legacy/`. Product = control plane + operat
 ## Quick start
 
 ```bash
-# Node >= 20
+# Node >= 20 · Rust/wasm-pack for race-car engine (optional if pkg prebuilt)
 npm test
-npm run swarm:turn             # physical pickups + pending approvals (default start)
-npm run swarm:day              # full daily plan
-npm run swarm:day:stdout
-npm run swarm:graph            # mermaid + public/watch/index.html
+npm run build:wasm             # Rust → public/game/pkg
+npm run game                   # http://127.0.0.1:4173/game/
+npm run game:smoke             # serve + fetch + drive session
+
+npm run swarm:turn             # physical pickups + pending approvals
+npm run swarm:day
+npm run swarm:graph            # mermaid + public/watch (static)
 node bin/swarm.js approve <id>
 node bin/swarm.js deny <id>
 ```
+
+### Play the Game of Peram (interactive)
+
+```bash
+npm run build:wasm   # once (needs rustc + wasm-pack)
+npm run game         # open http://127.0.0.1:4173/game/
+```
+
+**Important:** open **http://127.0.0.1:4173/game/** (trailing slash). `/game` redirects. Assets mount at `/game/*`; pure modules at `/src/game/*`.
+
+| Control | Action |
+|---------|--------|
+| Tab / j k / arrows | Navigate focus |
+| Enter / Space | Select |
+| A / Y | Approve pending HITL |
+| D / N | Deny |
+| ? | Help overlay |
+| V | Voice mode (Web Speech or text proxy) |
+| Gamepad | D-pad nav · A approve · B deny |
+
+Stack: **Rust WASM** layout hot path · **WebGPU** with Canvas2D fallback · pure JS session/input/voice. See [docs/GAME-STACK.md](docs/GAME-STACK.md).
+
+**Patterns.dev agent skills** ([catalog](https://www.patterns.dev/ai/skills/)) are installed under `.agents/skills/` and applied in the game kit (Command, Observer, performance). See [docs/PATTERNS-DEV.md](docs/PATTERNS-DEV.md).
+
+**World foundation** — courtyard stage with sprites/props; **sim in Rust WASM** (`peram-core`), thin JS host. Desktop-ready crate split. See [docs/ENGINE.md](docs/ENGINE.md) · [docs/WORLD-FOUNDATION.md](docs/WORLD-FOUNDATION.md).
 
 ## Operator turn (primary human surface)
 

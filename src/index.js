@@ -27,4 +27,18 @@ export {
   isExtractionPronePosture,
   stepsForLayer,
 } from './sovereignty-gist.js';
+export {
+  createSession,
+  dispatch,
+  focusedNode,
+  sessionView,
+  KEY_BINDINGS,
+  mapKeyEvent,
+  helpLines,
+  parseVoiceCommand,
+  voiceVocabulary,
+  createGameStore,
+  Observable,
+  CommandBus,
+} from './game/index.js';
 

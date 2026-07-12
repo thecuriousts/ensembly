@@ -1,0 +1,394 @@
+/* Game of Peram — world-first shell (HUD is glass over the stage) */
+
+:root {
+  color-scheme: dark;
+  --ink: oklch(0.95 0.01 260);
+  --muted: oklch(0.75 0.03 260);
+  --dim: oklch(0.55 0.02 260);
+  --ember: oklch(0.65 0.22 35);
+  --cyan: oklch(0.82 0.12 210);
+  --line: oklch(0.4 0.03 260 / 0.45);
+  --glass: oklch(0.12 0.02 260 / 0.72);
+  --font: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #070b14;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 14px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+}
+
+.skip {
+  position: absolute;
+  left: 0.5rem;
+  top: -3rem;
+  z-index: 30;
+  background: var(--ember);
+  color: #111;
+  padding: 0.4rem 0.7rem;
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.skip:focus {
+  top: 0.5rem;
+}
+
+/* Full-bleed world */
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+}
+
+.hud-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: 1fr minmax(12rem, 16rem);
+  grid-template-areas:
+    "top top"
+    "main rail"
+    "bot bot";
+}
+
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  pointer-events: auto;
+}
+
+.topbar {
+  grid-area: top;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin: 0.6rem 0.6rem 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 12px;
+}
+
+.brand {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.ember {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--ember);
+  box-shadow: 0 0 12px var(--ember);
+}
+
+.callsign {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.biome {
+  margin: 0.1rem 0 0;
+  font-size: 0.75rem;
+  color: var(--cyan);
+}
+
+.telemetry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.t-cell {
+  padding: 0.25rem 0.45rem;
+  border-radius: 8px;
+  background: oklch(0.16 0.02 260 / 0.8);
+  border: 1px solid var(--line);
+  min-width: 3.8rem;
+}
+
+.t-cell.warn {
+  border-color: oklch(0.55 0.14 35 / 0.5);
+}
+
+.t-k {
+  display: block;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+
+.t-v {
+  font-size: 0.8rem;
+  font-weight: 600;
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.rail {
+  grid-area: rail;
+  margin: 0.5rem 0.5rem 0.5rem 0;
+  padding: 0.55rem 0.6rem;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(100dvh - 11rem);
+  max-width: 15rem;
+  background: oklch(0.12 0.02 260 / 0.55);
+}
+
+.rail-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  font-weight: 650;
+}
+
+.rail-msg {
+  margin: 0 0 0.4rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--ember);
+}
+
+.rail-msg[hidden] {
+  display: none;
+}
+
+.radar {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  flex: 1;
+}
+
+.radar li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.35rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.radar li[data-focus="1"] {
+  background: oklch(0.25 0.04 210 / 0.55);
+  border-color: oklch(0.55 0.1 210 / 0.5);
+}
+
+.radar .idx {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--dim);
+}
+
+.radar .name {
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radar .tag {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  color: var(--muted);
+}
+
+.hint {
+  margin: 0.45rem 0 0;
+  font-size: 0.7rem;
+  color: var(--dim);
+}
+
+.bottombar {
+  grid-area: bot;
+  margin: 0 0.6rem 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+}
+
+.hotkeys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.5rem;
+  align-items: center;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 0.4rem;
+}
+
+kbd {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: oklch(0.18 0.02 260);
+}
+
+kbd.ember-key {
+  color: var(--ember);
+  border-color: oklch(0.5 0.14 35 / 0.6);
+}
+
+.command-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.command-form {
+  display: flex;
+  flex: 1;
+  min-width: 12rem;
+  gap: 0.35rem;
+}
+
+#command {
+  flex: 1;
+  background: oklch(0.14 0.02 260);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 0.45rem 0.65rem;
+  font: inherit;
+}
+
+#command:focus {
+  outline: 2px solid oklch(0.55 0.1 210 / 0.6);
+  outline-offset: 1px;
+}
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0.45rem 0.75rem;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: oklch(0.2 0.02 260);
+  color: var(--ink);
+}
+
+.btn.primary {
+  background: var(--ember);
+  border-color: oklch(0.55 0.2 35);
+  color: oklch(0.14 0.02 35);
+}
+
+.btn.ghost.active {
+  border-color: var(--ember);
+  color: var(--ember);
+}
+
+.status-line {
+  margin: 0.3rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.status-line.dim {
+  color: var(--dim);
+}
+
+.help-dialog {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: oklch(0.14 0.02 260);
+  color: var(--ink);
+  max-width: min(26rem, 92vw);
+  padding: 0;
+}
+
+.help-dialog::backdrop {
+  background: oklch(0.08 0.02 260 / 0.65);
+}
+
+.help-card {
+  padding: 1rem;
+}
+
+.help-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.help-card pre {
+  margin: 0.5rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  background: #0a0e16;
+  padding: 0.65rem;
+  border-radius: 8px;
+}
+
+@media (max-width: 800px) {
+  .hud-overlay {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "top"
+      "main"
+      "rail"
+      "bot";
+  }
+  .rail {
+    margin: 0 0.5rem;
+    max-height: 28vh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ember {
+    box-shadow: none;
+  }
+}

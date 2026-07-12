@@ -23,5 +23,11 @@ data/private/
 
 # Agent / scratch (local only)
 .agents/
+.claude/
 .scratch/
 tmp/
+
+# Rust / WASM build artifacts (shipped browser pkg lives under public/game/pkg/)
+target/
+crates/**/target/
+**/*.rs.bk

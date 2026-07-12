@@ -1,0 +1,104 @@
+/**
+ * Keyboard → game action map (pure).
+ * Game-control kit: nav, select, approve/deny, help, voice toggle.
+ */
+
+/** @type {Record<string, { type: string, payload?: object }>} */
+export const KEY_BINDINGS = Object.freeze({
+  Tab: { type: 'FOCUS_NEXT' },
+  'Shift+Tab': { type: 'FOCUS_PREV' },
+  ArrowRight: { type: 'FOCUS_RIGHT' },
+  ArrowLeft: { type: 'FOCUS_LEFT' },
+  ArrowUp: { type: 'FOCUS_UP' },
+  ArrowDown: { type: 'FOCUS_DOWN' },
+  j: { type: 'FOCUS_NEXT' },
+  k: { type: 'FOCUS_PREV' },
+  Enter: { type: 'SELECT' },
+  ' ': { type: 'SELECT' },
+  a: { type: 'APPROVE' },
+  A: { type: 'APPROVE' },
+  d: { type: 'DENY' },
+  D: { type: 'DENY' },
+  y: { type: 'APPROVE' },
+  n: { type: 'DENY' },
+  '?': { type: 'TOGGLE_HELP' },
+  '/': { type: 'TOGGLE_HELP' },
+  Escape: { type: 'CLOSE_HELP' },
+  v: { type: 'VOICE_START' },
+  V: { type: 'VOICE_START' },
+  Escape_voice: { type: 'VOICE_STOP' },
+  u: { type: 'UNDO' },
+  U: { type: 'UNDO' },
+  r: { type: 'REDO' },
+  R: { type: 'REDO' },
+});
+
+/**
+ * Normalize a keyboard event-like object to a binding key.
+ * @param {{ key?: string, code?: string, shiftKey?: boolean, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean }} ev
+ */
+export function bindingKeyFromEvent(ev = {}) {
+  const key = ev.key || ev.code || '';
+  if (key === 'Tab' && ev.shiftKey) return 'Shift+Tab';
+  if (key === 'Tab') return 'Tab';
+  if (key === ' ') return ' ';
+  if (key === 'Escape') return 'Escape';
+  if (key === '?' || (key === '/' && ev.shiftKey)) return '?';
+  if (key === '/') return '/';
+  // single printable
+  if (key.length === 1) return key;
+  return key;
+}
+
+/**
+ * Map event → action or null.
+ * @param {{ key?: string, shiftKey?: boolean }} ev
+ * @param {{ voiceListening?: boolean }} [ctx]
+ */
+export function mapKeyEvent(ev, ctx = {}) {
+  if (ctx.voiceListening && (ev.key === 'Escape' || ev.key === 'v' || ev.key === 'V')) {
+    return { type: 'VOICE_STOP' };
+  }
+  const bk = bindingKeyFromEvent(ev);
+  return KEY_BINDINGS[bk] || null;
+}
+
+/**
+ * Human-readable help lines for HUD.
+ */
+export function helpLines() {
+  return [
+    'Tab / j · next focus',
+    'Shift+Tab / k · prev focus',
+    'Arrows · grid nav',
+    'Enter / Space · select',
+    'A / Y · approve pending HITL',
+    'D / N · deny pending HITL',
+    '? / / · toggle help',
+    'V · voice mode',
+    'U · undo nav',
+    'R · redo',
+    'Esc · close help / stop voice',
+  ];
+}
+
+/**
+ * Optional gamepad-shaped button index map (game control kit).
+ * Standard mapping: 0=A approve, 1=B deny, 12/13/14/15 d-pad, 9=start help
+ */
+export const GAMEPAD_BUTTON_ACTIONS = Object.freeze({
+  0: { type: 'APPROVE' },
+  1: { type: 'DENY' },
+  9: { type: 'TOGGLE_HELP' },
+  12: { type: 'FOCUS_UP' },
+  13: { type: 'FOCUS_DOWN' },
+  14: { type: 'FOCUS_LEFT' },
+  15: { type: 'FOCUS_RIGHT' },
+});
+
+/**
+ * @param {number} buttonIndex
+ */
+export function mapGamepadButton(buttonIndex) {
+  return GAMEPAD_BUTTON_ACTIONS[buttonIndex] || null;
+}
