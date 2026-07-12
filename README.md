@@ -1,147 +1,138 @@
-# ensembly — Game of Peram
+# Game of Peram
 
-**Persona-driven life swarm** that removes digital friction: the agent curates, prioritizes, balances, and classifies; **you** only pick up the **physical world** and grant **authorizations**. Play and watch state as a **game world + graph**.
+**ensembly** — life, played as a game.
 
-This is **production life infrastructure** — not a hobby demo or joke MVP. Fun, engagement, and real growth impact are requirements. See **[docs/PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md)** and **[AGENTS.md](AGENTS.md)**.
+Digital thrash is the trash mob. You keep the boss fights: **body-world pickups** and **authorization gates**. The swarm curates, prioritizes, and balances. You claim beacons, clear gates, and grow.
 
-Legacy react-boilerplate lives under `legacy/`. Product = **control plane** + **operator turn** + **immersive game** + **production Eve bridge** (when shipped — not a throwaway prototype).
+Production life infrastructure — not a toy. Bar: [PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) · [AGENTS.md](AGENTS.md)
 
-## Quick start
+---
+
+## Drop in
 
 ```bash
-# Node >= 20 · Rust/wasm-pack only if rebuilding WASM (pkg is prebuilt under public/game/pkg)
+# Node ≥ 20  ·  WASM prebuilt (rebuild only if you change Rust)
 npm test
-npm run game                   # http://127.0.0.1:4173/game/
-npm run game:smoke             # serve + fetch + drive session
-npm run build:wasm             # optional: Rust → public/game/pkg
-
-npm run swarm:turn             # physical pickups + pending approvals
-npm run swarm:day
-npm run swarm:graph            # mermaid + public/watch (static)
-node bin/swarm.js approve <id>
-node bin/swarm.js deny <id>
+npm run game          # → http://127.0.0.1:4173/game/
+npm run game:smoke
 ```
 
-### Play the Game of Peram (interactive)
+Open with the **trailing slash**: `/game/`.
 
-```bash
-npm run game         # open http://127.0.0.1:4173/game/
-```
+Optional: `npm run build:wasm` after editing `crates/peram-core`.
 
-**Important:** open **http://127.0.0.1:4173/game/** (trailing slash). `/game` redirects. Assets mount at `/game/*`; pure modules at `/src/game/*`.
+---
 
-| Control | Action |
-|---------|--------|
-| Tab / j k / arrows | Navigate focus (session SoT; WASM mirrors) |
-| Enter / Space / C | **Claim** beacon (+XP) |
-| A / Y · D / N | Approve / deny HITL (+XP) |
-| **B** / Q | Toggle **growth board** (off by default) |
-| **I** | Toggle **top bars** (level, XP, gates) |
-| **M** | Toggle **command menu** |
-| **?** / H | Help |
-| **Esc** | Close all chrome / help / voice |
-| V | Voice |
-| Gamepad | D-pad · A approve · B deny |
+## How to play
 
-Default view is a **clean world** — only a focus chip + brief key hint. Chrome is on demand.
+Default loadout: **clean courtyard**. No sticky side UI. Focus chip + faded key hint only.
 
-**Growth (engagement):** claim real beacons for XP, clear authorization gates, build streak combos, fill **Body · Presence · Craft · Gates** balance. Level titles (Ember → Horizon). Quest board + coach line push physical/presence before craft-only thrash. Pure engine: `src/game/growth.js`.
+| Input | Move |
+|-------|------|
+| **Tab** / j k / arrows | Cycle focus (beacons) |
+| **Enter** / Space / **C** | **Claim** beacon → XP |
+| **A** / Y | **Approve** gate → XP |
+| **D** / N | **Deny** gate → XP |
+| **B** / Q | Toggle **growth board** |
+| **I** | Toggle **status bars** (level, XP, gates) |
+| **M** | Toggle **command menu** (type / voice) |
+| **?** / H | Codex (help) |
+| **Esc** | Clear all chrome |
+| **V** | Voice |
+| Gamepad | D-pad focus · face buttons approve/deny |
 
-**Stack:** courtyard **world foundation** (env / sprites / props) · **Rust WASM** (`peram-core`) layout + sim · **WebGPU** with Canvas2D fallback · thin JS host (input, HUD, voice). Focus index lives in the JS session store only — the world never double-advances.
+### Progression
 
-Docs: [GAME-STACK.md](docs/GAME-STACK.md) · [ENGINE.md](docs/ENGINE.md) · [WORLD-FOUNDATION.md](docs/WORLD-FOUNDATION.md) · [PATTERNS-DEV.md](docs/PATTERNS-DEV.md)
+| Axis | What counts |
+|------|-------------|
+| **Body** | Physical pickups (errands, presence in the world) |
+| **Presence** | Family / health / schedule beacons |
+| **Craft** | Deep work & ship beacons |
+| **Gates** | HITL approve / deny |
 
-## Operator turn (primary human surface)
+Claim → XP → streak combos → levels (**Ember → Horizon**). Coach steers you off pure digital grind. Engine: `src/game/growth.js`.
+
+### Engine room
+
+| Layer | Role |
+|-------|------|
+| Courtyard world | Env · sprites · props |
+| `peram-core` (Rust → WASM) | Layout & sim hot path |
+| Thin JS host | Input · chrome · voice |
+| Session store | **Focus source of truth** (WASM only mirrors) |
+
+Deep dives: [GAME-STACK](docs/GAME-STACK.md) · [ENGINE](docs/ENGINE.md) · [WORLD-FOUNDATION](docs/WORLD-FOUNDATION.md)
+
+---
+
+## Campaign modes (CLI)
+
+| Mode | Command | You get |
+|------|---------|---------|
+| **Turn** | `npm run swarm:turn` | Physical quest list + open gates |
+| **Day** | `npm run swarm:day` | Plan: projects · actions · schedule · balance · privacy |
+| **Map** | `npm run swarm:graph` | Graph IR → mermaid / `public/watch/` |
+| **Gate** | `node bin/swarm.js approve <id>` | Clear a wait snapshot |
+| | `node bin/swarm.js deny <id>` | |
 
 ```bash
 node bin/swarm.js turn --fixture fixtures/state-sample.json --stdout
 ```
 
-You get:
+---
 
-1. **Physical world pickups** — errands, outdoor family, body/presence (agents cannot do these)  
-2. **Pending authorizations** — approve/deny resumes a durable wait snapshot (`private/state/wait-snapshot.json`)  
-3. Snapshot **status/phase** advances on decision (not just flags in a long plan)
+## Multiplayer later · Eve bridge
 
-## Day plan (digital automation)
+Remote ops (chat digests, gate buttons, cron wake-ups) map to **[Vercel Eve](https://vercel.com/eve)** as a production bridge — not a kernel rewrite.
 
-Produces Projects / Actions / Schedule & balance / Privacy split via looper phases (`npm run swarm:day`).
+| Fits Eve | Stays local |
+|----------|-------------|
+| Channels (Slack / web) | Day · privacy · realm pure logic |
+| Remote approve / deny | Full persona vault |
+| Schedules / digests | Game of Peram WASM world |
 
-## Game graph watch
+Full map: [EVE-FIT.md](docs/EVE-FIT.md) · Roadmap: [coming-next.md](docs/arch-design/coming-next.md)
 
-```bash
-node bin/swarm.js graph --stdout          # mermaid
-node bin/swarm.js graph --html            # public/watch/index.html + graph.json
-```
+---
 
-Serializable IR: nodes (phase, action, physical, hitl, schedule) + edges + layout. Inspired by [Stately graph](https://stately.ai/docs/packages/graph); no hard peer required.
+## Fog of war (privacy)
 
-## Vercel Eve (optional bridge)
+| Loot | Path | Git |
+|------|------|-----|
+| Full persona | `private/persona/` | **never push** |
+| Public projection | `public/persona/` | ok |
 
-**[docs/EVE-FIT.md](docs/EVE-FIT.md)** maps what [Vercel Eve](https://vercel.com/eve) should own vs what stays local:
+Also never push: `private/`, `data/`, secrets. Classifier: `src/privacy.js` (default-deny). Rules: [PRIVACY.md](docs/PRIVACY.md).
 
-| Concern | Eve? | Notes |
-|---------|------|--------|
-| User communication (Slack / web chat digests) | **Yes** | Channels = remote operator surface |
-| Remote approve/deny of side effects | **Yes** | Tool `approval` parks durable session |
-| Cron schedules (morning plan, HITL nag) | **Yes** | `schedules/` → Vercel Cron |
-| Day / privacy / realm kernel | **No rewrite** | Eve tools *call* pure modules / CLI |
-| Full private persona on cloud | **Refuse** | Projections only — [PRIVACY.md](docs/PRIVACY.md) |
-| Game of Peram WASM world | **No** | Local/browser (later desktop) |
+---
 
-Kernel first; Eve is the production remote host for comms/approval/schedules (roadmap SN-5), not a kernel rewrite and not a disposable prototype.
-
-## Roadmap
-
-Architecture backlog: [docs/arch-design/coming-next.md](docs/arch-design/coming-next.md) — thrive picture, SN cards, Eve bridge, multiplayer ascent.
-
-## Persona & privacy
-
-| Artifact | Path | Git |
-|----------|------|-----|
-| Full operator persona | `private/persona/` | **ignored** |
-| Public projection | `public/persona/` | tracked |
-
-- **Never pushed:** `private/`, `data/`, secrets  
-- **Pushable:** code, tests, docs, public persona, public watch IR, prebuilt `public/game/pkg`  
-- Classifier: `src/privacy.js` (default-deny)
-
-See [docs/PRIVACY.md](docs/PRIVACY.md).
-
-## Architecture
+## Map of the repo
 
 ```text
-bin/swarm.js              day | turn | approve | deny | graph
-src/day.js                day cycle
-src/realm.js              physical vs digital
-src/approvals.js          durable idle snapshot approve/deny
-src/turn.js               operator turn surface
-src/graph.js              game graph IR + mermaid + HTML
-src/loop.js               looper phases / budgets
-src/privacy.js            public vs private
-src/game/                 pure session, input, voice, world foundation
-crates/peram-core/        shared Rust world (WASM today; desktop later)
-public/game/              interactive host + prebuilt WASM pkg
-public/watch/             static graph watch
-docs/EVE-FIT.md           Eve bridge decision map
-docs/arch-design/         stellar roadmap
+bin/swarm.js           day · turn · approve · deny · graph
+src/day.js             day campaign loop
+src/realm.js           physical vs digital
+src/approvals.js       durable gate waits
+src/game/              session · growth · input · world
+crates/peram-core/     shared Rust sim (WASM today, desktop later)
+public/game/           playable host + prebuilt pkg
+public/watch/          static map viewer
+docs/                  charter · engine · Eve · roadmap
+legacy/                old webpack app (not the game)
 ```
 
-## Skills
+---
 
-stellar-roadmap · fusion-sage · ai-optimization · higher-order-decision-architect · looper · Patterns.dev (command/observer/perf under `.agents/skills/`)
+## Codex extras
 
-## Sovereignty gist (public)
+- **Skills:** looper · stellar-roadmap · fusion-sage · Patterns.dev (command / observer)
+- **Sovereignty gist:** [public/thinking/sovereignty-gist.md](public/thinking/sovereignty-gist.md)  
+  Study notes inspired by Palantir — [*Institutional Sovereignty in the Age of AI*](https://www.palantir.com/ai-sovereignty-is-your-alpha/) ([PDF](https://assets.ctfassets.net/xrfr7uokpv1b/yF0AXklHQd7K3SqKICNTM/e9f9167d1b3c7cce56ab3b8c4cc572da/Palantir_-_Institutional_Sovereignty_in_the_Age_of_AI.pdf)). Not affiliated.
 
-AI sovereignty doctrine (ZDR, model liquidity, owned context flywheel) as a short public gist:
-
-- [public/thinking/sovereignty-gist.md](public/thinking/sovereignty-gist.md)
-- `src/sovereignty-gist.js` (step ids + assurance helpers)
-
-**Credit:** Study notes inspired by Palantir — [*Institutional Sovereignty in the Age of AI*](https://www.palantir.com/ai-sovereignty-is-your-alpha/) ([PDF](https://assets.ctfassets.net/xrfr7uokpv1b/yF0AXklHQd7K3SqKICNTM/e9f9167d1b3c7cce56ab3b8c4cc572da/Palantir_-_Institutional_Sovereignty_in_the_Age_of_AI.pdf)). Not affiliated with Palantir.
-
-Detailed personal mapping stays **local-only** under gitignored `private/thinking/`.
+---
 
 ## License
 
-MIT (see LICENSE.md). Operator private data is not part of the license grant.
+MIT ([LICENSE.md](LICENSE.md)). Your private life data is not part of the grant.
+
+**Rule of the realm:** automate the digital · surface the physical · wait only for permission · make the truth playable.
