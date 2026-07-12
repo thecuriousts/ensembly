@@ -33,12 +33,14 @@ npm run game         # open http://127.0.0.1:4173/game/
 | Control | Action |
 |---------|--------|
 | Tab / j k / arrows | Navigate focus (session is source of truth; WASM mirrors) |
-| Enter / Space | Select |
-| A / Y | Approve pending HITL |
-| D / N | Deny |
+| Enter / Space / C | **Claim** beacon (+XP growth — physical, craft, presence) |
+| A / Y | Approve HITL gate (+XP) |
+| D / N | Deny HITL gate (+XP) |
 | ? | Help overlay |
 | V | Voice mode (Web Speech or text proxy) |
 | Gamepad | D-pad nav · A approve · B deny |
+
+**Growth (engagement):** claim real beacons for XP, clear authorization gates, build streak combos, fill **Body · Presence · Craft · Gates** balance. Level titles (Ember → Horizon). Quest board + coach line push physical/presence before craft-only thrash. Pure engine: `src/game/growth.js`.
 
 **Stack:** courtyard **world foundation** (env / sprites / props) · **Rust WASM** (`peram-core`) layout + sim · **WebGPU** with Canvas2D fallback · thin JS host (input, HUD, voice). Focus index lives in the JS session store only — the world never double-advances.
 

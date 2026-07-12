@@ -1,7 +1,18 @@
 /**
  * Pure Game of Peram session state — no DOM/GPU.
  * Feed existing graph IR; dispatch keyboard/voice/gamekit actions.
+ * Growth (XP/quests) gamifies real physical / HITL / craft progress.
  */
+
+import {
+  emptyGrowth,
+  nodeRole,
+  isCompletable,
+  applyGain,
+  comboBonus,
+  growthView,
+  XP_TABLE,
+} from './growth.js';
 
 /** @typedef {'nav' | 'command' | 'help' | 'voice'} Mode */
 
@@ -15,6 +26,7 @@ export function createSession(graph = {}, snapshot = null) {
     label: n.label || n.id,
     type: n.type || 'action',
     realm: n.realm || null,
+    area: n.area || n.growthArea || null,
     hitl: Boolean(n.hitl || n.type === 'hitl'),
     status: n.status || null,
     index: i,
@@ -24,7 +36,7 @@ export function createSession(graph = {}, snapshot = null) {
   // Map for O(1) id lookup (Patterns.dev js-performance-patterns)
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
-  const pending = (snapshot?.pending || graph.meta?.pending || [])
+  const pending = (snapshot?.pending || graph.pending || graph.meta?.pending || [])
     .filter((p) => (p.status || 'pending') === 'pending')
     .map((p) => ({
       id: p.id,
@@ -34,6 +46,7 @@ export function createSession(graph = {}, snapshot = null) {
     }));
 
   const focusIndex = nodes.length ? 0 : -1;
+  const growth = emptyGrowth();
 
   return {
     version: 1,
@@ -42,13 +55,16 @@ export function createSession(graph = {}, snapshot = null) {
     nodeById,
     edges: graph.edges || [],
     pending,
+    growth,
     focusIndex,
     selectedId: focusIndex >= 0 ? nodes[focusIndex].id : null,
     helpOpen: false,
     voiceListening: false,
     lastAction: null,
     lastVoice: null,
-    message: nodes.length ? 'Ready — Tab/arrows navigate · ? help · A/D approve/deny · U undo' : 'Empty graph',
+    message: nodes.length
+      ? 'Grow — Enter claim beacon · A/D clear gates · Tab navigate · ? help'
+      : 'Empty graph',
     tick: 0,
     meta: graph.meta || {},
   };
@@ -92,6 +108,8 @@ export function dispatch(session, action) {
       return focusGrid(s, 1, 0);
     case 'SELECT':
       return selectFocused(s);
+    case 'COMPLETE':
+      return completeFocused(s);
     case 'TOGGLE_HELP':
       s.helpOpen = !s.helpOpen;
       s.mode = s.helpOpen ? 'help' : 'nav';
@@ -187,11 +205,58 @@ function selectFocused(s) {
     return s;
   }
   s.selectedId = node.id;
+  // Enter on a completable beacon = claim progress (growth loop)
+  if (isCompletable(node)) {
+    return completeFocused(s);
+  }
+  if (nodeRole(node) === 'hitl') {
+    s.message = `Gate: ${node.label} — A approve · D deny (+XP)`;
+    return s;
+  }
   s.message = `Selected: ${node.label}`;
   return s;
 }
 
+function completeFocused(s) {
+  ensureGrowth(s);
+  const node = focusedNode(s);
+  if (!node) {
+    s.message = 'Nothing to claim';
+    return s;
+  }
+  if (!isCompletable(node)) {
+    if (nodeRole(node) === 'hitl') {
+      s.message = `HITL gate — A approve / D deny (not claim)`;
+    } else {
+      s.message = `Not a claimable beacon: ${node.label}`;
+    }
+    return s;
+  }
+  if ((s.growth.completedIds || []).includes(node.id)) {
+    s.message = `Already claimed: ${node.label}`;
+    return s;
+  }
+  const role = nodeRole(node);
+  const base = XP_TABLE[role] || XP_TABLE.craft;
+  const streakBefore = s.growth.streak || 0;
+  const combo = comboBonus(streakBefore + 1);
+  const amount = base + combo;
+  s.growth = applyGain(s.growth, {
+    amount,
+    reason: `claim:${role}`,
+    role,
+    nodeId: node.id,
+    tick: s.tick,
+  });
+  node.status = 'done';
+  s.selectedId = node.id;
+  const comboNote = combo > 0 ? ` · combo +${combo}` : '';
+  s.message = `+${amount} XP · claimed ${node.label} (${role})${comboNote}`;
+  return s;
+}
+
 function resolvePending(s, status, explicitId) {
+  ensureGrowth(s);
   let id = explicitId;
   if (!id) {
     const node = focusedNode(s);
@@ -212,9 +277,7 @@ function resolvePending(s, status, explicitId) {
     // try fuzzy match on focused action
     const open = s.pending.find((p) => p.status === 'pending');
     if (open) {
-      open.status = status;
-      s.message = `${status}: ${open.id}`;
-      return s;
+      return awardHitl(s, open, status);
     }
     s.message = `Authorization not found: ${id}`;
     return s;
@@ -223,9 +286,36 @@ function resolvePending(s, status, explicitId) {
     s.message = `Already ${item.status}: ${item.id}`;
     return s;
   }
+  return awardHitl(s, item, status);
+}
+
+function awardHitl(s, item, status) {
   item.status = status;
-  s.message = `${status}: ${item.id} — ${item.title}`;
+  const base = status === 'approved' ? XP_TABLE.hitl_approve : XP_TABLE.hitl_deny;
+  const streakBefore = s.growth.streak || 0;
+  const combo = comboBonus(streakBefore + 1);
+  const amount = base + combo;
+  const focus = focusedNode(s);
+  const nodeId = focus && (focus.type === 'hitl' || focus.hitl) ? focus.id : item.id;
+  s.growth = applyGain(s.growth, {
+    amount,
+    reason: `hitl:${status}`,
+    role: 'hitl',
+    nodeId,
+    tick: s.tick,
+  });
+  if (focus && (focus.type === 'hitl' || focus.hitl)) {
+    focus.status = status;
+  }
+  const comboNote = combo > 0 ? ` · combo +${combo}` : '';
+  s.message = `+${amount} XP · ${status} ${item.title || item.id}${comboNote}`;
   return s;
+}
+
+function ensureGrowth(s) {
+  if (!s.growth) s.growth = emptyGrowth();
+  if (!s.growth.completedIds) s.growth.completedIds = [];
+  if (!s.growth.balance) s.growth.balance = { physical: 0, presence: 0, hitl: 0, craft: 0 };
 }
 
 /**
@@ -233,10 +323,12 @@ function resolvePending(s, status, explicitId) {
  */
 export function sessionView(session) {
   const focus = focusedNode(session);
+  const growth = growthView(session);
   return {
     focusIndex: session.focusIndex,
     selectedId: session.selectedId,
     focusLabel: focus?.label || null,
+    focusRole: focus ? nodeRole(focus) : null,
     helpOpen: session.helpOpen,
     mode: session.mode,
     voiceListening: session.voiceListening,
@@ -245,5 +337,6 @@ export function sessionView(session) {
     message: session.message,
     tick: session.tick,
     nodeCount: session.nodes.length,
+    growth,
   };
 }

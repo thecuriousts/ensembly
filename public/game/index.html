@@ -3,54 +3,73 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game of Peram</title>
-    <meta name="description" content="Immersive life-swarm game world — courtyard, sprites, props." />
+    <title>Game of Peram — Growth</title>
+    <meta
+      name="description"
+      content="Game of Peram — claim beacons, clear gates, grow toward a balanced life."
+    />
     <link rel="stylesheet" href="/game/styles.css" />
     <link rel="modulepreload" href="/game/main.js" />
     <link rel="modulepreload" href="/game/world-render.js" />
-    <link rel="modulepreload" href="/src/game/world/scene.js" />
+    <link rel="modulepreload" href="/src/game/growth.js" />
     <link rel="preload" href="/game/sample-graph.json" as="fetch" crossorigin />
   </head>
   <body class="world-mode">
     <a class="skip" href="#command">Skip to command</a>
 
-    <!-- PRIMARY: full-bleed game world -->
     <canvas id="stage" aria-label="Game of Peram world"></canvas>
 
-    <!-- SECONDARY: minimal HUD chrome over the world -->
     <div id="hud" class="hud-overlay">
       <header class="topbar glass">
         <div class="brand">
-          <span class="ember" aria-hidden="true"></span>
+          <span class="ember" id="ember-pulse" aria-hidden="true"></span>
           <div>
             <p class="callsign">GAME OF PERAM</p>
             <p class="biome" id="biome">—</p>
           </div>
         </div>
+        <div class="growth-strip" aria-label="Growth progress">
+          <div class="growth-level">
+            <span class="t-k">Level</span>
+            <span class="t-v" id="g-level">1 Ember</span>
+          </div>
+          <div class="xp-track" title="XP to next level">
+            <div class="xp-fill" id="xp-fill"></div>
+          </div>
+          <div class="growth-meta">
+            <span id="g-xp">0 XP</span>
+            <span class="sep">·</span>
+            <span id="g-streak" class="streak">streak 0</span>
+          </div>
+        </div>
         <div class="telemetry">
           <div class="t-cell"><span class="t-k">Focus</span><span class="t-v" id="focus">—</span></div>
-          <div class="t-cell warn"><span class="t-k">Pending</span><span class="t-v" id="pending">0</span></div>
-          <div class="t-cell"><span class="t-k">Mode</span><span class="t-v" id="mode">nav</span></div>
-          <div class="t-cell"><span class="t-k">Tick</span><span class="t-v mono" id="tick">0</span></div>
-          <div class="t-cell"><span class="t-k">GPU</span><span class="t-v mono" id="backend">…</span></div>
-          <div class="t-cell"><span class="t-k">Engine</span><span class="t-v mono" id="engine">…</span></div>
+          <div class="t-cell warn"><span class="t-k">Gates</span><span class="t-v" id="pending">0</span></div>
+          <div class="t-cell"><span class="t-k">Quests</span><span class="t-v mono" id="g-quests">0/0</span></div>
+          <div class="t-cell"><span class="t-k">Meter</span><span class="t-v mono" id="g-meter">0%</span></div>
         </div>
       </header>
 
-      <aside class="rail glass" aria-label="Beacon list">
-        <p class="rail-title">Beacons</p>
+      <aside class="rail glass" aria-label="Growth quest board">
+        <p class="rail-title">Growth board</p>
         <p id="focus-live" class="sr-only" aria-live="polite"></p>
+        <p id="coach" class="coach" role="status"></p>
         <p id="msg" class="rail-msg" role="status" hidden></p>
+        <div class="balance-row" id="balance-row" aria-label="Life balance axes"></div>
+        <ol id="quests" class="quests"></ol>
+        <p class="rail-title rail-sub">Beacons</p>
         <ol id="radar" class="radar"></ol>
-        <p class="hint">Tab next · click row · A/D HITL · ? help</p>
+        <p class="hint">Enter claim · A/D gates · Tab next · C complete · ? help</p>
       </aside>
+
+      <div id="toast" class="toast" hidden aria-live="assertive"></div>
 
       <footer class="bottombar glass">
         <div class="hotkeys">
-          <kbd>Tab</kbd><span>next</span>
-          <kbd>↑↓←→</kbd><span>move focus</span>
+          <kbd class="ember-key">Enter</kbd><span>claim XP</span>
           <kbd class="ember-key">A</kbd><span>approve</span>
           <kbd class="ember-key">D</kbd><span>deny</span>
+          <kbd>Tab</kbd><span>next</span>
           <kbd>U</kbd><span>undo</span>
           <kbd>V</kbd><span>voice</span>
         </div>
@@ -58,7 +77,12 @@
           <button type="button" id="btn-voice" class="btn ghost">Voice</button>
           <form id="voice-form" class="command-form">
             <label class="sr-only" for="command">Command</label>
-            <input id="command" type="text" placeholder="Command: next · approve · help" autocomplete="off" />
+            <input
+              id="command"
+              type="text"
+              placeholder="claim · next · approve · help"
+              autocomplete="off"
+            />
             <button type="submit" class="btn primary">Run</button>
           </form>
         </div>
@@ -70,7 +94,7 @@
     <dialog id="help" class="help-dialog">
       <form method="dialog" class="help-card">
         <header>
-          <h2>World controls</h2>
+          <h2>Growth controls</h2>
           <button type="submit" class="btn ghost" value="close">Esc</button>
         </header>
         <pre id="help-body"></pre>

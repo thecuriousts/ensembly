@@ -41,8 +41,9 @@ If a feature cannot connect to a row above, it is entertainment debt or architec
 
 - **World > chrome** — Courtyard, sprites, props, motion, focus beacon; HUD is secondary glass.
 - **Input feels immediate** — Keys, voice, gamepad; single source of truth so the avatar and labels never disagree.
-- **Feedback loops** — Approve/deny, seek, tick, status — every action should *register* in the world or turn.
-- **Craft over gimmick** — Prefer one polished interaction over five dead buttons.
+- **Growth loop** — Claim physical/presence/craft beacons for XP; clear HITL gates; streak combos; balance axes (Body · Presence · Craft · Gates). Coach steers away from craft-only thrash. See `src/game/growth.js`.
+- **Feedback loops** — XP toast, path glow, claimed beacons, quest board — every real act *registers*.
+- **Craft over gimmick** — Prefer one polished growth interaction over five dead buttons.
 
 ### 3. Growth (ascent)
 

@@ -28,4 +28,5 @@ npm run build:wasm
 npm run game   # http://127.0.0.1:4173/game/
 ```
 
-Tab · avatar seeks beacon · A/D HITL (session store).
+Tab · avatar seeks beacon · Enter **claim** (+XP) · A/D HITL gates (session store).  
+**Growth loop:** pure `src/game/growth.js` — physical / presence / craft / HITL quests, levels, streak combo, balance chips. World path glows with growth meter; claimed beacons mark green.

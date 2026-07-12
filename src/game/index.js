@@ -25,4 +25,16 @@ export {
   applyFocusMirror,
   applyFocusDoubleAdvance,
 } from './focus-sync.js';
+export {
+  emptyGrowth,
+  nodeRole,
+  isCompletable,
+  levelFromXp,
+  buildQuests,
+  growthView,
+  growthCoachLine,
+  applyGain,
+  XP_TABLE,
+  LEVEL_TITLES,
+} from './growth.js';
 export * from './world/index.js';

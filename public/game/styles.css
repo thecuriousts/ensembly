@@ -125,6 +125,66 @@ body {
   color: var(--cyan);
 }
 
+.growth-strip {
+  flex: 1;
+  min-width: 10rem;
+  max-width: 18rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0 0.5rem;
+}
+
+.growth-level .t-k {
+  display: inline;
+  margin-right: 0.35rem;
+}
+
+.growth-level .t-v {
+  font-size: 0.85rem;
+  color: var(--ember);
+}
+
+.xp-track {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: oklch(0.18 0.02 260);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.xp-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, oklch(0.55 0.18 35), oklch(0.75 0.16 70));
+  border-radius: 999px;
+  transition: width 0.35s var(--ease);
+}
+
+.growth-meta {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.growth-meta .sep {
+  color: var(--dim);
+}
+
+.streak.hot {
+  color: var(--ember);
+  font-weight: 700;
+}
+
+.ember.burst {
+  transform: scale(1.6);
+  box-shadow: 0 0 22px var(--ember);
+  transition: transform 0.35s var(--ease), box-shadow 0.35s var(--ease);
+}
+
 .telemetry {
   display: flex;
   flex-wrap: wrap;
@@ -196,6 +256,136 @@ body {
 
 .rail-msg[hidden] {
   display: none;
+}
+
+.coach {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--cyan);
+  font-weight: 550;
+}
+
+.rail-sub {
+  margin-top: 0.55rem;
+  opacity: 0.85;
+}
+
+.balance-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.45rem;
+}
+
+.bal-chip {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  background: oklch(0.14 0.02 260 / 0.7);
+}
+
+.bal-chip.on {
+  color: oklch(0.9 0.05 140);
+  border-color: oklch(0.55 0.12 145 / 0.55);
+  background: oklch(0.28 0.06 145 / 0.35);
+}
+
+.bal-chip[data-axis="physical"].on {
+  color: #3dff9a;
+}
+.bal-chip[data-axis="presence"].on {
+  color: #ffb060;
+}
+.bal-chip[data-axis="craft"].on {
+  color: #6ef0ff;
+}
+.bal-chip[data-axis="hitl"].on {
+  color: #ff7a45;
+}
+
+.quests {
+  list-style: none;
+  margin: 0 0 0.35rem;
+  padding: 0;
+  max-height: 28vh;
+  overflow: auto;
+}
+
+.quests li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.3rem;
+  align-items: center;
+  padding: 0.32rem 0.35rem;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+}
+
+.quests li[data-focus="1"] {
+  background: oklch(0.25 0.04 210 / 0.45);
+  border-color: oklch(0.55 0.1 210 / 0.45);
+}
+
+.quests li[data-status="done"] {
+  opacity: 0.55;
+}
+
+.quests li[data-status="done"] .q-mark {
+  color: #3dff9a;
+}
+
+.quests .q-mark {
+  font-family: var(--mono);
+  color: var(--dim);
+  width: 0.9rem;
+}
+
+.quests .q-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quests .q-xp {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  color: var(--ember);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  top: 22%;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 12;
+  pointer-events: none;
+  padding: 0.65rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  color: oklch(0.14 0.02 35);
+  background: linear-gradient(135deg, oklch(0.72 0.18 55), oklch(0.65 0.2 35));
+  box-shadow: 0 8px 32px oklch(0.4 0.15 35 / 0.45);
+  opacity: 0;
+  transition: opacity 0.25s var(--ease), transform 0.35s var(--ease);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.radar li[data-done="1"] .name {
+  color: #3dff9a;
+  text-decoration: line-through;
+  text-decoration-color: oklch(0.55 0.1 145 / 0.5);
 }
 
 .radar {

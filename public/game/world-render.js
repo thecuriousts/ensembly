@@ -24,15 +24,21 @@ export function createWorldRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   return {
     backend: 'canvas2d-wasm-buffer',
-    /** @param {number[]|Float32Array} buf */
-    drawBuffer(buf, labels = []) {
-      paint(ctx, canvas, buf, labels);
+    /**
+     * @param {number[]|Float32Array} buf
+     * @param {string[]} labels
+     * @param {{ growthMeter01?: number, completedSlots?: Set<number> }} [opts]
+     */
+    drawBuffer(buf, labels = [], opts = {}) {
+      paint(ctx, canvas, buf, labels, opts);
     },
   };
 }
 
-function paint(ctx, canvas, buf, labels) {
+function paint(ctx, canvas, buf, labels, opts = {}) {
   if (!buf || buf.length < 6) return;
+  const growthMeter = Math.max(0, Math.min(1, opts.growthMeter01 || 0));
+  const completedSlots = opts.completedSlots || new Set();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const cssW = canvas.clientWidth || 960;
   const cssH = canvas.clientHeight || 540;
@@ -98,7 +104,7 @@ function paint(ctx, canvas, buf, labels) {
   ctx.fillStyle = g;
   ctx.fillRect(0, horizon, W, H - horizon);
 
-  // path
+  // path — growth embers along the road
   ctx.strokeStyle = '#2a2418';
   ctx.lineWidth = 34;
   ctx.lineCap = 'round';
@@ -106,6 +112,17 @@ function paint(ctx, canvas, buf, labels) {
   ctx.moveTo(W * 0.5, H);
   ctx.quadraticCurveTo(W * 0.48, H * 0.75, W * 0.5, horizon + 28);
   ctx.stroke();
+  if (growthMeter > 0.02) {
+    ctx.strokeStyle = `rgba(255, 120, 60, ${0.25 + growthMeter * 0.55})`;
+    ctx.lineWidth = 6 + growthMeter * 10;
+    ctx.shadowColor = '#ff6a30';
+    ctx.shadowBlur = 12 + growthMeter * 20;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.5, H);
+    ctx.quadraticCurveTo(W * 0.48, H * 0.75, W * 0.5, horizon + 28);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
 
   const scale = Math.min(W / bw, H / bh) * 1.05;
   const ox = (W - bw * scale) / 2;
@@ -139,8 +156,34 @@ function paint(ctx, canvas, buf, labels) {
   for (const p of props) drawProp(ctx, p, wx, wy, scale);
   for (const e of ents) {
     const label = e.slot >= 0 && labels[e.slot] ? labels[e.slot] : '';
-    drawEntity(ctx, e, wx, wy, scale, time, label);
+    const done = e.slot >= 0 && completedSlots.has(e.slot);
+    drawEntity(ctx, e, wx, wy, scale, time, label, done);
   }
+
+  // growth ring (top-right of world, not HUD)
+  drawGrowthRing(ctx, W, H, growthMeter);
+}
+
+function drawGrowthRing(ctx, W, H, meter) {
+  const cx = W - 52;
+  const cy = H - 52;
+  const r = 28;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(40,50,70,0.85)';
+  ctx.lineWidth = 6;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + meter * Math.PI * 2);
+  ctx.strokeStyle = meter > 0.66 ? '#3dff9a' : meter > 0.33 ? '#ffb060' : '#ff7a45';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(230,236,250,0.9)';
+  ctx.font = '600 11px system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${Math.round(meter * 100)}%`, cx, cy + 4);
+  ctx.textAlign = 'left';
 }
 
 function drawProp(ctx, p, wx, wy, worldScale) {
@@ -212,12 +255,20 @@ function drawProp(ctx, p, wx, wy, worldScale) {
   }
 }
 
-function drawEntity(ctx, e, wx, wy, worldScale, time, label) {
+function drawEntity(ctx, e, wx, wy, worldScale, time, label, done = false) {
   const x = wx(e.x);
   const y = wy(e.y);
   const focused = (e.flags & FLAG_FOCUSED) !== 0;
   const s = worldScale * (focused ? 1.12 : 1);
   const bob = Math.sin(time * 0.08 + e.x * 0.01) * 2;
+
+  if (done && e.kind !== KIND_AVATAR) {
+    ctx.strokeStyle = 'rgba(61,255,154,0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 4, 18 * s, 7 * s, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   if (focused) {
     ctx.strokeStyle = 'rgba(124,240,255,0.7)';
@@ -282,10 +333,12 @@ function drawEntity(ctx, e, wx, wy, worldScale, time, label) {
   }
 
   if (label) {
-    ctx.fillStyle = focused ? '#7cf0ff' : 'rgba(230,236,250,0.9)';
+    ctx.fillStyle = done ? '#3dff9a' : focused ? '#7cf0ff' : 'rgba(230,236,250,0.9)';
     ctx.font = `600 ${11 * Math.max(worldScale, 0.75)}px system-ui,sans-serif`;
     ctx.textAlign = 'center';
-    const t = label.length > 18 ? `${label.slice(0, 17)}…` : label;
+    const mark = done ? '✓ ' : '';
+    const raw = `${mark}${label}`;
+    const t = raw.length > 20 ? `${raw.slice(0, 19)}…` : raw;
     ctx.fillText(t, x, y - 52 * s);
     ctx.textAlign = 'left';
   }

@@ -1,6 +1,7 @@
 /**
  * Thin host shell — input + paint only.
  * Focus SoT: JS session store. WASM world only mirrors focusIndex.
+ * Growth HUD: XP, quests, balance — gamifies real progress.
  */
 import { mapKeyEvent, helpLines } from '/src/game/input.js';
 import {
@@ -9,6 +10,7 @@ import {
   speechRecognitionAvailable,
 } from '/src/game/voice.js';
 import { createGameStore } from '/src/game/store.js';
+import { growthCoachLine } from '/src/game/growth.js';
 import {
   initEngine,
   engineMode,
@@ -31,6 +33,8 @@ let renderer = null;
 let recognition = null;
 let hudDirty = true;
 let useWasmWorld = false;
+let lastToastTick = -1;
+let toastUntil = 0;
 
 /** Mirror session focus → WASM only (never advance WASM independently). */
 export function syncWorldFocusFromSession(session, setFocus = worldSetFocus) {
@@ -57,26 +61,28 @@ async function boot() {
   }
 
   renderer = createWorldRenderer($('stage'));
-  $('backend').textContent = renderer.backend;
-  $('engine').textContent = eng.mode;
-  $('biome').textContent = useWasmWorld ? 'Night Courtyard (WASM)' : 'Fallback — run npm run build:wasm';
+  $('biome').textContent = useWasmWorld
+    ? 'Night Courtyard · growth run'
+    : 'Fallback — run npm run build:wasm';
 
   store.subscribe(() => {
     hudDirty = true;
     if (useWasmWorld) syncWorldFocusFromSession(store.session);
+    maybeToast(store.view);
   });
 
   wireInput();
   wireVoice();
   wireCommand();
   wireRadar();
+  wireQuests();
   scheduleHud();
   loop();
-  paintHud(); // first paint
+  paintHud();
 
   $('status').textContent = useWasmWorld
-    ? `wasm world · ${worldEntityCount()} ents · ${worldPropCount()} props · focus synced`
-    : `js-only fallback · ${eng.error || 'no wasm'}`;
+    ? `wasm · ${worldEntityCount()} ents · claim beacons for XP · clear HITL gates`
+    : `js-only · ${eng.error || 'no wasm'}`;
 
   window.__PERAM__ = {
     getView: () => store.view,
@@ -98,9 +104,10 @@ async function loadGraph() {
   } catch {
     return {
       nodes: [
-        { id: 'a', type: 'action', label: 'Ship' },
+        { id: 'a', type: 'action', label: 'Ship craft', area: 'craft' },
         { id: 'b', type: 'physical', realm: 'physical', label: 'Garden' },
-        { id: 'c', type: 'hitl', hitl: true, label: 'HITL gate' },
+        { id: 'c', type: 'schedule', label: 'Family walk', area: 'family' },
+        { id: 'd', type: 'hitl', hitl: true, label: 'HITL gate' },
       ],
       pending: [{ id: 'auth-x', title: 'Gate', status: 'pending' }],
     };
@@ -109,7 +116,6 @@ async function loadGraph() {
 
 function runAction(action) {
   if (!action || !store) return;
-  // Session is sole navigator. WASM follows via store.subscribe → syncWorldFocusFromSession.
   if (action.type === 'UNDO') store.undo();
   else if (action.type === 'REDO') store.redo();
   else store.dispatch(action);
@@ -160,8 +166,8 @@ function wireInput() {
 
 function wireVoice() {
   $('voice-avail').textContent = speechRecognitionAvailable()
-    ? 'Voice ready'
-    : 'Type commands';
+    ? 'Voice ready · say claim / approve / next'
+    : 'Type: claim · approve · next';
   $('btn-voice').addEventListener('click', () => {
     if (store.session.voiceListening) {
       stopSpeech();
@@ -193,6 +199,23 @@ function wireRadar() {
   });
 }
 
+function wireQuests() {
+  $('quests')?.addEventListener('click', (ev) => {
+    const li = ev.target.closest('li[data-node-id]');
+    if (!li || !store) return;
+    const id = li.dataset.nodeId;
+    const idx = store.session.nodes.findIndex((n) => n.id === id);
+    if (idx < 0) return;
+    runAction({ type: 'FOCUS_INDEX', payload: { index: idx } });
+    const role = li.dataset.role;
+    if (role === 'hitl') {
+      /* focus only — A/D to resolve */
+    } else {
+      runAction({ type: 'COMPLETE' });
+    }
+  });
+}
+
 function startSpeech() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return;
@@ -220,11 +243,31 @@ function stopSpeech() {
   }
 }
 
+function maybeToast(view) {
+  const gain = view?.growth?.lastGain;
+  if (!gain || gain.tick === lastToastTick) return;
+  lastToastTick = gain.tick;
+  const el = $('toast');
+  if (!el) return;
+  el.hidden = false;
+  el.textContent = `+${gain.amount} XP · ${gain.reason.replace(/^(claim|hitl):/, '')}`;
+  el.classList.add('show');
+  toastUntil = performance.now() + 2200;
+  const ember = $('ember-pulse');
+  ember?.classList.add('burst');
+  setTimeout(() => ember?.classList.remove('burst'), 600);
+}
+
 function scheduleHud() {
   const tick = () => {
     if (hudDirty && store) {
       hudDirty = false;
       paintHud();
+    }
+    const toast = $('toast');
+    if (toast && !toast.hidden && performance.now() > toastUntil) {
+      toast.hidden = true;
+      toast.classList.remove('show');
     }
     requestAnimationFrame(tick);
   };
@@ -234,7 +277,8 @@ function scheduleHud() {
 function paintHud() {
   const v = store.view;
   const session = store.session;
-  // Action/result channel only — not a second focus title
+  const g = v.growth || {};
+
   const msg = v.message || '';
   const isFocusEcho = /^Focus:/i.test(msg);
   $('msg').textContent = isFocusEcho ? '' : msg;
@@ -242,35 +286,30 @@ function paintHud() {
 
   $('focus').textContent = v.focusLabel || '—';
   $('pending').textContent = String(v.pendingOpen);
-  $('mode').textContent = v.mode;
-  $('tick').textContent = String(v.tick);
   $('btn-voice').classList.toggle('active', v.voiceListening);
 
-  // Live region for a11y (not a big side headline)
-  const live = $('focus-live');
-  if (live) live.textContent = v.focusLabel ? `Focused: ${v.focusLabel}` : '';
+  $('g-level').textContent = `Lv ${g.level || 1} ${g.title || 'Ember'}`;
+  $('g-xp').textContent = `${g.xp || 0} XP`;
+  $('g-streak').textContent = `streak ${g.streak || 0}`;
+  $('g-streak').classList.toggle('hot', (g.streak || 0) >= 2);
+  $('g-quests').textContent = `${g.questsDone || 0}/${g.questsTotal || 0}`;
+  $('g-meter').textContent = `${Math.round((g.growthMeter01 || 0) * 100)}%`;
 
-  const radar = $('radar');
-  if (radar) {
-    const frag = document.createDocumentFragment();
-    session.nodes.forEach((n, i) => {
-      const li = document.createElement('li');
-      li.dataset.index = String(i);
-      li.dataset.focus = i === session.focusIndex ? '1' : '0';
-      const tag =
-        n.type === 'physical' || n.realm === 'physical'
-          ? 'PHYS'
-          : n.type === 'hitl' || n.hitl
-            ? 'HITL'
-            : n.type === 'phase'
-              ? 'PHASE'
-              : 'DIG';
-      li.innerHTML = `<span class="idx">${String(i + 1).padStart(2, '0')}</span><span class="name"></span><span class="tag"></span>`;
-      li.querySelector('.name').textContent = n.label || n.id;
-      li.querySelector('.tag').textContent = tag;
-      frag.appendChild(li);
-    });
-    radar.replaceChildren(frag);
+  const fill = $('xp-fill');
+  if (fill) fill.style.width = `${Math.round((g.progress01 || 0) * 100)}%`;
+
+  const coach = $('coach');
+  if (coach) coach.textContent = growthCoachLine(g);
+
+  paintBalance(g.balance || {});
+  paintQuests(g.quests || [], session);
+  paintRadar(session);
+
+  const live = $('focus-live');
+  if (live) {
+    live.textContent = v.focusLabel
+      ? `Focused: ${v.focusLabel}${v.focusRole ? ` (${v.focusRole})` : ''}`
+      : '';
   }
 
   const dlg = $('help');
@@ -278,6 +317,80 @@ function paintHud() {
     $('help-body').textContent = [...helpLines(), '', ...voiceVocabulary()].join('\n');
     if (!dlg.open) dlg.showModal();
   } else if (dlg.open) dlg.close();
+}
+
+function paintBalance(balance) {
+  const row = $('balance-row');
+  if (!row) return;
+  const axes = [
+    { key: 'physical', label: 'Body' },
+    { key: 'presence', label: 'Presence' },
+    { key: 'craft', label: 'Craft' },
+    { key: 'hitl', label: 'Gates' },
+  ];
+  const frag = document.createDocumentFragment();
+  for (const a of axes) {
+    const n = balance[a.key] || 0;
+    const chip = document.createElement('span');
+    chip.className = `bal-chip${n > 0 ? ' on' : ''}`;
+    chip.dataset.axis = a.key;
+    chip.textContent = `${a.label} ${n}`;
+    frag.appendChild(chip);
+  }
+  row.replaceChildren(frag);
+}
+
+function paintQuests(quests, session) {
+  const list = $('quests');
+  if (!list) return;
+  const frag = document.createDocumentFragment();
+  for (const q of quests) {
+    const li = document.createElement('li');
+    li.dataset.nodeId = q.id;
+    li.dataset.role = q.role;
+    li.dataset.status = q.status;
+    const focused = session.nodes[session.focusIndex]?.id === q.id;
+    if (focused) li.dataset.focus = '1';
+    li.innerHTML =
+      '<span class="q-mark"></span><span class="q-name"></span><span class="q-xp"></span>';
+    li.querySelector('.q-mark').textContent = q.status === 'done' ? '✓' : '○';
+    li.querySelector('.q-name').textContent = q.label;
+    li.querySelector('.q-xp').textContent = q.status === 'done' ? 'done' : `+${q.xp}`;
+    frag.appendChild(li);
+  }
+  list.replaceChildren(frag);
+}
+
+function paintRadar(session) {
+  const radar = $('radar');
+  if (!radar) return;
+  const completed = new Set(session.growth?.completedIds || []);
+  const frag = document.createDocumentFragment();
+  session.nodes.forEach((n, i) => {
+    const li = document.createElement('li');
+    li.dataset.index = String(i);
+    li.dataset.focus = i === session.focusIndex ? '1' : '0';
+    if (completed.has(n.id) || n.status === 'done' || n.status === 'approved' || n.status === 'denied') {
+      li.dataset.done = '1';
+    }
+    const tag =
+      n.type === 'physical' || n.realm === 'physical'
+        ? 'PHYS'
+        : n.type === 'hitl' || n.hitl
+          ? 'HITL'
+          : n.type === 'schedule'
+            ? 'PRES'
+            : n.type === 'phase' || n.type === 'game'
+              ? 'META'
+              : 'CRAFT';
+    li.innerHTML =
+      '<span class="idx"></span><span class="name"></span><span class="tag"></span>';
+    li.querySelector('.idx').textContent = String(i + 1).padStart(2, '0');
+    li.querySelector('.name').textContent = n.label || n.id;
+    li.querySelector('.tag').textContent = tag;
+    frag.appendChild(li);
+  });
+  radar.replaceChildren(frag);
 }
 
 $('help')?.addEventListener('close', () => {
@@ -289,11 +402,24 @@ function loop() {
     if (useWasmWorld) {
       worldTick(5);
       const buf = worldDrawBuffer();
-      renderer?.drawBuffer(buf, labels);
+      const meter = store?.view?.growth?.growthMeter01 || 0;
+      const completed = new Set(store?.session?.growth?.completedIds || []);
+      renderer?.drawBuffer(buf, labels, { growthMeter01: meter, completedSlots: completedSlotSet(completed) });
     }
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+function completedSlotSet(completedIds) {
+  if (!store) return new Set();
+  const slots = new Set();
+  store.session.nodes.forEach((n, i) => {
+    if (completedIds.has(n.id) || n.status === 'done' || n.status === 'approved' || n.status === 'denied') {
+      slots.add(i);
+    }
+  });
+  return slots;
 }
 
 boot().catch((err) => {
