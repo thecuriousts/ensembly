@@ -25,7 +25,7 @@ export const KEY_BINDINGS = Object.freeze({
   n: { type: 'DENY' },
   '?': { type: 'TOGGLE_HELP' },
   '/': { type: 'TOGGLE_HELP' },
-  Escape: { type: 'CLOSE_HELP' },
+  Escape: { type: 'CLOSE_CHROME' },
   v: { type: 'VOICE_START' },
   V: { type: 'VOICE_START' },
   Escape_voice: { type: 'VOICE_STOP' },
@@ -33,6 +33,17 @@ export const KEY_BINDINGS = Object.freeze({
   U: { type: 'UNDO' },
   r: { type: 'REDO' },
   R: { type: 'REDO' },
+  // Chrome on demand — clean world by default
+  b: { type: 'TOGGLE_BOARD' },
+  B: { type: 'TOGGLE_BOARD' },
+  q: { type: 'TOGGLE_BOARD' },
+  Q: { type: 'TOGGLE_BOARD' },
+  i: { type: 'TOGGLE_BARS' },
+  I: { type: 'TOGGLE_BARS' },
+  m: { type: 'TOGGLE_MENU' },
+  M: { type: 'TOGGLE_MENU' },
+  h: { type: 'TOGGLE_HELP' },
+  H: { type: 'TOGGLE_HELP' },
 });
 
 /**
@@ -70,19 +81,24 @@ export function mapKeyEvent(ev, ctx = {}) {
  */
 export function helpLines() {
   return [
+    '— Clean world · open chrome with keys —',
+    'B / Q · growth board (quests + beacons)',
+    'I · top bars (level · XP · gates · GPU)',
+    'M · command menu (voice · type)',
+    '? / H · this help',
+    'Esc · close all panels / help / voice',
+    '',
+    '— Play —',
     'Tab / j · next focus',
     'Shift+Tab / k · prev focus',
     'Arrows · grid nav',
-    'Enter / Space / C · claim beacon (+XP growth)',
-    'A / Y · approve HITL gate (+XP)',
-    'D / N · deny HITL gate (+XP)',
-    '? / / · toggle help',
-    'V · voice mode',
-    'U · undo',
-    'R · redo',
-    'Esc · close help / stop voice',
+    'Enter / Space / C · claim beacon (+XP)',
+    'A / Y · approve HITL (+XP)',
+    'D / N · deny HITL (+XP)',
+    'V · voice',
+    'U · undo · R · redo',
     '',
-    'Growth: physical > presence > craft · clear gates · build streak',
+    'Growth: physical > presence > craft · clear gates · streak',
   ];
 }
 

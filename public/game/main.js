@@ -36,6 +36,21 @@ let useWasmWorld = false;
 let lastToastTick = -1;
 let toastUntil = 0;
 
+/** Host chrome — off by default so the world is the product */
+const chrome = {
+  bars: false,
+  board: false,
+  menu: false,
+};
+
+const CHROME_ACTIONS = new Set([
+  'TOGGLE_BOARD',
+  'TOGGLE_BARS',
+  'TOGGLE_MENU',
+  'CLOSE_CHROME',
+  'CLOSE_HELP',
+]);
+
 /** Mirror session focus → WASM only (never advance WASM independently). */
 export function syncWorldFocusFromSession(session, setFocus = worldSetFocus) {
   if (!session || typeof setFocus !== 'function') return;
@@ -61,9 +76,12 @@ async function boot() {
   }
 
   renderer = createWorldRenderer($('stage'));
-  $('biome').textContent = useWasmWorld
-    ? 'Night Courtyard · growth run'
-    : 'Fallback — run npm run build:wasm';
+  const biome = $('biome');
+  if (biome) {
+    biome.textContent = useWasmWorld
+      ? 'Night Courtyard · growth run'
+      : 'Fallback — run npm run build:wasm';
+  }
 
   store.subscribe(() => {
     hudDirty = true;
@@ -76,17 +94,23 @@ async function boot() {
   wireCommand();
   wireRadar();
   wireQuests();
+  wirePanelCloses();
+  applyChrome();
   scheduleHud();
+  fadeEdgeHint();
   loop();
   paintHud();
 
-  $('status').textContent = useWasmWorld
-    ? `wasm · ${worldEntityCount()} ents · claim beacons for XP · clear HITL gates`
-    : `js-only · ${eng.error || 'no wasm'}`;
+  setText('status', useWasmWorld
+    ? `wasm · ${worldEntityCount()} ents · B board · I bars · M menu`
+    : `js-only · ${eng.error || 'no wasm'}`);
+  setText('backend', renderer.backend);
+  setText('engine', eng.mode);
 
   window.__PERAM__ = {
     getView: () => store.view,
     getSession: () => store.session,
+    chrome: () => ({ ...chrome }),
     wasm: () => useWasmWorld,
     worldFocusSlot: () => (useWasmWorld ? worldFocusSlot() : store.session.focusIndex),
     injectKey: (ev) => {
@@ -95,6 +119,17 @@ async function boot() {
     },
     engineMode,
   };
+}
+
+function setText(id, text) {
+  const el = $(id);
+  if (el) el.textContent = text;
+}
+
+function fadeEdgeHint() {
+  const hint = $('edge-hint');
+  if (!hint) return;
+  setTimeout(() => hint.classList.add('faded'), 4500);
 }
 
 async function loadGraph() {
@@ -116,6 +151,12 @@ async function loadGraph() {
 
 function runAction(action) {
   if (!action || !store) return;
+
+  if (CHROME_ACTIONS.has(action.type) || action.type.startsWith('TOGGLE_')) {
+    handleChrome(action);
+    return;
+  }
+
   if (action.type === 'UNDO') store.undo();
   else if (action.type === 'REDO') store.redo();
   else store.dispatch(action);
@@ -124,12 +165,69 @@ function runAction(action) {
   if (action.type === 'VOICE_STOP') stopSpeech();
 }
 
+function handleChrome(action) {
+  switch (action.type) {
+    case 'TOGGLE_BOARD':
+      chrome.board = !chrome.board;
+      break;
+    case 'TOGGLE_BARS':
+      chrome.bars = !chrome.bars;
+      break;
+    case 'TOGGLE_MENU':
+      chrome.menu = !chrome.menu;
+      if (chrome.menu) {
+        queueMicrotask(() => $('command')?.focus());
+      }
+      break;
+    case 'CLOSE_CHROME':
+    case 'CLOSE_HELP':
+      chrome.bars = false;
+      chrome.board = false;
+      chrome.menu = false;
+      if (store.session.helpOpen) {
+        store.dispatch({ type: 'CLOSE_HELP' });
+      }
+      if (store.session.voiceListening) {
+        stopSpeech();
+        store.dispatch({ type: 'VOICE_STOP' });
+      }
+      break;
+    case 'TOGGLE_HELP':
+      store.dispatch({ type: 'TOGGLE_HELP' });
+      break;
+    default:
+      return;
+  }
+  applyChrome();
+  hudDirty = true;
+}
+
+function applyChrome() {
+  const body = document.body;
+  body.dataset.bars = chrome.bars ? '1' : '0';
+  body.dataset.board = chrome.board ? '1' : '0';
+  body.dataset.menu = chrome.menu ? '1' : '0';
+
+  const top = $('topbar');
+  const board = $('board');
+  const menu = $('menubar');
+  const hud = $('hud');
+  if (top) top.hidden = !chrome.bars;
+  if (board) board.hidden = !chrome.board;
+  if (menu) menu.hidden = !chrome.menu;
+  if (hud) {
+    const any = chrome.bars || chrome.board || chrome.menu;
+    hud.setAttribute('aria-hidden', any ? 'false' : 'true');
+  }
+}
+
 function handleKey(ev) {
   if (!store) return;
   if (ev.target?.id === 'command' || ev.target?.tagName === 'INPUT') {
     if (ev.key === 'Escape') {
+      ev.preventDefault();
       ev.target.blur();
-      runAction({ type: 'CLOSE_HELP' });
+      runAction({ type: 'CLOSE_CHROME' });
     }
     return;
   }
@@ -216,6 +314,20 @@ function wireQuests() {
   });
 }
 
+function wirePanelCloses() {
+  document.querySelectorAll('[data-close]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const which = btn.getAttribute('data-close');
+      if (which === 'bars') chrome.bars = false;
+      else if (which === 'board') chrome.board = false;
+      else if (which === 'menu') chrome.menu = false;
+      else runAction({ type: 'CLOSE_CHROME' });
+      applyChrome();
+      hudDirty = true;
+    });
+  });
+}
+
 function startSpeech() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) return;
@@ -281,29 +393,47 @@ function paintHud() {
 
   const msg = v.message || '';
   const isFocusEcho = /^Focus:/i.test(msg);
-  $('msg').textContent = isFocusEcho ? '' : msg;
-  $('msg').hidden = isFocusEcho || !msg;
+  const msgEl = $('msg');
+  if (msgEl) {
+    msgEl.textContent = isFocusEcho ? '' : msg;
+    msgEl.hidden = isFocusEcho || !msg;
+  }
 
-  $('focus').textContent = v.focusLabel || '—';
-  $('pending').textContent = String(v.pendingOpen);
-  $('btn-voice').classList.toggle('active', v.voiceListening);
+  setText('focus', v.focusLabel || '—');
+  setText('pending', String(v.pendingOpen));
+  $('btn-voice')?.classList.toggle('active', v.voiceListening);
 
-  $('g-level').textContent = `Lv ${g.level || 1} ${g.title || 'Ember'}`;
-  $('g-xp').textContent = `${g.xp || 0} XP`;
-  $('g-streak').textContent = `streak ${g.streak || 0}`;
-  $('g-streak').classList.toggle('hot', (g.streak || 0) >= 2);
-  $('g-quests').textContent = `${g.questsDone || 0}/${g.questsTotal || 0}`;
-  $('g-meter').textContent = `${Math.round((g.growthMeter01 || 0) * 100)}%`;
+  setText('g-level', `Lv ${g.level || 1} ${g.title || 'Ember'}`);
+  setText('g-xp', `${g.xp || 0} XP`);
+  setText('g-streak', `streak ${g.streak || 0}`);
+  $('g-streak')?.classList.toggle('hot', (g.streak || 0) >= 2);
+  setText('g-quests', `${g.questsDone || 0}/${g.questsTotal || 0}`);
+  setText('g-meter', `${Math.round((g.growthMeter01 || 0) * 100)}%`);
 
   const fill = $('xp-fill');
   if (fill) fill.style.width = `${Math.round((g.progress01 || 0) * 100)}%`;
 
+  const chipXp = $('chip-xp');
+  if (chipXp) {
+    if (g.lastGain && performance.now() < toastUntil + 400) {
+      chipXp.hidden = false;
+      chipXp.textContent = `+${g.lastGain.amount}`;
+    } else if ((g.xp || 0) > 0) {
+      chipXp.hidden = false;
+      chipXp.textContent = `${g.xp} XP`;
+    } else {
+      chipXp.hidden = true;
+    }
+  }
+
   const coach = $('coach');
   if (coach) coach.textContent = growthCoachLine(g);
 
-  paintBalance(g.balance || {});
-  paintQuests(g.quests || [], session);
-  paintRadar(session);
+  if (chrome.board) {
+    paintBalance(g.balance || {});
+    paintQuests(g.quests || [], session);
+    paintRadar(session);
+  }
 
   const live = $('focus-live');
   if (live) {
@@ -313,10 +443,12 @@ function paintHud() {
   }
 
   const dlg = $('help');
-  if (session.helpOpen) {
-    $('help-body').textContent = [...helpLines(), '', ...voiceVocabulary()].join('\n');
-    if (!dlg.open) dlg.showModal();
-  } else if (dlg.open) dlg.close();
+  if (dlg) {
+    if (session.helpOpen) {
+      setText('help-body', [...helpLines(), '', ...voiceVocabulary()].join('\n'));
+      if (!dlg.open) dlg.showModal();
+    } else if (dlg.open) dlg.close();
+  }
 }
 
 function paintBalance(balance) {
@@ -394,7 +526,7 @@ function paintRadar(session) {
 }
 
 $('help')?.addEventListener('close', () => {
-  if (store?.session.helpOpen) runAction({ type: 'CLOSE_HELP' });
+  if (store?.session.helpOpen) store.dispatch({ type: 'CLOSE_HELP' });
 });
 
 function loop() {

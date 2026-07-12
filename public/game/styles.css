@@ -1,4 +1,4 @@
-/* Game of Peram — world-first shell (HUD is glass over the stage) */
+/* Game of Peram — clean world first; chrome on demand (B / I / M / ?) */
 
 :root {
   color-scheme: dark;
@@ -8,7 +8,7 @@
   --ember: oklch(0.65 0.22 35);
   --cyan: oklch(0.82 0.12 210);
   --line: oklch(0.4 0.03 260 / 0.45);
-  --glass: oklch(0.12 0.02 260 / 0.72);
+  --glass: oklch(0.12 0.02 260 / 0.78);
   --font: "IBM Plex Sans", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
@@ -43,7 +43,7 @@ body {
   position: absolute;
   left: 0.5rem;
   top: -3rem;
-  z-index: 30;
+  z-index: 40;
   background: var(--ember);
   color: #111;
   padding: 0.4rem 0.7rem;
@@ -55,7 +55,7 @@ body {
   top: 0.5rem;
 }
 
-/* Full-bleed world */
+/* Full-bleed world — nothing competes by default */
 #stage {
   position: fixed;
   inset: 0;
@@ -63,90 +63,231 @@ body {
   height: 100%;
   display: block;
   z-index: 0;
+  cursor: crosshair;
 }
 
+/* —— Minimal always-on —— */
+.focus-chip {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  background: oklch(0.12 0.02 260 / 0.55);
+  border: 1px solid oklch(0.4 0.03 260 / 0.35);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  max-width: min(90vw, 28rem);
+  transition: opacity 0.35s var(--ease);
+}
+
+body[data-menu="1"] .focus-chip {
+  bottom: 7.5rem;
+}
+
+.chip-k {
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--dim);
+}
+
+.chip-v {
+  font-weight: 650;
+  font-size: 0.88rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip-xp {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--ember);
+  font-weight: 700;
+}
+
+.edge-hint {
+  position: fixed;
+  top: 0.65rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  margin: 0;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  color: var(--muted);
+  background: oklch(0.1 0.02 260 / 0.4);
+  border: 1px solid oklch(0.35 0.02 260 / 0.3);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  white-space: nowrap;
+  max-width: 96vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+  transition: opacity 0.6s var(--ease);
+}
+
+.edge-hint.faded {
+  opacity: 0.22;
+}
+
+.edge-hint:hover,
+body[data-bars="1"] .edge-hint,
+body[data-board="1"] .edge-hint,
+body[data-menu="1"] .edge-hint {
+  opacity: 0.9;
+}
+
+.edge-hint kbd {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  padding: 0.05rem 0.28rem;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+  background: oklch(0.16 0.02 260 / 0.8);
+  color: var(--cyan);
+}
+
+/* —— Overlay panels —— */
 .hud-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2;
+  z-index: 4;
   pointer-events: none;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  grid-template-columns: 1fr minmax(12rem, 16rem);
-  grid-template-areas:
-    "top top"
-    "main rail"
-    "bot bot";
 }
 
 .glass {
   background: var(--glass);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
   border: 1px solid var(--line);
+}
+
+.panel {
   pointer-events: auto;
+  transition:
+    opacity 0.22s var(--ease),
+    transform 0.28s var(--ease);
+}
+
+.panel[hidden] {
+  display: none !important;
 }
 
 .topbar {
-  grid-area: top;
+  position: absolute;
+  top: 0.55rem;
+  left: 0.55rem;
+  right: 0.55rem;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.6rem;
-  margin: 0.6rem 0.6rem 0;
-  padding: 0.55rem 0.75rem;
+  gap: 0.55rem;
+  padding: 0.5rem 0.7rem;
   border-radius: 12px;
+  animation: slide-down 0.28s var(--ease);
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 .brand {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.55rem;
   align-items: center;
 }
 
 .ember {
-  width: 0.55rem;
-  height: 0.55rem;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
   background: var(--ember);
   box-shadow: 0 0 12px var(--ember);
 }
 
+.ember.burst {
+  transform: scale(1.55);
+  box-shadow: 0 0 22px var(--ember);
+  transition: transform 0.35s var(--ease), box-shadow 0.35s var(--ease);
+}
+
 .callsign {
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
 
 .biome {
-  margin: 0.1rem 0 0;
-  font-size: 0.75rem;
+  margin: 0.08rem 0 0;
+  font-size: 0.72rem;
   color: var(--cyan);
 }
 
 .growth-strip {
   flex: 1;
-  min-width: 10rem;
-  max-width: 18rem;
+  min-width: 9rem;
+  max-width: 16rem;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  padding: 0 0.5rem;
+  gap: 0.18rem;
 }
 
 .growth-level .t-k {
   display: inline;
-  margin-right: 0.35rem;
+  margin-right: 0.3rem;
+  font-size: 0.58rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
 }
 
 .growth-level .t-v {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--ember);
+  font-weight: 650;
 }
 
 .xp-track {
-  height: 0.45rem;
+  height: 0.4rem;
   border-radius: 999px;
   background: oklch(0.18 0.02 260);
   border: 1px solid var(--line);
@@ -163,15 +304,10 @@ body {
 
 .growth-meta {
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   color: var(--muted);
   display: flex;
-  gap: 0.35rem;
-  align-items: center;
-}
-
-.growth-meta .sep {
-  color: var(--dim);
+  gap: 0.3rem;
 }
 
 .streak.hot {
@@ -179,24 +315,18 @@ body {
   font-weight: 700;
 }
 
-.ember.burst {
-  transform: scale(1.6);
-  box-shadow: 0 0 22px var(--ember);
-  transition: transform 0.35s var(--ease), box-shadow 0.35s var(--ease);
-}
-
 .telemetry {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem;
+  gap: 0.28rem;
 }
 
 .t-cell {
-  padding: 0.25rem 0.45rem;
+  padding: 0.22rem 0.4rem;
   border-radius: 8px;
   background: oklch(0.16 0.02 260 / 0.8);
   border: 1px solid var(--line);
-  min-width: 3.8rem;
+  min-width: 3.4rem;
 }
 
 .t-cell.warn {
@@ -205,16 +335,16 @@ body {
 
 .t-k {
   display: block;
-  font-size: 0.58rem;
+  font-size: 0.55rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--dim);
 }
 
 .t-v {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  max-width: 9rem;
+  max-width: 8rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -222,24 +352,47 @@ body {
 
 .mono {
   font-family: var(--mono);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
 }
 
+/* Board — floating panel, not sticky permanent rail */
 .rail {
-  grid-area: rail;
-  margin: 0.5rem 0.5rem 0.5rem 0;
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  width: min(17rem, 88vw);
+  max-height: calc(100dvh - 1.1rem);
   padding: 0.55rem 0.6rem;
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  max-height: calc(100dvh - 11rem);
-  max-width: 15rem;
-  background: oklch(0.12 0.02 260 / 0.55);
+  animation: slide-left 0.28s var(--ease);
+  box-shadow: -8px 0 40px oklch(0.05 0.02 260 / 0.45);
+}
+
+body[data-bars="1"] .rail {
+  top: 5.5rem;
+  max-height: calc(100dvh - 6.2rem);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.panel-close {
+  font-size: 0.68rem !important;
+  padding: 0.25rem 0.45rem !important;
+  flex-shrink: 0;
 }
 
 .rail-title {
-  margin: 0 0 0.35rem;
+  margin: 0;
   font-size: 0.65rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -248,9 +401,9 @@ body {
 }
 
 .rail-msg {
-  margin: 0 0 0.4rem;
+  margin: 0 0 0.35rem;
   font-weight: 600;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--ember);
 }
 
@@ -259,7 +412,7 @@ body {
 }
 
 .coach {
-  margin: 0 0 0.45rem;
+  margin: 0 0 0.4rem;
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--cyan);
@@ -267,21 +420,22 @@ body {
 }
 
 .rail-sub {
-  margin-top: 0.55rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.3rem;
   opacity: 0.85;
 }
 
 .balance-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
-  margin-bottom: 0.45rem;
+  gap: 0.22rem;
+  margin-bottom: 0.4rem;
 }
 
 .bal-chip {
   font-family: var(--mono);
-  font-size: 0.58rem;
-  padding: 0.15rem 0.35rem;
+  font-size: 0.56rem;
+  padding: 0.12rem 0.32rem;
   border-radius: 999px;
   border: 1px solid var(--line);
   color: var(--dim);
@@ -309,22 +463,22 @@ body {
 
 .quests {
   list-style: none;
-  margin: 0 0 0.35rem;
+  margin: 0 0 0.3rem;
   padding: 0;
-  max-height: 28vh;
+  max-height: 32vh;
   overflow: auto;
 }
 
 .quests li {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 0.3rem;
+  gap: 0.28rem;
   align-items: center;
-  padding: 0.32rem 0.35rem;
+  padding: 0.3rem 0.32rem;
   border-radius: 8px;
   cursor: pointer;
   border: 1px solid transparent;
-  font-size: 0.75rem;
+  font-size: 0.74rem;
 }
 
 .quests li[data-focus="1"] {
@@ -343,7 +497,7 @@ body {
 .quests .q-mark {
   font-family: var(--mono);
   color: var(--dim);
-  width: 0.9rem;
+  width: 0.85rem;
 }
 
 .quests .q-name {
@@ -354,38 +508,8 @@ body {
 
 .quests .q-xp {
   font-family: var(--mono);
-  font-size: 0.58rem;
+  font-size: 0.56rem;
   color: var(--ember);
-}
-
-.toast {
-  position: fixed;
-  left: 50%;
-  top: 22%;
-  transform: translateX(-50%) translateY(8px);
-  z-index: 12;
-  pointer-events: none;
-  padding: 0.65rem 1.1rem;
-  border-radius: 999px;
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.02em;
-  color: oklch(0.14 0.02 35);
-  background: linear-gradient(135deg, oklch(0.72 0.18 55), oklch(0.65 0.2 35));
-  box-shadow: 0 8px 32px oklch(0.4 0.15 35 / 0.45);
-  opacity: 0;
-  transition: opacity 0.25s var(--ease), transform 0.35s var(--ease);
-}
-
-.toast.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-.radar li[data-done="1"] .name {
-  color: #3dff9a;
-  text-decoration: line-through;
-  text-decoration-color: oklch(0.55 0.1 145 / 0.5);
 }
 
 .radar {
@@ -394,13 +518,14 @@ body {
   padding: 0;
   overflow: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .radar li {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 0.35rem;
-  padding: 0.35rem 0.4rem;
+  gap: 0.3rem;
+  padding: 0.3rem 0.35rem;
   border-radius: 8px;
   cursor: pointer;
   border: 1px solid transparent;
@@ -411,14 +536,20 @@ body {
   border-color: oklch(0.55 0.1 210 / 0.5);
 }
 
+.radar li[data-done="1"] .name {
+  color: #3dff9a;
+  text-decoration: line-through;
+  text-decoration-color: oklch(0.55 0.1 145 / 0.5);
+}
+
 .radar .idx {
   font-family: var(--mono);
-  font-size: 0.65rem;
+  font-size: 0.62rem;
   color: var(--dim);
 }
 
 .radar .name {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -426,37 +557,40 @@ body {
 
 .radar .tag {
   font-family: var(--mono);
-  font-size: 0.58rem;
+  font-size: 0.55rem;
   color: var(--muted);
 }
 
 .hint {
-  margin: 0.45rem 0 0;
-  font-size: 0.7rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.65rem;
   color: var(--dim);
 }
 
 .bottombar {
-  grid-area: bot;
-  margin: 0 0.6rem 0.6rem;
-  padding: 0.5rem 0.75rem;
+  position: absolute;
+  left: 0.55rem;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  padding: 0.5rem 0.7rem;
   border-radius: 12px;
+  animation: slide-up 0.28s var(--ease);
 }
 
 .hotkeys {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.3rem 0.5rem;
+  gap: 0.28rem 0.45rem;
   align-items: center;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--muted);
-  margin-bottom: 0.4rem;
+  margin-bottom: 0.35rem;
 }
 
 kbd {
   font-family: var(--mono);
-  font-size: 0.65rem;
-  padding: 0.1rem 0.35rem;
+  font-size: 0.62rem;
+  padding: 0.08rem 0.32rem;
   border-radius: 4px;
   border: 1px solid var(--line);
   background: oklch(0.18 0.02 260);
@@ -470,15 +604,15 @@ kbd.ember-key {
 .command-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.35rem;
   align-items: center;
 }
 
 .command-form {
   display: flex;
   flex: 1;
-  min-width: 12rem;
-  gap: 0.35rem;
+  min-width: 10rem;
+  gap: 0.3rem;
 }
 
 #command {
@@ -487,7 +621,7 @@ kbd.ember-key {
   border: 1px solid var(--line);
   border-radius: 8px;
   color: var(--ink);
-  padding: 0.45rem 0.65rem;
+  padding: 0.42rem 0.6rem;
   font: inherit;
 }
 
@@ -500,7 +634,7 @@ kbd.ember-key {
   font: inherit;
   font-weight: 600;
   border-radius: 8px;
-  padding: 0.45rem 0.75rem;
+  padding: 0.42rem 0.7rem;
   cursor: pointer;
   border: 1px solid var(--line);
   background: oklch(0.2 0.02 260);
@@ -519,14 +653,37 @@ kbd.ember-key {
 }
 
 .status-line {
-  margin: 0.3rem 0 0;
+  margin: 0.25rem 0 0;
   font-family: var(--mono);
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   color: var(--muted);
 }
 
 .status-line.dim {
   color: var(--dim);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  top: 20%;
+  transform: translateX(-50%) translateY(8px);
+  z-index: 15;
+  pointer-events: none;
+  padding: 0.6rem 1rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: oklch(0.14 0.02 35);
+  background: linear-gradient(135deg, oklch(0.72 0.18 55), oklch(0.65 0.2 35));
+  box-shadow: 0 8px 32px oklch(0.4 0.15 35 / 0.45);
+  opacity: 0;
+  transition: opacity 0.25s var(--ease), transform 0.35s var(--ease);
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .help-dialog {
@@ -555,30 +712,37 @@ kbd.ember-key {
 .help-card pre {
   margin: 0.5rem 0 0;
   font-family: var(--mono);
-  font-size: 0.75rem;
+  font-size: 0.74rem;
   white-space: pre-wrap;
   background: #0a0e16;
   padding: 0.65rem;
   border-radius: 8px;
 }
 
-@media (max-width: 800px) {
-  .hud-overlay {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "top"
-      "main"
-      "rail"
-      "bot";
+@media (max-width: 720px) {
+  .edge-hint {
+    font-size: 0.6rem;
+    top: 0.4rem;
   }
   .rail {
-    margin: 0 0.5rem;
-    max-height: 28vh;
+    left: 0.4rem;
+    right: 0.4rem;
+    width: auto;
+  }
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ember {
     box-shadow: none;
+  }
+  .panel,
+  .topbar,
+  .rail,
+  .bottombar {
+    animation: none;
   }
 }

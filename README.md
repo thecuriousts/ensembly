@@ -32,13 +32,18 @@ npm run game         # open http://127.0.0.1:4173/game/
 
 | Control | Action |
 |---------|--------|
-| Tab / j k / arrows | Navigate focus (session is source of truth; WASM mirrors) |
-| Enter / Space / C | **Claim** beacon (+XP growth — physical, craft, presence) |
-| A / Y | Approve HITL gate (+XP) |
-| D / N | Deny HITL gate (+XP) |
-| ? | Help overlay |
-| V | Voice mode (Web Speech or text proxy) |
-| Gamepad | D-pad nav · A approve · B deny |
+| Tab / j k / arrows | Navigate focus (session SoT; WASM mirrors) |
+| Enter / Space / C | **Claim** beacon (+XP) |
+| A / Y · D / N | Approve / deny HITL (+XP) |
+| **B** / Q | Toggle **growth board** (off by default) |
+| **I** | Toggle **top bars** (level, XP, gates) |
+| **M** | Toggle **command menu** |
+| **?** / H | Help |
+| **Esc** | Close all chrome / help / voice |
+| V | Voice |
+| Gamepad | D-pad · A approve · B deny |
+
+Default view is a **clean world** — only a focus chip + brief key hint. Chrome is on demand.
 
 **Growth (engagement):** claim real beacons for XP, clear authorization gates, build streak combos, fill **Body · Presence · Craft · Gates** balance. Level titles (Ember → Horizon). Quest board + coach line push physical/presence before craft-only thrash. Pure engine: `src/game/growth.js`.
 

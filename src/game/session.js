@@ -116,9 +116,10 @@ export function dispatch(session, action) {
       s.message = s.helpOpen ? 'Help open — press ? or Esc to close' : 'Help closed';
       return s;
     case 'CLOSE_HELP':
+    case 'CLOSE_CHROME':
       s.helpOpen = false;
       s.mode = 'nav';
-      s.message = 'Nav mode';
+      s.message = s.message?.startsWith('+') ? s.message : 'World clear';
       return s;
     case 'APPROVE':
       return resolvePending(s, 'approved', action.payload?.id);

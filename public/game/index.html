@@ -3,24 +3,40 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game of Peram — Growth</title>
+    <title>Game of Peram</title>
     <meta
       name="description"
-      content="Game of Peram — claim beacons, clear gates, grow toward a balanced life."
+      content="Game of Peram — clean world, claim beacons, grow. Press B board · I bars · M menu · ? help."
     />
     <link rel="stylesheet" href="/game/styles.css" />
     <link rel="modulepreload" href="/game/main.js" />
     <link rel="modulepreload" href="/game/world-render.js" />
-    <link rel="modulepreload" href="/src/game/growth.js" />
     <link rel="preload" href="/game/sample-graph.json" as="fetch" crossorigin />
   </head>
-  <body class="world-mode">
+  <body class="world-mode" data-bars="0" data-board="0" data-menu="0">
     <a class="skip" href="#command">Skip to command</a>
 
+    <!-- PRIMARY: full-bleed game world only -->
     <canvas id="stage" aria-label="Game of Peram world"></canvas>
 
-    <div id="hud" class="hud-overlay">
-      <header class="topbar glass">
+    <!-- Minimal always-on focus chip (not a side panel) -->
+    <div id="focus-chip" class="focus-chip" aria-live="polite">
+      <span class="chip-k">Focus</span>
+      <span class="chip-v" id="focus">—</span>
+      <span class="chip-xp" id="chip-xp" hidden></span>
+    </div>
+
+    <p id="edge-hint" class="edge-hint">
+      <kbd>B</kbd> board · <kbd>I</kbd> bars · <kbd>M</kbd> menu · <kbd>?</kbd> help ·
+      <kbd>Enter</kbd> claim · <kbd>A</kbd>/<kbd>D</kbd> gates · <kbd>Esc</kbd> clear
+    </p>
+
+    <p id="focus-live" class="sr-only" aria-live="polite"></p>
+    <div id="toast" class="toast" hidden aria-live="assertive"></div>
+
+    <!-- Overlay panels — off until keys open them -->
+    <div id="hud" class="hud-overlay" aria-hidden="true">
+      <header id="topbar" class="topbar glass panel" hidden>
         <div class="brand">
           <span class="ember" id="ember-pulse" aria-hidden="true"></span>
           <div>
@@ -43,35 +59,40 @@
           </div>
         </div>
         <div class="telemetry">
-          <div class="t-cell"><span class="t-k">Focus</span><span class="t-v" id="focus">—</span></div>
           <div class="t-cell warn"><span class="t-k">Gates</span><span class="t-v" id="pending">0</span></div>
           <div class="t-cell"><span class="t-k">Quests</span><span class="t-v mono" id="g-quests">0/0</span></div>
           <div class="t-cell"><span class="t-k">Meter</span><span class="t-v mono" id="g-meter">0%</span></div>
+          <div class="t-cell"><span class="t-k">GPU</span><span class="t-v mono" id="backend">…</span></div>
+          <div class="t-cell"><span class="t-k">Engine</span><span class="t-v mono" id="engine">…</span></div>
         </div>
+        <button type="button" class="btn ghost panel-close" data-close="bars" aria-label="Close bars">Esc</button>
       </header>
 
-      <aside class="rail glass" aria-label="Growth quest board">
-        <p class="rail-title">Growth board</p>
-        <p id="focus-live" class="sr-only" aria-live="polite"></p>
+      <aside id="board" class="rail glass panel" hidden aria-label="Growth board">
+        <div class="panel-head">
+          <p class="rail-title">Growth board</p>
+          <button type="button" class="btn ghost panel-close" data-close="board" aria-label="Close board">
+            Esc
+          </button>
+        </div>
         <p id="coach" class="coach" role="status"></p>
         <p id="msg" class="rail-msg" role="status" hidden></p>
         <div class="balance-row" id="balance-row" aria-label="Life balance axes"></div>
         <ol id="quests" class="quests"></ol>
         <p class="rail-title rail-sub">Beacons</p>
         <ol id="radar" class="radar"></ol>
-        <p class="hint">Enter claim · A/D gates · Tab next · C complete · ? help</p>
+        <p class="hint">Click row · Enter claim · A/D gates · B close</p>
       </aside>
 
-      <div id="toast" class="toast" hidden aria-live="assertive"></div>
-
-      <footer class="bottombar glass">
+      <footer id="menubar" class="bottombar glass panel" hidden>
         <div class="hotkeys">
-          <kbd class="ember-key">Enter</kbd><span>claim XP</span>
+          <kbd class="ember-key">Enter</kbd><span>claim</span>
           <kbd class="ember-key">A</kbd><span>approve</span>
           <kbd class="ember-key">D</kbd><span>deny</span>
           <kbd>Tab</kbd><span>next</span>
-          <kbd>U</kbd><span>undo</span>
-          <kbd>V</kbd><span>voice</span>
+          <kbd>B</kbd><span>board</span>
+          <kbd>I</kbd><span>bars</span>
+          <kbd>M</kbd><span>menu</span>
         </div>
         <div class="command-row">
           <button type="button" id="btn-voice" class="btn ghost">Voice</button>
@@ -80,11 +101,14 @@
             <input
               id="command"
               type="text"
-              placeholder="claim · next · approve · help"
+              placeholder="claim · next · approve · board"
               autocomplete="off"
             />
             <button type="submit" class="btn primary">Run</button>
           </form>
+          <button type="button" class="btn ghost panel-close" data-close="menu" aria-label="Close menu">
+            Esc
+          </button>
         </div>
         <p id="status" class="status-line"></p>
         <p id="voice-avail" class="status-line dim"></p>
@@ -94,7 +118,7 @@
     <dialog id="help" class="help-dialog">
       <form method="dialog" class="help-card">
         <header>
-          <h2>Growth controls</h2>
+          <h2>World controls</h2>
           <button type="submit" class="btn ghost" value="close">Esc</button>
         </header>
         <pre id="help-body"></pre>
