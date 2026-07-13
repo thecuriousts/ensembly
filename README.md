@@ -94,6 +94,7 @@ node bin/swarm.js turn --fixture fixtures/state-sample.json --json --no-write
 ```
 
 Foundation critique (visualize → act): [docs/FOUNDATION-CRITIQUE.md](docs/FOUNDATION-CRITIQUE.md).
+
 ---
 
 ## Remote · channels (not only the laptop)
