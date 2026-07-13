@@ -37,4 +37,13 @@ export {
   XP_TABLE,
   LEVEL_TITLES,
 } from './growth.js';
+export {
+  SPN_SYMBOL,
+  SPN_BASE,
+  buildSpnQuote,
+  spnFromSession,
+  eventToPriceDelta,
+  formatSpnTicker,
+  seriesToSvgPath,
+} from './spn.js';
 export * from './world/index.js';

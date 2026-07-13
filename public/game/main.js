@@ -11,6 +11,7 @@ import {
 } from '/src/game/voice.js';
 import { createGameStore } from '/src/game/store.js';
 import { growthCoachLine } from '/src/game/growth.js';
+import { seriesToSvgPath, formatSpnTicker } from '/src/game/spn.js';
 import {
   initEngine,
   engineMode,
@@ -409,6 +410,7 @@ function paintHud() {
   $('g-streak')?.classList.toggle('hot', (g.streak || 0) >= 2);
   setText('g-quests', `${g.questsDone || 0}/${g.questsTotal || 0}`);
   setText('g-meter', `${Math.round((g.growthMeter01 || 0) * 100)}%`);
+  paintSpn(g.spn);
 
   const fill = $('xp-fill');
   if (fill) fill.style.width = `${Math.round((g.progress01 || 0) * 100)}%`;
@@ -448,6 +450,52 @@ function paintHud() {
       setText('help-body', [...helpLines(), '', ...voiceVocabulary()].join('\n'));
       if (!dlg.open) dlg.showModal();
     } else if (dlg.open) dlg.close();
+  }
+}
+
+/**
+ * Paint $SPN stock-style ticker + sparkline from real growth.spn quote.
+ * @param {object|null|undefined} spn
+ */
+function paintSpn(spn) {
+  const panel = $('spn-ticker');
+  if (!spn) {
+    if (panel) panel.dataset.dir = 'flat';
+    return;
+  }
+  const dir = spn.direction || 'flat';
+  if (panel) panel.dataset.dir = dir;
+
+  setText('spn-sym', spn.symbol || '$SPN');
+  setText('spn-price', Number(spn.price ?? 100).toFixed(2));
+  const chg = Number(spn.change ?? 0);
+  const pct = Number(spn.changePct ?? 0);
+  const sign = chg > 0 ? '+' : '';
+  setText('spn-chg', `${sign}${chg.toFixed(2)} (${sign}${pct.toFixed(2)}%)`);
+
+  const path = $('spn-path');
+  if (path && Array.isArray(spn.series)) {
+    const svg = seriesToSvgPath(spn.series, { width: 120, height: 36, pad: 3 });
+    path.setAttribute('d', svg.d);
+    const chart = $('spn-chart');
+    if (chart) {
+      chart.setAttribute('viewBox', `0 0 ${svg.width} ${svg.height}`);
+    }
+  }
+
+  const cap = $('spn-caption');
+  if (cap) {
+    const n = (spn.points || spn.series || []).length;
+    const last = spn.points?.[spn.points.length - 1]?.reason;
+    if (dir === 'up') cap.textContent = `session bid · ${n} prints · life progress`;
+    else if (dir === 'down') cap.textContent = `session offer · ${last || 'drag'} · rebalance`;
+    else cap.textContent = 'open · claim beacons · clear gates';
+  }
+
+  const inline = $('g-spn-inline');
+  if (inline) {
+    inline.textContent = formatSpnTicker(spn);
+    inline.dataset.dir = dir;
   }
 }
 

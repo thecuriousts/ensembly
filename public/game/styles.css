@@ -66,6 +66,115 @@ body {
   cursor: crosshair;
 }
 
+/* —— $SPN progress ticker (stock-style, always-on) —— */
+.spn-ticker {
+  position: fixed;
+  top: 0.65rem;
+  right: 0.75rem;
+  z-index: 4;
+  min-width: 9.5rem;
+  padding: 0.45rem 0.65rem 0.4rem;
+  border-radius: 10px;
+  background: oklch(0.11 0.025 150 / 0.72);
+  border: 1px solid oklch(0.45 0.06 150 / 0.35);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+  box-shadow: 0 4px 24px oklch(0 0 0 / 0.35);
+  transition: border-color 0.25s var(--ease), background 0.25s var(--ease);
+}
+
+.spn-ticker[data-dir="up"] {
+  border-color: oklch(0.72 0.18 145 / 0.55);
+  background: oklch(0.14 0.04 145 / 0.75);
+}
+
+.spn-ticker[data-dir="down"] {
+  border-color: oklch(0.65 0.18 25 / 0.55);
+  background: oklch(0.14 0.04 25 / 0.75);
+}
+
+.spn-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.spn-sym {
+  font-weight: 800;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: oklch(0.88 0.08 145);
+}
+
+.spn-ticker[data-dir="down"] .spn-sym {
+  color: oklch(0.82 0.12 30);
+}
+
+.spn-price {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+.spn-chg {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.spn-ticker[data-dir="up"] .spn-chg,
+.spn-ticker[data-dir="up"] .spn-price {
+  color: oklch(0.82 0.16 145);
+}
+
+.spn-ticker[data-dir="down"] .spn-chg,
+.spn-ticker[data-dir="down"] .spn-price {
+  color: oklch(0.78 0.16 25);
+}
+
+.spn-chart {
+  display: block;
+  width: 100%;
+  height: 2.25rem;
+  margin-top: 0.2rem;
+}
+
+.spn-path {
+  stroke: oklch(0.75 0.12 145);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.spn-ticker[data-dir="down"] .spn-path {
+  stroke: oklch(0.72 0.16 25);
+}
+
+.spn-ticker[data-dir="flat"] .spn-path {
+  stroke: oklch(0.65 0.04 220);
+}
+
+.spn-caption {
+  margin: 0.15rem 0 0;
+  font-size: 0.55rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.spn-inline {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+.spn-inline[data-dir="up"] {
+  color: oklch(0.78 0.14 145);
+}
+.spn-inline[data-dir="down"] {
+  color: oklch(0.75 0.14 25);
+}
+
 /* —— Minimal always-on —— */
 .focus-chip {
   position: fixed;

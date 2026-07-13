@@ -19,6 +19,26 @@
     <!-- PRIMARY: full-bleed game world only -->
     <canvas id="stage" aria-label="Game of Peram world"></canvas>
 
+    <!-- Always-on $SPN progress ticker (stock-style, from real growth events) -->
+    <aside id="spn-ticker" class="spn-ticker" aria-label="$SPN progress quote" data-dir="flat">
+      <div class="spn-head">
+        <span class="spn-sym" id="spn-sym">$SPN</span>
+        <span class="spn-price mono" id="spn-price">100.00</span>
+        <span class="spn-chg mono" id="spn-chg">0.00</span>
+      </div>
+      <svg
+        id="spn-chart"
+        class="spn-chart"
+        viewBox="0 0 120 36"
+        width="120"
+        height="36"
+        aria-hidden="true"
+      >
+        <path id="spn-path" class="spn-path" d="" fill="none" />
+      </svg>
+      <p class="spn-caption" id="spn-caption">open · claim to trade the day</p>
+    </aside>
+
     <!-- Minimal always-on focus chip (not a side panel) -->
     <div id="focus-chip" class="focus-chip" aria-live="polite">
       <span class="chip-k">Focus</span>
@@ -56,6 +76,8 @@
             <span id="g-xp">0 XP</span>
             <span class="sep">·</span>
             <span id="g-streak" class="streak">streak 0</span>
+            <span class="sep">·</span>
+            <span id="g-spn-inline" class="mono spn-inline">$SPN 100.00</span>
           </div>
         </div>
         <div class="telemetry">

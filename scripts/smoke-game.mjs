@@ -45,8 +45,12 @@ async function main() {
     `has canvas=${/id="stage"/.test(page.body)}`,
     `has hud=${/Game of Peram/.test(page.body)}`,
     `has cockpit=${/cockpit/.test(page.body)}`,
+    `has $SPN ticker=${/id="spn-ticker"/.test(page.body) || /\$SPN/.test(page.body)}`,
+    `has spn-chart=${/id="spn-chart"/.test(page.body)}`,
     `main.js status=${mainJs.status}`,
+    `main paints spn=${/paintSpn|spn-path|\$SPN/.test(mainJs.body)}`,
     `styles.css status=${css.status}`,
+    `css has spn-ticker=${/\.spn-ticker/.test(css.body)}`,
     `session.js status=${sessionJs.status}`,
     `wasm js status=${wasmJs.status}`,
   ].join('\n');
@@ -61,8 +65,31 @@ async function main() {
   const before = mod.sessionView(s);
   s = mod.dispatch(s, mod.mapKeyEvent({ key: 'Tab' }));
   s = mod.dispatch(s, mod.mapKeyEvent({ key: 'a' }));
+  // Claim a physical if present to move $SPN
+  const physIdx = (s.nodes || []).findIndex(
+    (n) => n.type === 'physical' || n.realm === 'physical',
+  );
+  if (physIdx >= 0) {
+    s = mod.dispatch(s, { type: 'FOCUS_INDEX', payload: { index: physIdx } });
+    s = mod.dispatch(s, { type: 'COMPLETE' });
+  }
   const after = mod.sessionView(s);
-  const log2 = JSON.stringify({ before, after, changed: before.focusIndex !== after.focusIndex || before.pendingOpen !== after.pendingOpen }, null, 2);
+  const spnBefore = before.growth?.spn;
+  const spnAfter = after.growth?.spn;
+  const log2 = JSON.stringify(
+    {
+      before: { focusIndex: before.focusIndex, pendingOpen: before.pendingOpen, spn: spnBefore },
+      after: { focusIndex: after.focusIndex, pendingOpen: after.pendingOpen, spn: spnAfter },
+      changed:
+        before.focusIndex !== after.focusIndex ||
+        before.pendingOpen !== after.pendingOpen ||
+        (spnBefore?.price !== spnAfter?.price),
+      spnMovedUp:
+        spnAfter && spnBefore ? spnAfter.price >= spnBefore.price : null,
+    },
+    null,
+    2,
+  );
   fs.writeFileSync(path.join(scratch, 'game-launch-2.txt'), `${log2}\n`);
 
   // /game without slash should redirect or still work

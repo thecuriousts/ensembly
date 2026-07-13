@@ -2,6 +2,7 @@
  * Growth engine — gamifies real life progress (pure, no DOM).
  * XP, levels, quests, balance, streaks tied to physical / HITL / craft / presence.
  */
+import { buildSpnQuote } from './spn.js';
 
 /** @typedef {'physical' | 'presence' | 'hitl' | 'craft' | 'meta'} GrowthRole */
 
@@ -206,6 +207,8 @@ export function growthView(session) {
   const covered = axes.filter((k) => (b[k] || 0) > 0).length;
   const balance01 = covered / axes.length;
 
+  const spn = buildSpnQuote(g);
+
   return {
     ...lvl,
     streak: g.streak || 0,
@@ -221,6 +224,8 @@ export function growthView(session) {
     /** Overall day growth meter (quests + balance + level progress) */
     growthMeter01: clamp01(questProgress01 * 0.55 + balance01 * 0.25 + lvl.progress01 * 0.2),
     nextQuest: open[0] || null,
+    /** $SPN progress ticker (stock-style quote from real gameplay events) */
+    spn,
   };
 }
 
