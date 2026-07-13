@@ -2,13 +2,10 @@
   "version": 1,
   "date": "2026-07-13",
   "meta": {
-    "nodeCount": 32,
+    "nodeCount": 36,
     "edgeCount": 37,
     "snapshotStatus": "idle_waiting",
-    "generator": "ensembly/src/graph.js",
-    "turnStatusAt": "2026-07-13T05:19:12.307Z",
-    "nextPhysicalId": "evening-outdoor",
-    "nextAuthId": "auth-apply-high-signal"
+    "generator": "ensembly/src/graph.js"
   },
   "nodes": [
     {
@@ -282,14 +279,26 @@
       }
     },
     {
+      "id": "action-rhythm-outdoor_family_light",
+      "type": "action",
+      "label": "Morning outdoor family + light",
+      "area": "Health",
+      "kind": "action",
+      "realm": "digital",
+      "position": {
+        "x": 660,
+        "y": 400
+      }
+    },
+    {
       "id": "slot-0730-0800",
       "type": "schedule",
       "label": "07:30-08:00 Breakfast",
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 660,
-        "y": 400
+        "x": 0,
+        "y": 480
       }
     },
     {
@@ -299,7 +308,19 @@
       "non_negotiable": true,
       "kind": "schedule",
       "position": {
-        "x": 0,
+        "x": 220,
+        "y": 480
+      }
+    },
+    {
+      "id": "action-rhythm-family_support",
+      "type": "action",
+      "label": "Family support time",
+      "area": "Relationships",
+      "kind": "action",
+      "realm": "digital",
+      "position": {
+        "x": 440,
         "y": 480
       }
     },
@@ -310,7 +331,7 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 220,
+        "x": 660,
         "y": 480
       }
     },
@@ -321,8 +342,8 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 440,
-        "y": 480
+        "x": 0,
+        "y": 560
       }
     },
     {
@@ -332,8 +353,8 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 660,
-        "y": 480
+        "x": 220,
+        "y": 560
       }
     },
     {
@@ -343,7 +364,19 @@
       "non_negotiable": true,
       "kind": "schedule",
       "position": {
-        "x": 0,
+        "x": 440,
+        "y": 560
+      }
+    },
+    {
+      "id": "action-rhythm-evening_family",
+      "type": "action",
+      "label": "Evening outdoor family",
+      "area": "Relationships",
+      "kind": "action",
+      "realm": "digital",
+      "position": {
+        "x": 660,
         "y": 560
       }
     },
@@ -354,8 +387,8 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 220,
-        "y": 560
+        "x": 0,
+        "y": 640
       }
     },
     {
@@ -365,8 +398,8 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 440,
-        "y": 560
+        "x": 220,
+        "y": 640
       }
     },
     {
@@ -376,8 +409,20 @@
       "non_negotiable": true,
       "kind": "schedule",
       "position": {
+        "x": 440,
+        "y": 640
+      }
+    },
+    {
+      "id": "action-rhythm-sleep",
+      "type": "action",
+      "label": "Sleep",
+      "area": "Health",
+      "kind": "action",
+      "realm": "digital",
+      "position": {
         "x": 660,
-        "y": 560
+        "y": 640
       }
     }
   ],

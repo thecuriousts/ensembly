@@ -20,6 +20,7 @@ import { classifyItem } from './privacy.js';
 import { buildDayPlan } from './day.js';
 import { loadPersona, loadLocalState, resolveRoot, loadJson } from './ingest.js';
 import { buildGameGraph, graphToMermaid, graphToWatchHtml } from './graph.js';
+import { syncPublicDashboard } from './dashboard.js';
 
 /**
  * Parse HH:MM to minutes from midnight. Returns null if invalid.
@@ -474,8 +475,10 @@ export function syncPublicWatch(root, turn) {
   fs.writeFileSync(htmlPath, graphToWatchHtml(graph, mermaid, { status: turn.status }), 'utf8');
   fs.writeFileSync(irPath, `${JSON.stringify(graph, null, 2)}\n`, 'utf8');
   fs.writeFileSync(statusPath, `${JSON.stringify(turn.status, null, 2)}\n`, 'utf8');
+  // Best-effort life dashboard (status/plan only; full activity merge via `dashboard` CLI)
+  const dashPaths = syncPublicDashboard(root, turn);
 
-  return { htmlPath, statusPath, irPath };
+  return { htmlPath, statusPath, irPath, dashboardHtml: dashPaths?.htmlPath || null };
 }
 
 /**

@@ -97,9 +97,9 @@ describe('graph (shipped game IR)', () => {
       },
     });
     const md = graphToMermaid(graph);
-    // Always double-quoted labels (Mermaid 11 breaks on unquoted parens)
-    assert.match(md, /project_runway\["Runway & admin \(local only\)"\]/);
-    assert.match(md, /action_apply\["Prepare high-signal FT application packet \(public CV path\)"\]/);
+    // Always double-quoted labels (Mermaid 11); & normalized to "and" for safe parse
+    assert.match(md, /project_runway\["Runway and admin \(local only\)"\]/);
+    assert.match(md, /action_apply\["Prepare high-signal FT application packet \(public/);
     assert.match(md, /hitl_apply\{\{"HITL: Prepare high-signal/);
     assert.match(md, /slot_0600_0630\[\("06:00-06:30 Wake"\)\]/);
     // Every node line must quote its label: shapeOpen "label" shapeClose
@@ -168,5 +168,46 @@ describe('graph (shipped game IR)', () => {
     // Graph IR is debug substrate — collapsed, not a second full-page dump
     assert.match(html, /<details[\s\S]*Graph IR/);
     assert.doesNotMatch(html, /<div class="panel">\s*<h2>Graph IR<\/h2>/);
+  });
+
+  it('graphToWatchHtml uses explicit mermaid.run (ESM-safe) and escapes labels for HTML', () => {
+    const graph = buildGameGraph({
+      date: '2026-07-13',
+      actions: [{ id: 'runway', title: 'Runway & admin (local only)', realm: 'digital' }],
+      schedule: [
+        {
+          start: '06:30',
+          end: '07:30',
+          label: 'Morning',
+          assigned: { id: 'rhythm-only', title: 'Rhythm block' },
+        },
+      ],
+    });
+    // Assigned-only action becomes a real node (no dangling edge)
+    assert.ok(graph.nodes.some((n) => n.id === 'action-rhythm-only'));
+    const mermaid = graphToMermaid(graph);
+    assert.match(mermaid, /action_rhythm_only/);
+    assert.match(mermaid, /Runway and admin/);
+    // Dangling-only edges omitted: every edge endpoint is defined
+    const defined = new Set(
+      mermaid
+        .split('\n')
+        .filter((l) => /^\s+\w+[(\[{]/.test(l))
+        .map((l) => l.trim().match(/^(\w+)/)?.[1])
+        .filter(Boolean),
+    );
+    for (const line of mermaid.split('\n')) {
+      const m = line.match(/^\s+(\w+)\s+-->\|[^|]+\|\s+(\w+)\s*$/);
+      if (m) {
+        assert.ok(defined.has(m[1]), `edge source missing node: ${m[1]}`);
+        assert.ok(defined.has(m[2]), `edge target missing node: ${m[2]}`);
+      }
+    }
+    const html = graphToWatchHtml(graph, mermaid, { status: null });
+    assert.match(html, /mermaid\.run\s*\(/);
+    assert.match(html, /startOnLoad:\s*false/);
+    assert.match(html, /id="day-map"/);
+    // HTML-escaped ampersand from original title path
+    assert.match(html, /Runway and admin|Runway &amp; admin/);
   });
 });

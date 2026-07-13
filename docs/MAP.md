@@ -54,6 +54,7 @@ Only features with a **dogfood path** (command, URL, or unit-tested pure export)
 | Capability | Entry | What you get |
 |------------|-------|--------------|
 | **Watch map** | `npm run swarm:graph` then open `public/watch/index.html` | Static next-action panel + mermaid/graph view; **consumer** of graph + turn-status export |
+| **Life dashboard** | `npm run swarm:dashboard` → `public/watch/dashboard.html` | Overview · stats · rule-based insights · next body/auth · activity timeline (Dashboard IR v1) |
 
 There is **no** separate multi-page web app. `public/watch/` is generated/served static artifacts from the CLI graph path. `legacy/` is the old webpack SPA — **not the product**.
 
@@ -256,8 +257,12 @@ Public Node API surface: `src/index.js`.
 | `ingest.js` | Persona / local state load (paths) |
 | `game/*` | Session store, growth, $SPN, input, voice, focus-sync |
 | `sovereignty-gist.js` | Public thinking-helper constants (not day kernel) |
+| `activity/*` | Activity/log IR + storage port: memory (tests) · SQLite SoT under `data/local/activity.sqlite` |
+| `dashboard.js` | Life progress Dashboard IR + insights + HTML/markdown projectors |
 
 Rust entry: `crates/peram-core/src/{lib,world,layout}.rs` → WASM exports `world_*`, `layout_tick`, `pack_grid`, `engine_version`.
+
+**Storage foundation:** local **SQLite** = durable SoT for activities/logs; **in-memory** = same port for tests; IndexedDB/Postgres/Mongo/graph DB are not day-0 SoT. Decision: [DECISIONS.md](DECISIONS.md#activity--log-storage-foundation-2026-07-13) · privacy path: [PRIVACY.md](PRIVACY.md).
 
 ---
 

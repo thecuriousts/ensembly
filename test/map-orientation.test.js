@@ -102,6 +102,7 @@ describe('docs/MAP orientation (shipped truth)', () => {
       'swarm:day',
       'swarm:turn',
       'swarm:graph',
+      'swarm:dashboard',
       'game',
       'build:wasm',
       'test',

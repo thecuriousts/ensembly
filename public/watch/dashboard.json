@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "generatedAt": "2026-07-13T08:21:02.745Z",
+  "overview": {
+    "date": "2026-07-13",
+    "phase": "HITL_WAIT",
+    "snapshotStatus": "idle_waiting",
+    "physicalOpen": 2,
+    "physicalClaimed": 0,
+    "physicalCompleted": 1,
+    "pendingAuth": 1,
+    "balanceScore": 1,
+    "historyLen": 4
+  },
+  "next": {
+    "physical": {
+      "id": "evening-outdoor",
+      "title": "Evening outdoor family walk (cooler window)",
+      "area": "Relationships",
+      "claimStatus": "open",
+      "scheduleWindow": null,
+      "reason": "priority",
+      "commands": {
+        "claim": "node bin/swarm.js claim evening-outdoor",
+        "complete": "node bin/swarm.js complete evening-outdoor"
+      }
+    },
+    "authorization": {
+      "id": "auth-apply-high-signal",
+      "title": "Prepare high-signal FT application packet (public CV path)",
+      "kind": "job_application_submit",
+      "actionId": "apply-high-signal",
+      "commands": {
+        "approve": "node bin/swarm.js approve auth-apply-high-signal",
+        "deny": "node bin/swarm.js deny auth-apply-high-signal"
+      }
+    }
+  },
+  "stats": {
+    "activityTotal": 0,
+    "activityLast24h": 0,
+    "activityLast7d": 0,
+    "activityByKind": {},
+    "scheduleBlocks": 11,
+    "areaCounts": {
+      "Career": 2,
+      "Health": 1,
+      "Finance": 1,
+      "Learning": 0,
+      "Relationships": 2,
+      "Systems": 1,
+      "Creative": 0
+    },
+    "graphHint": null
+  },
+  "activity": {
+    "recent": [],
+    "empty": true
+  },
+  "sources": {
+    "turnStatus": true,
+    "snapshot": true,
+    "plan": true,
+    "activityStore": false,
+    "collabFinder": false
+  },
+  "insights": [
+    {
+      "id": "clear_auth_gate",
+      "severity": "steer",
+      "message": "Clear the open authorization gate before more digital thrash.",
+      "evidence": {
+        "pendingAuth": 1,
+        "nextAuthId": "auth-apply-high-signal",
+        "kind": "job_application_submit"
+      },
+      "steer": "node bin/swarm.js approve auth-apply-high-signal"
+    },
+    {
+      "id": "body_work_open",
+      "severity": "steer",
+      "message": "Body work is still open — claim the next physical pickup.",
+      "evidence": {
+        "physicalOpen": 2,
+        "nextPhysicalId": "evening-outdoor",
+        "claimEvents": 0
+      },
+      "steer": "node bin/swarm.js claim evening-outdoor"
+    },
+    {
+      "id": "activity_empty",
+      "severity": "info",
+      "message": "No durable activity log yet — claim/complete/approve or append to seed the store.",
+      "evidence": {
+        "activityTotal": 0
+      },
+      "steer": "node bin/swarm.js activity append -m \"seed\" · or claim/complete body work"
+    }
+  ]
+}

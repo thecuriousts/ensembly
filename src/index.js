@@ -54,4 +54,24 @@ export {
   Observable,
   CommandBus,
 } from './game/index.js';
+export {
+  ACTIVITY_IR_VERSION,
+  ACTIVITY_KINDS,
+  normalizeActivityEntry,
+  filterActivityEntries,
+  createMemoryActivityStore,
+  openSqliteActivityStore,
+  openActivityStore,
+  resolveActivityDbPath,
+  DEFAULT_ACTIVITY_DB_REL,
+} from './activity/index.js';
+export {
+  DASHBOARD_IR_VERSION,
+  buildDashboard,
+  deriveInsights,
+  dashboardToHtml,
+  formatDashboardMarkdown,
+  runDashboard,
+  syncPublicDashboard,
+} from './dashboard.js';
 

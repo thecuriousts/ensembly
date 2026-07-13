@@ -2,7 +2,7 @@
 /**
  * ensembly swarm CLI — Game of Peram control plane
  *
- *   node bin/swarm.js day|turn|approve|deny|claim|complete|graph [options]
+ *   node bin/swarm.js day|turn|approve|deny|claim|complete|graph|activity|log|dashboard [options]
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,6 +16,8 @@ import {
   snapshotPath,
 } from '../src/turn.js';
 import { graphToWatchHtml } from '../src/graph.js';
+import { openActivityStore } from '../src/activity/index.js';
+import { runDashboard } from '../src/dashboard.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -32,6 +34,13 @@ function parseArgs(argv) {
     html: false,
     id: null,
     help: false,
+    sub: null,
+    kind: null,
+    message: null,
+    actor: 'operator',
+    limit: 50,
+    dbPath: null,
+    positional: [],
   };
   for (let i = 3; i < argv.length; i++) {
     const a = argv[i];
@@ -42,6 +51,11 @@ function parseArgs(argv) {
     else if (a === '--fixture') args.fixture = argv[++i];
     else if (a === '--snapshot') args.snapshotFile = argv[++i];
     else if (a === '--html') args.html = true;
+    else if (a === '--kind') args.kind = argv[++i];
+    else if (a === '--message' || a === '-m') args.message = argv[++i];
+    else if (a === '--actor') args.actor = argv[++i];
+    else if (a === '--limit') args.limit = Number(argv[++i]) || 50;
+    else if (a === '--db') args.dbPath = argv[++i];
     else if (a === '--help' || a === '-h') args.help = true;
     else if (
       !a.startsWith('-') &&
@@ -49,6 +63,14 @@ function parseArgs(argv) {
       !args.id
     ) {
       args.id = a;
+    } else if (!a.startsWith('-')) {
+      args.positional.push(a);
+    }
+  }
+  if (['activity', 'log'].includes(args.cmd)) {
+    args.sub = args.positional[0] || 'list';
+    if (args.sub === 'append' && !args.message && args.positional[1]) {
+      args.message = args.positional.slice(1).join(' ');
     }
   }
   return args;
@@ -66,6 +88,9 @@ Commands:
   complete <id>       Complete a physical pickup (leave open queue)
   release <id>        Release a claimed physical back to open
   graph               Export serializable game graph (+ mermaid / HTML watch)
+  dashboard           Life progress: stats, insights, overview → public/watch/dashboard.*
+  activity list|append   Durable activity stream (SQLite under data/local/)
+  log list|append        Convenience for log.* kinds (same store)
 
 Options:
   --date YYYY-MM-DD   Plan date
@@ -75,6 +100,11 @@ Options:
   --fixture <path>    Load state JSON fixture (turn/graph)
   --snapshot <path>   Wait-snapshot JSON path (default private/state/wait-snapshot.json)
   --html              Write public/watch/index.html (graph command)
+  --kind <type>       Filter/append kind (activity/log)
+  --message|-m <text> Append message payload (activity/log)
+  --actor <name>      Actor label (default operator)
+  --limit <n>         List limit (default 50)
+  --db <path>         Override activity SQLite path
 
 Examples:
   npm run swarm:day
@@ -85,14 +115,75 @@ Examples:
   node bin/swarm.js claim grocery-errand
   node bin/swarm.js complete grocery-errand
   node bin/swarm.js graph --html
+  node bin/swarm.js activity append --kind activity.claim -m "claimed healthy-self-energy"
+  node bin/swarm.js log append -m "post-lunch steer"
+  node bin/swarm.js activity list --json --limit 20
+  node bin/swarm.js dashboard --json
+  npm run swarm:dashboard
 `);
 }
 
-function main() {
+async function runActivityCmd(args) {
+  const store = await openActivityStore({
+    backend: 'sqlite',
+    root,
+    dbPath: args.dbPath || undefined,
+  });
+  try {
+    if (args.sub === 'append') {
+      const isLog = args.cmd === 'log';
+      const kind =
+        args.kind ||
+        (isLog ? 'log.info' : 'activity');
+      const message = args.message || '';
+      if (!message && !args.kind) {
+        console.error('Usage: node bin/swarm.js activity|log append -m "text" [--kind type]');
+        process.exit(1);
+      }
+      const entry = store.append({
+        kind,
+        actor: args.actor || 'operator',
+        payload: { message, source: 'cli' },
+      });
+      if (args.json) {
+        process.stdout.write(`${JSON.stringify(entry, null, 2)}\n`);
+      } else {
+        console.log(`APPENDED id=${entry.id} kind=${entry.kind} ts=${entry.ts}`);
+        console.log(`store: ${store.path}`);
+      }
+      return;
+    }
+
+    // list (default)
+    const listQuery = { limit: args.limit };
+    if (args.kind) listQuery.kind = args.kind;
+    else if (args.cmd === 'log') listQuery.kinds = ['log.info', 'log.warn', 'log.error', 'log'];
+    const rows = store.list(listQuery);
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify({ path: store.path, count: rows.length, entries: rows }, null, 2)}\n`);
+    } else {
+      console.log(`activity store: ${store.path}`);
+      console.log(`count: ${rows.length}`);
+      for (const e of rows) {
+        const msg = e.payload?.message != null ? ` · ${e.payload.message}` : '';
+        console.log(`${e.ts}  ${e.kind}  ${e.id}${msg}`);
+      }
+    }
+  } finally {
+    store.close();
+  }
+}
+
+async function main() {
   const args = parseArgs(process.argv);
   if (args.help || args.cmd === 'help') {
     help();
     process.exit(0);
+  }
+
+  if (args.cmd === 'activity' || args.cmd === 'log') {
+    await runActivityCmd(args);
+    return;
   }
 
   const common = {
@@ -242,9 +333,39 @@ function main() {
     return;
   }
 
+  if (args.cmd === 'dashboard') {
+    const turn = runOperatorTurn({
+      ...common,
+      // turn may write snapshot; dashboard write is separate
+      write: args.write,
+    });
+    const result = await runDashboard({
+      root,
+      turn,
+      write: args.write,
+      dbPath: args.dbPath || undefined,
+    });
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(result.dashboard, null, 2)}\n`);
+    } else if (args.stdout || args.write === false) {
+      process.stdout.write(result.markdown);
+    } else {
+      process.stdout.write(result.markdown);
+      if (result.paths?.htmlPath) console.log(`\nwrote: ${result.paths.htmlPath}`);
+      if (result.paths?.jsonPath) console.log(`wrote: ${result.paths.jsonPath}`);
+    }
+    console.error(
+      `DASHBOARD_OK version=${result.dashboard.version} insights=${result.dashboard.insights?.length ?? 0} activity=${result.dashboard.stats?.activityTotal ?? 0} nextPhysical=${result.dashboard.next?.physical?.id || '-'} nextAuth=${result.dashboard.next?.authorization?.id || '-'}`,
+    );
+    return;
+  }
+
   console.error(`Unknown command: ${args.cmd}`);
   help();
   process.exit(1);
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

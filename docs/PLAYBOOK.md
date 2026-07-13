@@ -30,6 +30,7 @@ Companion law: [MAP.md](MAP.md) (capabilities · hosts · layers · IR) · [PROD
 | **Operator turn (CLI)** | Fast “what now?” on any machine with the repo | `npm run swarm:turn` or `node bin/swarm.js turn --stdout` |
 | **Status IR (JSON)** | Agents / scripts / future phone bots | `node bin/swarm.js turn --json` |
 | **Watch map** | See next act + diagram without game loop | `npm run swarm:graph` → open `public/watch/index.html` |
+| **Life dashboard** | Stats, insights, overview of progress | `npm run swarm:dashboard` → open `public/watch/dashboard.html` |
 | **Day plan** | Morning structure: projects, schedule, balance | `npm run swarm:day` |
 | **Remote channels** (Eve trajectory) | Slack/web/phone: digest + approve/deny away from desk | See [§5 Remote](#5-remote--channels-not-just-the-laptop) · [EVE-FIT.md](EVE-FIT.md) |
 

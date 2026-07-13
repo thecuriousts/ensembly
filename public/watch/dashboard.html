@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game of Peram — life dashboard</title>
+  <style>
+    :root {
+      --bg: #0b1020; --panel: #141a2e; --card: #0f1528; --line: #2a3555;
+      --text: #e8ecf4; --muted: #9aa3b8; --accent: #9ecbff; --auth: #ffb4a2;
+      --ok: #8fd9a8; --warn: #ffd48a; --steer: #9ecbff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0; padding: 1.25rem 1.5rem 2.5rem;
+      background: radial-gradient(1200px 600px at 10% -10%, #1a2450 0%, var(--bg) 55%);
+      color: var(--text); line-height: 1.45;
+    }
+    h1 { font-size: 1.35rem; margin: 0 0 0.35rem; letter-spacing: 0.02em; }
+    h2 { font-size: 1.05rem; margin: 0 0 0.75rem; color: var(--accent); }
+    .meta { color: var(--muted); font-size: 0.9rem; margin-bottom: 1rem; }
+    .links a { color: var(--accent); margin-right: 0.85rem; font-size: 0.85rem; }
+    .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .panel {
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 14px; padding: 1rem 1.1rem; margin-top: 1rem;
+    }
+    .stat {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 12px; padding: 0.75rem 0.9rem;
+    }
+    .stat .n { font-size: 1.55rem; font-weight: 650; }
+    .stat .l { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .next { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .card {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 12px; padding: 0.85rem 1rem;
+    }
+    .card h3 { margin: 0 0 0.4rem; font-size: 0.95rem; color: var(--accent); }
+    .card.auth h3 { color: var(--auth); }
+    .card p { margin: 0.25rem 0; font-size: 0.9rem; }
+    .card pre, pre { font-size: 0.78rem; background: #080c18; padding: 0.55rem 0.7rem; border-radius: 8px; overflow: auto; }
+    .empty { opacity: 0.65; font-style: italic; }
+    ul.ins { list-style: none; padding: 0; margin: 0; }
+    ul.ins li {
+      border-left: 3px solid var(--line); padding: 0.55rem 0.75rem; margin-bottom: 0.5rem;
+      background: var(--card); border-radius: 0 10px 10px 0;
+    }
+    ul.ins li.steer { border-left-color: var(--steer); }
+    ul.ins li.warn { border-left-color: var(--warn); }
+    ul.ins li.ok { border-left-color: var(--ok); }
+    ul.ins li.info { border-left-color: var(--muted); }
+    .steer { margin-top: 0.35rem; font-size: 0.82rem; }
+    .ev { margin-top: 0.25rem; font-size: 0.72rem; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    td, th { text-align: left; padding: 0.35rem 0.4rem; border-bottom: 1px solid var(--line); }
+    ul.tl { list-style: none; padding: 0; margin: 0; font-size: 0.88rem; }
+    ul.tl .ts { color: var(--muted); font-size: 0.8rem; margin-right: 0.35rem; }
+    footer { margin-top: 1.5rem; font-size: 0.78rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <h1>Game of Peram — life progress</h1>
+  <p class="meta">
+    2026-07-13 · phase <strong>HITL_WAIT</strong>
+    · snapshot <strong>idle_waiting</strong>
+    · balance <strong>1</strong>
+    · generated 2026-07-13T08:21:02.745Z
+  </p>
+  <p class="links">
+    <a href="./index.html">Watch map</a>
+    <a href="http://127.0.0.1:4173/game/">Play game</a>
+    <span>CLI: <code>npm run swarm:turn</code> · <code>npm run swarm:dashboard</code></span>
+  </p>
+
+  <div class="panel">
+    <h2>Overview</h2>
+    <div class="grid">
+      <div class="stat"><div class="n">2</div><div class="l">Physical open</div></div>
+      <div class="stat"><div class="n">1</div><div class="l">Pending auth</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">Claimed</div></div>
+      <div class="stat"><div class="n">1</div><div class="l">Completed</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">Activity events</div></div>
+      <div class="stat"><div class="n">0</div><div class="l">Last 24h</div></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Next action</h2>
+    <div class="next"><div class="card">
+        <h3>Body — next physical</h3>
+        <p><strong>Evening outdoor family walk (cooler window)</strong></p>
+        <p>id: <code>evening-outdoor</code> · Relationships · open</p>
+        <pre>node bin/swarm.js claim evening-outdoor
+node bin/swarm.js complete evening-outdoor</pre>
+      </div><div class="card auth">
+        <h3>Auth — next authorization</h3>
+        <p><strong>Prepare high-signal FT application packet (public CV path)</strong></p>
+        <p>id: <code>auth-apply-high-signal</code> · job_application_submit</p>
+        <pre>node bin/swarm.js approve auth-apply-high-signal
+node bin/swarm.js deny auth-apply-high-signal</pre>
+      </div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Intelligent insights</h2>
+    <ul class="ins"><li class="ins steer"><strong>[steer]</strong> Clear the open authorization gate before more digital thrash.<div class="steer"><code>node bin/swarm.js approve auth-apply-high-signal</code></div><div class="ev">evidence: <code>{&quot;pendingAuth&quot;:1,&quot;nextAuthId&quot;:&quot;auth-apply-high-signal&quot;,&quot;kind&quot;:&quot;job_application_submit&quot;}</code></div></li>
+<li class="ins steer"><strong>[steer]</strong> Body work is still open — claim the next physical pickup.<div class="steer"><code>node bin/swarm.js claim evening-outdoor</code></div><div class="ev">evidence: <code>{&quot;physicalOpen&quot;:2,&quot;nextPhysicalId&quot;:&quot;evening-outdoor&quot;,&quot;claimEvents&quot;:0}</code></div></li>
+<li class="ins info"><strong>[info]</strong> No durable activity log yet — claim/complete/approve or append to seed the store.<div class="steer"><code>node bin/swarm.js activity append -m &quot;seed&quot; · or claim/complete body work</code></div><div class="ev">evidence: <code>{&quot;activityTotal&quot;:0}</code></div></li></ul>
+  </div>
+
+  <div class="panel">
+    <h2>Stats</h2>
+    <p class="meta">Activity by kind · schedule blocks: 11</p>
+    <table>
+      <thead><tr><th>Kind</th><th>Count</th></tr></thead>
+      <tbody><tr><td colspan="2" class="empty">none</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Recent activity</h2>
+    <ul class="tl"><li class="empty">No durable activity — seed with claim/complete or <code>activity append</code></li></ul>
+  </div>
+
+  <details class="panel">
+    <summary>Dashboard IR (debug · agents)</summary>
+    <p class="meta">Machine-readable export: <code>public/watch/dashboard.json</code></p>
+    <pre>{
+  &quot;version&quot;: 1,
+  &quot;generatedAt&quot;: &quot;2026-07-13T08:21:02.745Z&quot;,
+  &quot;overview&quot;: {
+    &quot;date&quot;: &quot;2026-07-13&quot;,
+    &quot;phase&quot;: &quot;HITL_WAIT&quot;,
+    &quot;snapshotStatus&quot;: &quot;idle_waiting&quot;,
+    &quot;physicalOpen&quot;: 2,
+    &quot;physicalClaimed&quot;: 0,
+    &quot;physicalCompleted&quot;: 1,
+    &quot;pendingAuth&quot;: 1,
+    &quot;balanceScore&quot;: 1,
+    &quot;historyLen&quot;: 4
+  },
+  &quot;next&quot;: {
+    &quot;physical&quot;: {
+      &quot;id&quot;: &quot;evening-outdoor&quot;,
+      &quot;title&quot;: &quot;Evening outdoor family walk (cooler window)&quot;,
+      &quot;area&quot;: &quot;Relationships&quot;,
+      &quot;claimStatus&quot;: &quot;open&quot;,
+      &quot;scheduleWindow&quot;: null,
+      &quot;reason&quot;: &quot;priority&quot;,
+      &quot;commands&quot;: {
+        &quot;claim&quot;: &quot;node bin/swarm.js claim evening-outdoor&quot;,
+        &quot;complete&quot;: &quot;node bin/swarm.js complete evening-outdoor&quot;
+      }
+    },
+    &quot;authorization&quot;: {
+      &quot;id&quot;: &quot;auth-apply-high-signal&quot;,
+      &quot;title&quot;: &quot;Prepare high-signal FT application packet (public CV path)&quot;,
+      &quot;kind&quot;: &quot;job_application_submit&quot;,
+      &quot;actionId&quot;: &quot;apply-high-signal&quot;,
+      &quot;commands&quot;: {
+        &quot;approve&quot;: &quot;node bin/swarm.js approve auth-apply-high-signal&quot;,
+        &quot;deny&quot;: &quot;node bin/swarm.js deny auth-apply-high-signal&quot;
+      }
+    }
+  },
+  &quot;stats&quot;: {
+    &quot;activityTotal&quot;: 0,
+    &quot;activityLast24h&quot;: 0,
+    &quot;activityLast7d&quot;: 0,
+    &quot;activityByKind&quot;: {},
+    &quot;scheduleBlocks&quot;: 11,
+    &quot;areaCounts&quot;: {
+      &quot;Career&quot;: 2,
+      &quot;Health&quot;: 1,
+      &quot;Finance&quot;: 1,
+      &quot;Learning&quot;: 0,
+      &quot;Relationships&quot;: 2,
+      &quot;Systems&quot;: 1,
+      &quot;Creative&quot;: 0
+    },
+    &quot;graphHint&quot;: null
+  },
+  &quot;activity&quot;: {
+    &quot;recent&quot;: [],
+    &quot;empty&quot;: true
+  },
+  &quot;sources&quot;: {
+    &quot;turnStatus&quot;: true,
+    &quot;snapshot&quot;: true,
+    &quot;plan&quot;: true,
+    &quot;activityStore&quot;: false,
+    &quot;collabFinder&quot;: false
+  },
+  &quot;insights&quot;: [
+    {
+      &quot;id&quot;: &quot;clear_auth_gate&quot;,
+      &quot;severity&quot;: &quot;steer&quot;,
+      &quot;message&quot;: &quot;Clear the open authorization gate before more digital thrash.&quot;,
+      &quot;evidence&quot;: {
+        &quot;pendingAuth&quot;: 1,
+        &quot;nextAuthId&quot;: &quot;auth-apply-high-signal&quot;,
+        &quot;kind&quot;: &quot;job_application_submit&quot;
+      },
+      &quot;steer&quot;: &quot;node bin/swarm.js approve auth-apply-high-signal&quot;
+    },
+    {
+      &quot;id&quot;: &quot;body_work_open&quot;,
+      &quot;severity&quot;: &quot;steer&quot;,
+      &quot;message&quot;: &quot;Body work is still open — claim the next physical pickup.&quot;,
+      &quot;evidence&quot;: {
+        &quot;physicalOpen&quot;: 2,
+        &quot;nextPhysicalId&quot;: &quot;evening-outdoor&quot;,
+        &quot;claimEvents&quot;: 0
+      },
+      &quot;steer&quot;: &quot;node bin/swarm.js claim evening-outdoor&quot;
+    },
+    {
+      &quot;id&quot;: &quot;activity_empty&quot;,
+      &quot;severity&quot;: &quot;info&quot;,
+      &quot;message&quot;: &quot;No durable activity log yet — claim/complete/approve or append to seed the store.&quot;,
+      &quot;evidence&quot;: {
+        &quot;activityTotal&quot;: 0
+      },
+      &quot;steer&quot;: &quot;node bin/swarm.js activity append -m \&quot;seed\&quot; · or claim/complete body work&quot;
+    }
+  ]
+}</pre>
+  </details>
+
+  <footer>
+    ensembly dashboard IR v1 · glance host over pure kernel IR ·
+    collab-finder read-only deferred · not a SPA · Game of Peram world remains primary
+  </footer>
+</body>
+</html>

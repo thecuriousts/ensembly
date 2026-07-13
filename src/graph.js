@@ -121,13 +121,25 @@ export function buildGameGraph(state = {}) {
     addNode({
       id,
       type: 'schedule',
-      label: `${s.start}-${s.end} ${s.label}`,
+      label: `${s.start}-${s.end} ${s.label || ''}`.trim(),
       non_negotiable: s.non_negotiable,
       kind: 'schedule',
     });
     addEdge('game-peram', id, 'schedule');
     if (s.assigned?.id) {
-      addEdge(id, `action-${s.assigned.id}`, 'assigned');
+      const aid = `action-${s.assigned.id}`;
+      // Ensure endpoint exists so Mermaid never gets dangling edges only
+      if (!seen.has(aid)) {
+        addNode({
+          id: aid,
+          type: 'action',
+          label: s.assigned.title || s.assigned.id,
+          area: s.assigned.area,
+          kind: 'action',
+          realm: s.assigned.realm || 'digital',
+        });
+      }
+      addEdge(id, aid, 'assigned');
     }
   }
 
@@ -167,24 +179,32 @@ export function layoutGrid(nodes = [], opts = {}) {
 /**
  * Export mermaid flowchart for watch / docs.
  * Labels are always double-quoted so real titles with (), &, +, : parse on Mermaid 11+.
+ * Only edges whose endpoints exist as nodes are emitted (no silent parse failures).
  */
 export function graphToMermaid(graph) {
   const lines = ['flowchart TB'];
+  const ids = new Set();
   for (const n of graph.nodes || []) {
     const safeId = sanitizeId(n.id);
+    ids.add(safeId);
     const label = escapeLabel(n.label || n.id);
     const shape = shapeFor(n.type);
     lines.push(`  ${safeId}${shape.open}"${label}"${shape.close}`);
   }
   for (const e of graph.edges || []) {
+    const src = sanitizeId(e.source);
+    const tgt = sanitizeId(e.target);
+    if (!ids.has(src) || !ids.has(tgt)) continue;
     const kind = sanitizeEdgeLabel(e.kind || 'flow');
-    lines.push(`  ${sanitizeId(e.source)} -->|${kind}| ${sanitizeId(e.target)}`);
+    lines.push(`  ${src} -->|${kind}| ${tgt}`);
   }
   return lines.join('\n');
 }
 
 function sanitizeId(id) {
-  return String(id).replace(/[^a-zA-Z0-9_]/g, '_');
+  const s = String(id).replace(/[^a-zA-Z0-9_]/g, '_');
+  // Mermaid ids must not start with a digit
+  return /^\d/.test(s) ? `n_${s}` : s;
 }
 
 /** Mermaid node text inside "..." — strip chars that still break quoted labels. */
@@ -192,8 +212,10 @@ function escapeLabel(s) {
   return String(s)
     .replace(/[\r\n]+/g, ' ')
     .replace(/"/g, "'")
+    .replace(/&/g, 'and')
     .replace(/[<>]/g, '')
-    .slice(0, 60)
+    .replace(/[{}]/g, '')
+    .slice(0, 56)
     .trim();
 }
 
@@ -229,10 +251,13 @@ export function graphToWatchHtml(graph, mermaidSource, opts = {}) {
   const mermaid = mermaidSource || graphToMermaid(graph);
   const status = opts.status || graph.meta?.turnStatus || null;
   const actionPanel = renderActionPanel(status);
+  // Escape for HTML text nodes; browser decodes entities before Mermaid reads textContent.
+  const mermaidHtml = escapeHtml(mermaid);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Game of Peram — watch</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 1.5rem; background: #0b1020; color: #e8ecf4; }
@@ -258,6 +283,16 @@ export function graphToWatchHtml(graph, mermaidSource, opts = {}) {
     details.ir > summary::-webkit-details-marker { display: none; }
     details.ir[open] > summary { margin-bottom: 0.5rem; opacity: 0.9; }
     .ir-note { font-size: 0.8rem; opacity: 0.7; margin: 0 0 0.5rem; }
+    /* Mermaid host: div (not pre) avoids whitespace/font quirks */
+    .mermaid-wrap { overflow: auto; min-height: 12rem; }
+    .mermaid { background: #0a0e1a; border-radius: 10px; padding: 0.75rem; text-align: center; }
+    .mermaid svg { max-width: 100%; height: auto; }
+    #mermaid-error {
+      display: none; margin-top: 0.75rem; padding: 0.75rem 1rem;
+      background: #2a1520; border: 1px solid #6a3040; border-radius: 10px; color: #ffb4a2;
+      font-size: 0.88rem; white-space: pre-wrap;
+    }
+    #mermaid-error.show { display: block; }
   </style>
 </head>
 <body>
@@ -265,9 +300,14 @@ export function graphToWatchHtml(graph, mermaidSource, opts = {}) {
   <p class="meta">nodes: ${graph.meta?.nodeCount ?? 0} · edges: ${graph.meta?.edgeCount ?? 0} · snapshot: ${graph.meta?.snapshotStatus ?? 'n/a'}${graph.meta?.turnStatusAt ? ` · updated: ${escapeHtml(String(graph.meta.turnStatusAt))}` : ''}${graph.meta?.nextPhysicalId != null ? ` · next body: ${escapeHtml(String(graph.meta.nextPhysicalId || '—'))}` : ''}</p>
   ${actionPanel}
   <div class="panel">
-    <pre class="mermaid">
-${mermaid}
-    </pre>
+    <h2>Day map</h2>
+    <div class="mermaid-wrap">
+      <div class="mermaid" id="day-map">
+${mermaidHtml}
+      </div>
+    </div>
+    <div id="mermaid-error" role="alert"></div>
+    <p class="ir-note">If the diagram stays blank offline: open via a local server (not raw file://) so the Mermaid CDN can load — e.g. <code>npm run game</code> then <code>/public/watch/</code>, or re-run <code>npm run swarm:graph</code>.</p>
   </div>
   <details class="panel ir">
     <summary>Graph IR (debug · agents) — collapsed; not for day-to-day pickup</summary>
@@ -275,8 +315,31 @@ ${mermaid}
     <pre class="json">${escapeHtml(JSON.stringify(graph, null, 2))}</pre>
   </details>
   <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+    const errEl = document.getElementById('mermaid-error');
+    function showErr(msg) {
+      if (!errEl) return;
+      errEl.textContent = msg;
+      errEl.classList.add('show');
+    }
+    try {
+      // Explicit run: ESM loads after window "load", so startOnLoad alone never fires.
+      const mermaid = (await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs')).default;
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'dark',
+        securityLevel: 'strict',
+        flowchart: { htmlLabels: false, curve: 'basis' },
+      });
+      await mermaid.run({ querySelector: '#day-map.mermaid' });
+    } catch (e) {
+      showErr(
+        'Mermaid failed to render. ' +
+        (String(e && e.message || e)) +
+        '\\n\\nTip: serve over http (not file://) so jsDelivr ESM can load. ' +
+        'Try: npm run game  →  open /public/watch/index.html  or  python -m http.server 4174'
+      );
+      console.error('[watch mermaid]', e);
+    }
   </script>
 </body>
 </html>

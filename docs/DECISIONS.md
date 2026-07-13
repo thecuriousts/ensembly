@@ -91,3 +91,69 @@ Full law: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · Binding entry: [../AGENT
 **Verdict:** Digital clone is **free to copilot life-os portfolio projects**. Maintains **internal** ideas/schedule (`private/clone/`); **phase 1** = human oversees proposals, then clone **opens PRs**. Human remains merge authority, capacity veto, physical + HITL. Not unattended external mutate.
 
 Law: [CLONE-COPILOT.md](CLONE-COPILOT.md)
+
+## Activity / log storage foundation (2026-07-13)
+
+**Executive verdict:** One local writer, one durable source of truth. **SQLite file** under gitignored `data/local/` is the durable SoT for activities and logs; **in-memory** is the same port for tests and hot session; **refuse** multi-master sync and cloud/DB-as-vault.
+
+### Options considered
+
+| Option | Role for activities/logs | Day-0 verdict |
+|--------|--------------------------|---------------|
+| **SQLite** (local file, `node:sqlite`) | Durable audit stream, zero server, WAL, survives reopen | **Adopt as SoT** |
+| **In-memory** | Tests, ephemeral session buffer, same port API | **Adopt as adapter** |
+| **Postgres** | Multi-user server DB | **Refuse as SoT** — ops weight, always-on, overkill for one operator |
+| **MongoDB** | Document cloud/local server | **Refuse as SoT** — second runtime, sync temptation, privacy surface |
+| **Graph DB** (Neo4j etc.) | Relationship queries | **Refuse as SoT** — day/graph relationships stay **Graph IR JSON**; no second query engine |
+| **Redis / etc.** | Cache/queue | **Refuse as SoT** — ephemeral by design |
+| **Browser IndexedDB** | Client cache for game host | **Mirror-only later** — never authoritative for private vault |
+| **Multi-writer CRDT sync** | Multi-device conflict merge | **Refuse day-0** — latency + headache; scale later via **export/replica** of event stream, not dual live writers |
+
+### First principles
+
+- Privacy default-deny: durable private activity must live under **gitignored** local paths only.
+- Kernel stays pure: control plane talks to a **storage port** (`append` / `list` / `close`), not vendor clients.
+- Append-oriented IR compounds into surplus (audit → review → better steering) without blocking the main loop.
+- One SoT kills sync drama: hosts may **export redacted IR**; they do not own a second private authority.
+
+### Consequence chain
+
+| Order | Effect | P | Impact |
+|-------|--------|---|--------|
+| 1 | Activities/logs survive process restart | high | H |
+| 2 | Tests run without server DB credentials | high | H |
+| 3 | Accidental dual-write to cloud vault | low if refused | H (mitigated by refuse + gitignore) |
+| 3+ | Export/replica path for remote digests / desktop | med | H (2036 thrive) |
+
+### Inversion / pre-mortem
+
+- Fail: Mongo + SQLite dual SoT “for flexibility” → desync, privacy leaks → **refused**.
+- Fail: IndexedDB as operator truth in browser-only mode → unreadable from CLI/agents → **refused**.
+- Fail: Blocking the turn loop on DB errors → degrade with best-effort later; foundation keeps port narrow so callers can wrap.
+
+### Thrive ascent (2036)
+
+| Refuse | Build toward |
+|--------|----------------|
+| Multi-master activity vaults | Single local SQLite + versioned activity IR |
+| Graph DB for day map | Graph IR JSON + optional export |
+| Eve/cloud as vault | Redacted turn/activity digests only |
+| Schema thrash every host | Stable `activity_events` + schema_migrations |
+
+**Iron-peak:** versioned **activity/log IR** + port (`append`/`list`) + local SQLite file.  
+**Ship path:** `src/activity/*` · default file `data/local/activity.sqlite` · CLI `activity` / `log`.  
+**Near-term confidence:** 88%. **Thrive bet:** 80%.
+
+## Life progress dashboard (2026-07-13)
+
+**Verdict:** **Dashboard IR v1** (pure stats + rule-based insights + overview) projected to **static watch-family HTML** under `public/watch/dashboard.html`. Not a SPA, not the game center (world > chrome).
+
+| Adopt | Refuse |
+|-------|--------|
+| Pure `buildDashboard` + CLI `dashboard` | React/Vite dashboard product |
+| Insights with explicit `evidence` + steer | LLM pep-talk theater without data |
+| Activity SQLite + turn/snapshot as sources | Dual SoT / cloud vault analytics |
+| collab-finder **read-only later** | Writing collab-finder.db from ensembly |
+
+**Ship:** `src/dashboard.js` · `npm run swarm:dashboard` · `public/watch/dashboard.{html,json}`  
+**Near-term confidence:** 85%.
