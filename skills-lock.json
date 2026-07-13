@@ -1,11 +1,59 @@
 {
   "version": 1,
   "skills": {
+    "agent-orchestrator": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "agent-orchestrator/SKILL.md",
+      "computedHash": "5140c1567028097d28ea4c9cbc78dc5b1685138fb1a599d30b7f0b1ab81ca5bc"
+    },
+    "agentic-reactor": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "agentic-reactor/SKILL.md",
+      "computedHash": "7c5554b7bc48f2bd0e0e9faf7a089db5e6fdf77a8cb5011afc9badd230164ae6"
+    },
+    "ai-optimization": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "ai-optimization/SKILL.md",
+      "computedHash": "b42b5072cf96a638ae3c2398680805d7f6380a74b331dcd18a4e42eda6ebe545"
+    },
+    "audit-allow-builds": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "audit-allow-builds/SKILL.md",
+      "computedHash": "b59aaf96d0c76f7b7f0369ff3b10ac70e46b53d9d65551169d19383d27b813f9"
+    },
+    "audit-ide-dependencies": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "audit-ide-dependencies/SKILL.md",
+      "computedHash": "5e5b54a07bd997a00e1cfee3cf3c2cae57a8eeb6ed938e72a78ec50edcb03449"
+    },
+    "author-workflow-skill": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "author-workflow-skill/SKILL.md",
+      "computedHash": "151515a04f48ef9af8042fe43eadbd63c1a06599bfdfe99c0360767d6dfd6cba"
+    },
+    "bdd-strategizer": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "bdd-strategizer/SKILL.md",
+      "computedHash": "2f54479127075f62d0b46e0f47e3b5863ef04e4499a97f15fb1a4f66c171c39c"
+    },
     "bundle-splitting": {
       "source": "PatternsDev/skills",
       "sourceType": "github",
       "skillPath": "javascript/bundle-splitting/SKILL.md",
       "computedHash": "9de2cb11d3111881985881ad618b4e1e12c2ae44bc1447657a3ed91bfc0e07a9"
+    },
+    "chrome-extension-mv3": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "chrome-extension-mv3/SKILL.md",
+      "computedHash": "859ac47e2314d5772fb8f9c5605b1ecec0ce39fdfbaab4c02e8bde5415cd338f"
     },
     "command-pattern": {
       "source": "PatternsDev/skills",
@@ -19,11 +67,41 @@
       "skillPath": "javascript/compression/SKILL.md",
       "computedHash": "f0878e8f642dc2b938207c8597a346d3c64f6c6265ce7c9e0d1c58dd374bd958"
     },
+    "concurrent-cli-agents": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "concurrent-cli-agents/SKILL.md",
+      "computedHash": "813f741b951905f38ca27e2cc5e61890d94e1095bc55dd60befb897704c1662e"
+    },
+    "cursor-transcript-harvest": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "cursor-transcript-harvest/SKILL.md",
+      "computedHash": "818c7089288b7e13b208a389ed7b62dbf3d4f56cabbe52e77ca67406bc6aa7c6"
+    },
+    "cv-promote-guard": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "cv-promote-guard/SKILL.md",
+      "computedHash": "87829b9cc249efeca4c11e14a89e1ad613493e1ace247c089eea595cbb49ec2f"
+    },
+    "devcontainer-hardened": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "devcontainer-hardened/SKILL.md",
+      "computedHash": "1f5b07cde2fac2f75943c29ed363001543e74d6bc9bd5a06a98eda3deda1184c"
+    },
     "dynamic-import": {
       "source": "PatternsDev/skills",
       "sourceType": "github",
       "skillPath": "javascript/dynamic-import/SKILL.md",
       "computedHash": "687a3ac3a1e320f494f7900fd913617cdb5e5471cb5c0a922f8848dc84fd2ea4"
+    },
+    "explore-repo-readonly": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "explore-repo-readonly/SKILL.md",
+      "computedHash": "64a1c384eeda1222333ecea1c9802b30005e6af00c777d0eb0912a70b8c43531"
     },
     "factory-pattern": {
       "source": "PatternsDev/skills",
@@ -31,11 +109,47 @@
       "skillPath": "javascript/factory-pattern/SKILL.md",
       "computedHash": "1d5aca3fbb6df7c7d670df38ed6fb21e9c92bb1bc9af8cd2a435b5c68439b3b4"
     },
+    "finder-reactor": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "finder-reactor/SKILL.md",
+      "computedHash": "5db35b559280e6e50b4f0acd4501896679595f0f114056c68690a2f9caf1e077"
+    },
+    "fix-dependency-security": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "fix-dependency-security/SKILL.md",
+      "computedHash": "09f76e9867af91f885fad7b6410dff16817e1edfe79f9e537dc3146b34769abc"
+    },
     "flyweight-pattern": {
       "source": "PatternsDev/skills",
       "sourceType": "github",
       "skillPath": "javascript/flyweight-pattern/SKILL.md",
       "computedHash": "aab4726feca396064687586381b53852af84664ebbdc249563b3acd9c64033ac"
+    },
+    "fusion-sage": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "fusion-sage/SKILL.md",
+      "computedHash": "4647d31c7538c3db7fc7901202c15b2d51d2f9241ef9201756a46f431f3bd33b"
+    },
+    "git-worktrees": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "git-worktrees/SKILL.md",
+      "computedHash": "3707906de576c7760eee917ae18f701399d39f60e6f6a36dc994561d5629a23b"
+    },
+    "gt-flow": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "gt-flow/SKILL.md",
+      "computedHash": "10412d9c78f3879948a88710e74832e793e330aea122491af783baeb1f4cf8ae"
+    },
+    "higher-order-decision-architect": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "higher-order-decision-architect/SKILL.md",
+      "computedHash": "607da912136c63bcf86ed9154578ddb88561d487aea790a2cd789e7e915550bc"
     },
     "import-on-interaction": {
       "source": "PatternsDev/skills",
@@ -67,6 +181,12 @@
       "skillPath": "javascript/loading-sequence/SKILL.md",
       "computedHash": "04f4e79e735153403f2ca9122b1519eb2d3f0e2ca6833c6121755327de20f31c"
     },
+    "looper": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "looper/SKILL.md",
+      "computedHash": "58937329f21432ac0592b5cd2ae8e70c2fd811d04fd5da2bc811e4726b4612c6"
+    },
     "mediator-pattern": {
       "source": "PatternsDev/skills",
       "sourceType": "github",
@@ -85,11 +205,23 @@
       "skillPath": "javascript/module-pattern/SKILL.md",
       "computedHash": "bdbc7798d9780b77bdb65902bd875c8f21c0286fa9a829c8b4323599113665b0"
     },
+    "mvu-refactor-plan": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "mvu-refactor-plan/SKILL.md",
+      "computedHash": "4c77881a6a1567a6061676bb3b39a563d1ee57272bd2f9bf27e86a6721b44538"
+    },
     "observer-pattern": {
       "source": "PatternsDev/skills",
       "sourceType": "github",
       "skillPath": "javascript/observer-pattern/SKILL.md",
       "computedHash": "f29ee39ffb822dce4fbf6fc0bab27d80f0bee4ef39a232d53587ea7504f1cade"
+    },
+    "peram_senior_mlai_engineer": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "peram_senior_mlai_engineer/SKILL.md",
+      "computedHash": "34b2aface3bac1e80408df2794a851d0f976c40d03f5d8977d5966d0b860aa27"
     },
     "prefetch": {
       "source": "PatternsDev/skills",
@@ -102,6 +234,12 @@
       "sourceType": "github",
       "skillPath": "javascript/preload/SKILL.md",
       "computedHash": "1f93be338876dcc1daabdc1e6f041405024bc32ac415820e95c5744389135119"
+    },
+    "project-editor-profile": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "project-editor-profile/SKILL.md",
+      "computedHash": "4469963f488a9793632e933303926a8f4e47dc83ecd3be0b51661fb4032bce8f"
     },
     "prototype-pattern": {
       "source": "PatternsDev/skills",
@@ -127,11 +265,29 @@
       "skillPath": "javascript/prpl/SKILL.md",
       "computedHash": "585631a6da0b820632edb4ad1e34b0782c1da8ace74bbec429916e91582b77d0"
     },
+    "react-client-expert": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "react-client-expert/SKILL.md",
+      "computedHash": "930c1ab31b449272d91986e6b0ebffcf28599337832d46cee2b0c7bd507299c8"
+    },
     "route-based": {
       "source": "PatternsDev/skills",
       "sourceType": "github",
       "skillPath": "javascript/route-based/SKILL.md",
       "computedHash": "e3ae4fac1266e0695321f3ba0655ddf17f81d06c7e096856978c7c3da9f8a13f"
+    },
+    "semantic-markup-css": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "semantic-markup-css/SKILL.md",
+      "computedHash": "381142521abe3ecd13e4c52813b20cef47b5b81f3ce90a6add10312058997223"
+    },
+    "shell-kernel-ontology": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "shell-kernel-ontology/SKILL.md",
+      "computedHash": "8c22a2167a6786ef8550a19aa5900559c3aa4a7efc816be12c34025d226c0221"
     },
     "singleton-pattern": {
       "source": "PatternsDev/skills",
@@ -139,11 +295,59 @@
       "skillPath": "javascript/singleton-pattern/SKILL.md",
       "computedHash": "c1324d4fc1d4e6b81d64002f5173383d98a22d69c61a3d8a2300b41f7673687e"
     },
+    "split-to-prs": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "split-to-prs/SKILL.md",
+      "computedHash": "78c5c1c66837ae13906a5032090f9e157291f0d6f5fcee2dcb76c7caba256e42"
+    },
+    "src-tree-reorganize": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "src-tree-reorganize/SKILL.md",
+      "computedHash": "9589643bef5cd623590689eb24e9e759a5e220c547f338bb64efffa31c117f6d"
+    },
     "static-import": {
       "source": "PatternsDev/skills",
       "sourceType": "github",
       "skillPath": "javascript/static-import/SKILL.md",
       "computedHash": "f422c58299f5a34679cf81bf152f544b8039be83f47ba0f0616c75ab04397a43"
+    },
+    "stellar-roadmap": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "stellar-roadmap/SKILL.md",
+      "computedHash": "fe29e91514d05d550d21419cd8243151850a7c68c9aeafd4621fee8802b0cd3e"
+    },
+    "subagent-delegation": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "subagent-delegation/SKILL.md",
+      "computedHash": "88985f2f2e3e80687d9d51d41f07a4020002346d9de918ece6aa6d758e468ccc"
+    },
+    "subagent-explore-report": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "subagent-explore-report/SKILL.md",
+      "computedHash": "492180a1d1ec71c35e6b8e27a4ebf641b9c14d987914ddb3a79016f0de4ddaa3"
+    },
+    "supply-chain-harden": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "supply-chain-harden/SKILL.md",
+      "computedHash": "7e003409e5b62b59379a6f1fdc8a5b2484a3e0572224893be91a5ee078227168"
+    },
+    "tauri-agentic": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "tauri-agentic/SKILL.md",
+      "computedHash": "e8879786f1cc7bab7eb4f17e4187379b7781417f94cee4f5ccc67ee9e5056667"
+    },
+    "tauri-ipc-debug": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "tauri-ipc-debug/SKILL.md",
+      "computedHash": "2f2c5a2a72b9e41cef236e790442175313f69e817afebd649d2e77b59a13446a"
     },
     "third-party": {
       "source": "PatternsDev/skills",
@@ -156,6 +360,18 @@
       "sourceType": "github",
       "skillPath": "javascript/tree-shaking/SKILL.md",
       "computedHash": "9cd30e65551af52e163e1dca6d695c024cad320f66734333cd2fd979de3f0b35"
+    },
+    "upgrade-packages": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "upgrade-packages/SKILL.md",
+      "computedHash": "f7f4b60a41e159e3d9e7812a5ca61d05b5b9c936f454a67f08e6283f297f65cb"
+    },
+    "verification-cockpit": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "verification-cockpit/SKILL.md",
+      "computedHash": "04a1891859528600e6a8ccebdc4cd47227833f53152c7d9d73515dc453f3a626"
     },
     "view-transitions": {
       "source": "PatternsDev/skills",
@@ -174,6 +390,12 @@
       "sourceType": "github",
       "skillPath": "javascript/vite-bundle-optimization/SKILL.md",
       "computedHash": "f4b0e7663e6309e0d0709de03aaccd7e292942013513120a4cc7757c7d61bbeb"
+    },
+    "x-agent-resources": {
+      "source": "p10ns11y/skills",
+      "sourceType": "github",
+      "skillPath": "x-agent-resources/SKILL.md",
+      "computedHash": "df2486fee13ffeaffcea3bfad9764218a57c33b6ce3891320179265e4150a3f4"
     }
   }
 }
