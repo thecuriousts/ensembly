@@ -92,27 +92,29 @@ flowchart LR
 flowchart TB
   persona[Persona public or private]
   state[Local state JSON]
-  day[Day loop buildDayPlan]
+  dayLoop[Day loop buildDayPlan]
   realm[Realm physical vs digital]
   priv[Privacy classify]
   snap[Wait snapshot HITL]
   turn[Operator turn]
-  graph[Game graph IR]
-  watch[Watch mermaid or HTML]
-  persona --> day
-  state --> day
-  day --> realm
-  day --> priv
-  day --> snap
+  graphIR[Game graph IR]
+  watchUI[Watch mermaid or HTML]
+  playWorld[Game of Peram WASM world]
+  persona --> dayLoop
+  state --> dayLoop
+  dayLoop --> realm
+  dayLoop --> priv
+  dayLoop --> snap
   realm --> turn
   snap --> turn
-  day --> graph
-  snap --> graph
-  graph --> watch
-  turn -->|approve deny| snap
+  dayLoop --> graphIR
+  snap --> graphIR
+  graphIR --> watchUI
+  graphIR --> playWorld
+  turn -->|"approve / deny"| snap
 ```
 
-**Fused abstraction:** *Game of Peram control plane* = day plan + realm split + idle-snapshot approvals + exportable graph. Trace: `src/day.js`, `src/approvals.js`, `src/graph.js`.
+**Fused abstraction:** *Game of Peram control plane* = day plan + realm split + idle-snapshot approvals + exportable graph + playable world. Trace: `src/day.js`, `src/approvals.js`, `src/graph.js`, `src/game/`, `public/game/`.
 
 ---
 
@@ -300,7 +302,7 @@ flowchart TB
   sched[Eve schedules cron] --> tools[Tools wrap swarm]
   tools --> ch[Channels Slack web]
   ch --> human[Operator]
-  human -->|approve deny| appr[Eve tool approval]
+  human -->|"approve / deny"| appr[Eve tool approval]
   appr --> ir[approvals IR]
   tools --> kernel[day realm privacy pure]
   kernel -.->|never| vault[private persona vault]

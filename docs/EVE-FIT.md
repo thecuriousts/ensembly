@@ -39,7 +39,7 @@ flowchart TB
     priv[privacy default-deny]
     realm[physical vs digital]
     snap[approvals snapshot IR]
-    graph[game graph IR]
+    graphIR[game graph IR]
     wasm[peram-core world]
   end
   subgraph eveBridge["Eve bridge — optional host"]
@@ -58,7 +58,7 @@ flowchart TB
   tools --> ch
   ch --> auth
   realm --> body
-  graph --> wasm
+  graphIR --> wasm
 ```
 
 | Project concern | Today (ensembly) | Eve solves? | How |
