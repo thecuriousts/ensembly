@@ -98,6 +98,7 @@ A session is not done when code compiles. It is done when:
 | Doc | Role |
 |-----|------|
 | [docs/PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) | Why this exists; fun + impact + growth bar |
+| [docs/PLAYBOOK.md](docs/PLAYBOOK.md) | How to play, steer sessions, maximize productivity (laptop + remote) |
 | [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md) | life-os vault vs ensembly digital clone (pair model) |
 | [docs/CLONE-COPILOT.md](docs/CLONE-COPILOT.md) | Clone works portfolio projects; propose → PR; internal schedule |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Push boundary |

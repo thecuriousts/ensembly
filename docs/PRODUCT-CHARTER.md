@@ -113,10 +113,15 @@ Coding agents treat this charter + [AGENTS.md](../AGENTS.md) as law:
 
 ---
 
+## How to operate (play + remote)
+
+Operator dogfood guide — game controls, CLI turn/claim/complete, **$SPN**, productivity recipes, and remote/channel trajectory: **[PLAYBOOK.md](PLAYBOOK.md)**.
+
 ## References
 
 | Doc | Role |
 |-----|------|
+| [PLAYBOOK.md](PLAYBOOK.md) | Play, steer, produce (laptop + remote) |
 | [AGENTS.md](../AGENTS.md) | Session binding rules |
 | [PRIVACY.md](PRIVACY.md) | Data boundary |
 | [EVE-FIT.md](EVE-FIT.md) | What Eve owns |

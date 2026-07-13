@@ -27,34 +27,37 @@ Optional: `npm run build:wasm` after editing `crates/peram-core`.
 
 ---
 
-## How to play
+## How to play & steer (productivity)
 
-Default loadout: **clean courtyard**. No sticky side UI. Focus chip + faded key hint only.
+**Full operator guide (laptop + remote channels + CLI recipes):**  
+**[docs/PLAYBOOK.md](docs/PLAYBOOK.md)** — play Game of Peram, run turns, claim/complete, **$SPN**, remote/Eve trajectory.
+
+### Quick controls (game)
+
+Default: **clean courtyard**. Focus chip + **$SPN** ticker (top-right) + key hint.
 
 | Input | Move |
 |-------|------|
 | **Tab** / j k / arrows | Cycle focus (beacons) |
-| **Enter** / Space / **C** | **Claim** beacon → XP |
+| **Enter** / Space / **C** | **Claim** beacon → XP · **$SPN** up |
 | **A** / Y | **Approve** gate → XP |
-| **D** / N | **Deny** gate → XP |
-| **B** / Q | Toggle **growth board** |
-| **I** | Toggle **status bars** (level, XP, gates) |
-| **M** | Toggle **command menu** (type / voice) |
+| **D** / N | **Deny** gate → XP · **$SPN** down |
+| **B** / Q | Growth **board** |
+| **I** | Status **bars** (level, XP, **$SPN**) |
+| **M** | Command menu (type / voice) |
 | **?** / H | Codex (help) |
-| **Esc** | Clear all chrome |
-| **V** | Voice |
-| Gamepad | D-pad focus · face buttons approve/deny |
+| **Esc** | Clear chrome |
 
 ### Progression
 
 | Axis | What counts |
 |------|-------------|
-| **Body** | Physical pickups (errands, presence in the world) |
-| **Presence** | Family / health / schedule beacons |
-| **Craft** | Deep work & ship beacons |
+| **Body** | Physical pickups |
+| **Presence** | Family / health / schedule |
+| **Craft** | Deep work & ship |
 | **Gates** | HITL approve / deny |
 
-Claim → XP → streak combos → levels (**Ember → Horizon**). Coach steers you off pure digital grind. Engine: `src/game/growth.js`.
+Claim → XP → streak → levels (**Ember → Horizon**). Coach steers off pure digital grind. **$SPN** prices the session from real events (`src/game/spn.js`).
 
 ### Engine room
 
@@ -62,10 +65,10 @@ Claim → XP → streak combos → levels (**Ember → Horizon**). Coach steers 
 |-------|------|
 | Courtyard world | Env · sprites · props |
 | `peram-core` (Rust → WASM) | Layout & sim hot path |
-| Thin JS host | Input · chrome · voice |
+| Thin JS host | Input · chrome · voice · **$SPN** paint |
 | Session store | **Focus source of truth** (WASM only mirrors) |
 
-Deep dives: [GAME-STACK](docs/GAME-STACK.md) · [ENGINE](docs/ENGINE.md) · [WORLD-FOUNDATION](docs/WORLD-FOUNDATION.md)
+Deep dives: [PLAYBOOK](docs/PLAYBOOK.md) · [GAME-STACK](docs/GAME-STACK.md) · [ENGINE](docs/ENGINE.md) · [WORLD-FOUNDATION](docs/WORLD-FOUNDATION.md)
 
 ---
 
