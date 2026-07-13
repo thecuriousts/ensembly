@@ -6,6 +6,8 @@ Digital thrash is the trash mob. You keep the boss fights: **body-world pickups*
 
 Production life infrastructure — not a toy. Bar: [PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) · [AGENTS.md](AGENTS.md)
 
+**New here?** Start with **[docs/MAP.md](docs/MAP.md)** — live capabilities, CLI vs game vs watch, `src` / `public/game` / Rust WASM ownership, and what **IR** means in this repo.
+
 **life-os vs this repo:** `~/life-os` is the clustered Projects/Areas **vault** (portfolio memory). **ensembly** is the **digital clone** that removes digital friction so you pair for physical + HITL. See [LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md).
 
 **Copilot:** Free to work portfolio code projects — internal schedule in `private/clone/`, proposals for human oversee, then PRs. See [CLONE-COPILOT.md](docs/CLONE-COPILOT.md).
@@ -68,7 +70,7 @@ Claim → XP → streak → levels (**Ember → Horizon**). Coach steers off pur
 | Thin JS host | Input · chrome · voice · **$SPN** paint |
 | Session store | **Focus source of truth** (WASM only mirrors) |
 
-Deep dives: [PLAYBOOK](docs/PLAYBOOK.md) · [GAME-STACK](docs/GAME-STACK.md) · [ENGINE](docs/ENGINE.md) · [WORLD-FOUNDATION](docs/WORLD-FOUNDATION.md)
+Deep dives: [MAP](docs/MAP.md) · [PLAYBOOK](docs/PLAYBOOK.md) · [GAME-STACK](docs/GAME-STACK.md) · [ENGINE](docs/ENGINE.md) · [WORLD-FOUNDATION](docs/WORLD-FOUNDATION.md)
 
 ---
 
@@ -121,16 +123,17 @@ Also never push: `private/`, `data/`, secrets. Classifier: `src/privacy.js` (def
 
 ## Map of the repo
 
+Full orientation (capabilities · hosts · layers · IR): **[docs/MAP.md](docs/MAP.md)**
+
 ```text
 bin/swarm.js           day · turn · approve · deny · graph
-src/day.js             day campaign loop
-src/realm.js           physical vs digital
-src/approvals.js       durable gate waits
-src/game/              session · growth · input · world
-crates/peram-core/     shared Rust sim (WASM today, desktop later)
-public/game/           playable host + prebuilt pkg
-public/watch/          static map viewer
-docs/                  charter · engine · Eve · roadmap
+src/                   control plane (pure): day · turn · privacy · realm · graph IR
+src/game/              pure session kit: focus · growth · $SPN · input (SoT for focus)
+crates/peram-core/     shared Rust world/layout sim → WASM (mirrors focus; not control plane)
+public/game/           thin browser host shell + paint
+public/game/pkg/       checked-in wasm-pack build of peram-core (not hand-written logic)
+public/watch/          static consumer of graph / turn-status export
+docs/                  charter · MAP · engine · Eve · roadmap
 legacy/                old webpack app (not the game)
 ```
 

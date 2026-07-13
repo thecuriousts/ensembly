@@ -97,6 +97,7 @@ A session is not done when code compiles. It is done when:
 
 | Doc | Role |
 |-----|------|
+| [docs/MAP.md](docs/MAP.md) | **Orientation:** live capabilities, CLI/game/watch hosts, layer ownership (`src` vs `public/game` vs Rust WASM), what **IR** means |
 | [docs/PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) | Why this exists; fun + impact + growth bar |
 | [docs/PLAYBOOK.md](docs/PLAYBOOK.md) | How to play, steer sessions, maximize productivity (laptop + remote) |
 | [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md) | life-os vault vs ensembly digital clone (pair model) |
@@ -104,6 +105,8 @@ A session is not done when code compiles. It is done when:
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Push boundary |
 | [docs/EVE-FIT.md](docs/EVE-FIT.md) | Cloud bridge adopt/adapt/refuse |
 | [docs/SWARM-DESIGN.md](docs/SWARM-DESIGN.md) | Day loop iron-peak |
+| [docs/ENGINE.md](docs/ENGINE.md) | Shared Rust engine (WASM now · desktop later) |
+| [docs/GAME-STACK.md](docs/GAME-STACK.md) | Race-car stack decision (WASM + paint shell) |
 | [docs/arch-design/coming-next.md](docs/arch-design/coming-next.md) | Roadmap SN cards |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Material architecture decisions |
 

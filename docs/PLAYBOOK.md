@@ -5,7 +5,7 @@
 **Last updated:** 2026-07-13  
 
 This is how you **use** ensembly to maximize real-day productivity — not how the modules are named.  
-Companion law: [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · [EVE-FIT.md](EVE-FIT.md) · [CLONE-COPILOT.md](CLONE-COPILOT.md)
+Companion law: [MAP.md](MAP.md) (capabilities · hosts · layers · IR) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · [EVE-FIT.md](EVE-FIT.md) · [CLONE-COPILOT.md](CLONE-COPILOT.md)
 
 ---
 
