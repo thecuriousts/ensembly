@@ -93,17 +93,18 @@ node bin/swarm.js turn --fixture fixtures/state-sample.json --json --no-write
 Foundation critique (visualize → act): [docs/FOUNDATION-CRITIQUE.md](docs/FOUNDATION-CRITIQUE.md).
 ---
 
-## Multiplayer later · Eve bridge
+## Remote · channels (not only the laptop)
 
-Remote ops (chat digests, gate buttons, cron wake-ups) map to **[Vercel Eve](https://vercel.com/eve)** as a production bridge — not a kernel rewrite.
+Same kernel decisions, different host:
 
-| Fits Eve | Stays local |
-|----------|-------------|
-| Channels (Slack / web) | Day · privacy · realm pure logic |
-| Remote approve / deny | Full persona vault |
-| Schedules / digests | Game of Peram WASM world |
+| Need | Today | Trajectory |
+|------|-------|------------|
+| Next act away from desk | `turn --json` over SSH · watch HTML | Channel digest (Slack/web) |
+| Approve / deny on phone | CLI on any shell | Eve tool-approval buttons |
+| Morning nudge | Manual / local cron + CLI | Eve schedules → redacted turn |
 
-Full map: [EVE-FIT.md](docs/EVE-FIT.md) · Roadmap: [coming-next.md](docs/arch-design/coming-next.md)
+**Adopt** Eve for channels + remote HITL + cron; **refuse** vault/persona on cloud.  
+Playbook §5: [PLAYBOOK.md](docs/PLAYBOOK.md#5-remote--channels-not-just-the-laptop) · fit map: [EVE-FIT.md](docs/EVE-FIT.md) · roadmap: [coming-next.md](docs/arch-design/coming-next.md)
 
 ---
 
