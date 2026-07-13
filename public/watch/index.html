@@ -6,68 +6,100 @@
   <style>
     body { font-family: system-ui, sans-serif; margin: 1.5rem; background: #0b1020; color: #e8ecf4; }
     h1 { font-size: 1.25rem; }
+    h2 { font-size: 1.05rem; margin: 0 0 0.75rem; }
     .meta { opacity: 0.8; font-size: 0.9rem; }
     .panel { background: #141a2e; border-radius: 12px; padding: 1rem; margin-top: 1rem; }
-    pre.json { overflow: auto; max-height: 240px; font-size: 0.75rem; }
+    .next { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .card { background: #0f1528; border: 1px solid #2a3555; border-radius: 10px; padding: 0.85rem 1rem; }
+    .card h3 { margin: 0 0 0.4rem; font-size: 0.95rem; color: #9ecbff; }
+    .card.auth h3 { color: #ffb4a2; }
+    .card p { margin: 0.25rem 0; font-size: 0.9rem; }
+    .card code, .card pre { font-size: 0.78rem; }
+    .card pre { background: #080c18; padding: 0.6rem 0.75rem; border-radius: 8px; overflow: auto; margin: 0.5rem 0 0; }
+    pre.json { overflow: auto; max-height: 320px; font-size: 0.75rem; }
+    .empty { opacity: 0.65; font-style: italic; }
+    details.ir { margin-top: 1rem; }
+    details.ir > summary {
+      cursor: pointer; list-style: none; opacity: 0.75; font-size: 0.85rem;
+      padding: 0.5rem 0;
+    }
+    details.ir > summary:hover { opacity: 1; }
+    details.ir > summary::-webkit-details-marker { display: none; }
+    details.ir[open] > summary { margin-bottom: 0.5rem; opacity: 0.9; }
+    .ir-note { font-size: 0.8rem; opacity: 0.7; margin: 0 0 0.5rem; }
   </style>
 </head>
 <body>
   <h1>Game of Peram — live watch</h1>
-  <p class="meta">nodes: 32 · edges: 37 · snapshot: idle_waiting</p>
+  <p class="meta">nodes: 32 · edges: 37 · snapshot: idle_waiting · updated: 2026-07-13T04:49:54.774Z · next body: evening-outdoor</p>
+  <div class="panel"><h2>Next action</h2><div class="next"><div class="card">
+        <h3>Body — next physical</h3>
+        <p><strong>Evening outdoor family walk (cooler window)</strong></p>
+        <p>id: <code>evening-outdoor</code> · Relationships · open</p>
+        
+        <pre>node bin/swarm.js claim evening-outdoor
+node bin/swarm.js complete evening-outdoor</pre>
+      </div><div class="card auth">
+        <h3>Auth — next authorization</h3>
+        <p><strong>Prepare high-signal FT application packet (public CV path)</strong></p>
+        <p>id: <code>auth-apply-high-signal</code> · job_application_submit</p>
+        <pre>node bin/swarm.js approve auth-apply-high-signal
+node bin/swarm.js deny auth-apply-high-signal</pre>
+      </div></div></div>
   <div class="panel">
     <pre class="mermaid">
 flowchart TB
-  phase_ORIENT([ORIENT])
-  phase_PLAN([PLAN])
-  phase_HITL_WAIT([HITL_WAIT])
-  game_peram((Game of Peram 2026-07-12))
-  project_family_presence[Protected family presence blocks]
-  project_healthy_self_energy[Healthy Self Energy foundation]
-  project_apply_high_signal[Prepare high-signal FT application packet (public CV path)]
-  project_runway_private[Runway & admin (local only)]
-  project_ensembly_swarm[ensembly life swarm control plane]
-  project_collab_finder[collab-finder dual-fit opportunities]
-  project_ship_swarm_docs[Ship ensembly swarm README + privacy contract (OSS)]
-  project_skills_looper[skills library + looper global]
-  action_apply_high_signal[Prepare high-signal FT application packet (public CV path)]
-  hitl_apply_high_signal{{HITL: Prepare high-signal FT application packet (public CV p}}
-  action_family_presence[[Protected family presence blocks]]
-  action_healthy_self_energy[[Healthy Self Energy foundation]]
-  action_runway_private[Runway & admin (local only)]
-  action_ensembly_swarm[ensembly life swarm control plane]
-  action_collab_finder[collab-finder dual-fit opportunities]
-  action_ship_swarm_docs[Ship ensembly swarm README + privacy contract (OSS)]
-  auth_auth_apply_high_signal{{pending: Prepare high-signal FT application packet (public C}}
-  slot_0600_0630[(06:00-06:30 Wake)]
-  slot_0630_0730[(06:30-07:30 Morning outdoor family + light)]
-  slot_0730_0800[(07:30-08:00 Breakfast)]
-  slot_0800_1000[(08:00-10:00 Family support time)]
-  slot_1000_1300[(10:00-13:00 Deep focus block 1)]
-  slot_1300_1400[(13:00-14:00 Lunch)]
-  slot_1400_1500[(14:00-15:00 Lighter movement + nap + play)]
-  slot_1700_1800[(17:00-18:00 Evening outdoor family)]
-  slot_1815_1900[(18:15-19:00 Second focused session)]
-  slot_1900_2200[(19:00-22:00 Dinner + family wind-down)]
-  slot_2200_0600[(22:00-06:00 Sleep)]
+  phase_ORIENT(["ORIENT"])
+  phase_PLAN(["PLAN"])
+  phase_HITL_WAIT(["HITL_WAIT"])
+  game_peram(("Game of Peram 2026-07-13"))
+  project_family_presence["Protected family presence blocks"]
+  project_evening_outdoor["Evening outdoor family walk (cooler window)"]
+  project_grocery_errand["Grocery errand — turmeric veg fish for family meals"]
+  project_healthy_self_energy["Healthy Self Energy foundation"]
+  project_apply_high_signal["Prepare high-signal FT application packet (public CV path)"]
+  project_runway_private["Runway & admin (local only)"]
+  project_ensembly_swarm["ensembly life swarm control plane"]
+  project_collab_finder["collab-finder dual-fit opportunities"]
+  action_apply_high_signal["Prepare high-signal FT application packet (public CV path)"]
+  hitl_apply_high_signal{{"HITL: Prepare high-signal FT application packet (public CV p"}}
+  action_family_presence[["Protected family presence blocks"]]
+  action_evening_outdoor[["Evening outdoor family walk (cooler window)"]]
+  action_healthy_self_energy[["Healthy Self Energy foundation"]]
+  action_runway_private["Runway & admin (local only)"]
+  action_ensembly_swarm["ensembly life swarm control plane"]
+  action_collab_finder["collab-finder dual-fit opportunities"]
+  auth_auth_apply_high_signal{{"pending: Prepare high-signal FT application packet (public C"}}
+  slot_0600_0630[("06:00-06:30 Wake")]
+  slot_0630_0730[("06:30-07:30 Morning outdoor family + light")]
+  slot_0730_0800[("07:30-08:00 Breakfast")]
+  slot_0800_1000[("08:00-10:00 Family support time")]
+  slot_1000_1300[("10:00-13:00 Deep focus block 1")]
+  slot_1300_1400[("13:00-14:00 Lunch")]
+  slot_1400_1500[("14:00-15:00 Lighter movement + nap + play")]
+  slot_1700_1800[("17:00-18:00 Evening outdoor family")]
+  slot_1815_1900[("18:15-19:00 Second focused session")]
+  slot_1900_2200[("19:00-22:00 Dinner + family wind-down")]
+  slot_2200_0600[("22:00-06:00 Sleep")]
   phase_ORIENT -->|phase_transition| phase_PLAN
   phase_PLAN -->|phase_transition| phase_HITL_WAIT
   game_peram -->|contains| phase_HITL_WAIT
   game_peram -->|project| project_family_presence
+  game_peram -->|project| project_evening_outdoor
+  game_peram -->|project| project_grocery_errand
   game_peram -->|project| project_healthy_self_energy
   game_peram -->|project| project_apply_high_signal
   game_peram -->|project| project_runway_private
   game_peram -->|project| project_ensembly_swarm
   game_peram -->|project| project_collab_finder
-  game_peram -->|project| project_ship_swarm_docs
-  game_peram -->|project| project_skills_looper
   game_peram -->|digital_action| action_apply_high_signal
   action_apply_high_signal -->|requires_auth| hitl_apply_high_signal
   game_peram -->|physical_pickup| action_family_presence
+  game_peram -->|physical_pickup| action_evening_outdoor
   game_peram -->|physical_pickup| action_healthy_self_energy
   game_peram -->|digital_action| action_runway_private
   game_peram -->|digital_action| action_ensembly_swarm
   game_peram -->|digital_action| action_collab_finder
-  game_peram -->|digital_action| action_ship_swarm_docs
   action_apply_high_signal -->|authorization| auth_auth_apply_high_signal
   game_peram -->|schedule| slot_0600_0630
   game_peram -->|schedule| slot_0630_0730
@@ -88,16 +120,20 @@ flowchart TB
   slot_2200_0600 -->|assigned| action_rhythm_sleep
     </pre>
   </div>
-  <div class="panel">
-    <h2>Graph IR</h2>
+  <details class="panel ir">
+    <summary>Graph IR (debug · agents) — collapsed; not for day-to-day pickup</summary>
+    <p class="ir-note">Machine nodes/edges that <em>feed</em> the diagram and game. Humans use <strong>Next action</strong> + Mermaid above. Full file: <code>public/watch/graph.json</code></p>
     <pre class="json">{
   "version": 1,
-  "date": "2026-07-12",
+  "date": "2026-07-13",
   "meta": {
     "nodeCount": 32,
     "edgeCount": 37,
     "snapshotStatus": "idle_waiting",
-    "generator": "ensembly/src/graph.js"
+    "generator": "ensembly/src/graph.js",
+    "turnStatusAt": "2026-07-13T04:49:54.774Z",
+    "nextPhysicalId": "evening-outdoor",
+    "nextAuthId": "auth-apply-high-signal"
   },
   "nodes": [
     {
@@ -133,7 +169,7 @@ flowchart TB
     {
       "id": "game-peram",
       "type": "game",
-      "label": "Game of Peram 2026-07-12",
+      "label": "Game of Peram 2026-07-13",
       "kind": "root",
       "position": {
         "x": 660,
@@ -153,6 +189,30 @@ flowchart TB
       }
     },
     {
+      "id": "project-evening-outdoor",
+      "type": "project",
+      "label": "Evening outdoor family walk (cooler window)",
+      "area": "Relationships",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 220,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-grocery-errand",
+      "type": "project",
+      "label": "Grocery errand — turmeric veg fish for family meals",
+      "area": "Relationships",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 440,
+        "y": 80
+      }
+    },
+    {
       "id": "project-healthy-self-energy",
       "type": "project",
       "label": "Healthy Self Energy foundation",
@@ -160,7 +220,7 @@ flowchart TB
       "visibility": "private",
       "kind": "project",
       "position": {
-        "x": 220,
+        "x": 660,
         "y": 80
       }
     },
@@ -172,8 +232,8 @@ flowchart TB
       "visibility": "public",
       "kind": "project",
       "position": {
-        "x": 440,
-        "y": 80
+        "x": 0,
+        "y": 160
       }
     },
     {
@@ -184,8 +244,8 @@ flowchart TB
       "visibility": "private",
       "kind": "project",
       "position": {
-        "x": 660,
-        "y": 80
+        "x": 220,
+        "y": 160
       }
     },
     {
@@ -196,7 +256,7 @@ flowchart TB
       "visibility": "public",
       "kind": "project",
       "position": {
-        "x": 0,
+        "x": 440,
         "y": 160
       }
     },
@@ -205,30 +265,6 @@ flowchart TB
       "type": "project",
       "label": "collab-finder dual-fit opportunities",
       "area": "Career",
-      "visibility": "public",
-      "kind": "project",
-      "position": {
-        "x": 220,
-        "y": 160
-      }
-    },
-    {
-      "id": "project-ship-swarm-docs",
-      "type": "project",
-      "label": "Ship ensembly swarm README + privacy contract (OSS)",
-      "area": "Systems",
-      "visibility": "public",
-      "kind": "project",
-      "position": {
-        "x": 440,
-        "y": 160
-      }
-    },
-    {
-      "id": "project-skills-looper",
-      "type": "project",
-      "label": "skills library + looper global",
-      "area": "Systems",
       "visibility": "public",
       "kind": "project",
       "position": {
@@ -273,6 +309,19 @@ flowchart TB
       }
     },
     {
+      "id": "action-evening-outdoor",
+      "type": "physical",
+      "label": "Evening outdoor family walk (cooler window)",
+      "area": "Relationships",
+      "realm": "physical",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 660,
+        "y": 240
+      }
+    },
+    {
       "id": "action-healthy-self-energy",
       "type": "physical",
       "label": "Healthy Self Energy foundation",
@@ -281,8 +330,8 @@ flowchart TB
       "hitl": false,
       "kind": "action",
       "position": {
-        "x": 660,
-        "y": 240
+        "x": 0,
+        "y": 320
       }
     },
     {
@@ -294,7 +343,7 @@ flowchart TB
       "hitl": false,
       "kind": "action",
       "position": {
-        "x": 0,
+        "x": 220,
         "y": 320
       }
     },
@@ -307,7 +356,7 @@ flowchart TB
       "hitl": false,
       "kind": "action",
       "position": {
-        "x": 220,
+        "x": 440,
         "y": 320
       }
     },
@@ -316,19 +365,6 @@ flowchart TB
       "type": "action",
       "label": "collab-finder dual-fit opportunities",
       "area": "Career",
-      "realm": "digital",
-      "hitl": false,
-      "kind": "action",
-      "position": {
-        "x": 440,
-        "y": 320
-      }
-    },
-    {
-      "id": "action-ship-swarm-docs",
-      "type": "action",
-      "label": "Ship ensembly swarm README + privacy contract (OSS)",
-      "area": "Systems",
       "realm": "digital",
       "hitl": false,
       "kind": "action",
@@ -496,6 +532,18 @@ flowchart TB
       "kind": "project"
     },
     {
+      "id": "e-game-peram-project-evening-outdoor-project",
+      "source": "game-peram",
+      "target": "project-evening-outdoor",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-grocery-errand-project",
+      "source": "game-peram",
+      "target": "project-grocery-errand",
+      "kind": "project"
+    },
+    {
       "id": "e-game-peram-project-healthy-self-energy-project",
       "source": "game-peram",
       "target": "project-healthy-self-energy",
@@ -526,18 +574,6 @@ flowchart TB
       "kind": "project"
     },
     {
-      "id": "e-game-peram-project-ship-swarm-docs-project",
-      "source": "game-peram",
-      "target": "project-ship-swarm-docs",
-      "kind": "project"
-    },
-    {
-      "id": "e-game-peram-project-skills-looper-project",
-      "source": "game-peram",
-      "target": "project-skills-looper",
-      "kind": "project"
-    },
-    {
       "id": "e-game-peram-action-apply-high-signal-digital_action",
       "source": "game-peram",
       "target": "action-apply-high-signal",
@@ -553,6 +589,12 @@ flowchart TB
       "id": "e-game-peram-action-family-presence-physical_pickup",
       "source": "game-peram",
       "target": "action-family-presence",
+      "kind": "physical_pickup"
+    },
+    {
+      "id": "e-game-peram-action-evening-outdoor-physical_pickup",
+      "source": "game-peram",
+      "target": "action-evening-outdoor",
       "kind": "physical_pickup"
     },
     {
@@ -577,12 +619,6 @@ flowchart TB
       "id": "e-game-peram-action-collab-finder-digital_action",
       "source": "game-peram",
       "target": "action-collab-finder",
-      "kind": "digital_action"
-    },
-    {
-      "id": "e-game-peram-action-ship-swarm-docs-digital_action",
-      "source": "game-peram",
-      "target": "action-ship-swarm-docs",
       "kind": "digital_action"
     },
     {
@@ -695,7 +731,7 @@ flowchart TB
     }
   ]
 }</pre>
-  </div>
+  </details>
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
     mermaid.initialize({ startOnLoad: true, theme: 'dark' });

@@ -75,3 +75,13 @@ Binding: [AGENTS.md](../AGENTS.md) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md)
 | Joke UX, fake polish, throwaway stubs | Fun Game of Peram that tells the truth |
 | “MVP then rewrite” | Day-0 production paths + tests + privacy |
 | Feature tourism | Impact on real days and capacity |
+
+## Operator actionability (2026-07-13)
+
+**Verdict:** Kernel IR was solid; **last-mile act** (one next physical, one next auth, machine status, body claim/complete, watch panel) was the gap. Critique + shipped fixes: [FOUNDATION-CRITIQUE.md](FOUNDATION-CRITIQUE.md).
+
+## life-os vs ensembly boundary (2026-07-13)
+
+**Verdict:** **`~/life-os`** is the **clustered Projects/Areas vault** (started-and-organized portfolio memory). **ensembly** is the **digital clone / continuous friction swarm** (data, hooks/connectors trajectory, human as intermittent **pair** for physical + HITL). **Refuse** merging vault into product git; **refuse** treating life-os as runtime clone. Continuous connectors = ensembly trajectory, not vault duty. Experiment/archive satellites freely.
+
+Full law: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · Binding entry: [../AGENTS.md](../AGENTS.md)

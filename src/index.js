@@ -12,12 +12,25 @@ export { classifyRealm, physicalPickups, digitalActions, enrichWithRealm } from 
 export {
   emptySnapshot,
   upsertPendingFromActions,
+  upsertPhysicalFromActions,
   applyDecision,
+  applyPhysicalDecision,
   listPending,
+  listActivePhysical,
   serializeSnapshot,
   parseSnapshot,
 } from './approvals.js';
-export { buildTurnSurface, formatTurnMarkdown, runOperatorTurn, runApprovalDecision, runGraphExport } from './turn.js';
+export {
+  buildTurnSurface,
+  buildTurnStatus,
+  formatTurnMarkdown,
+  selectNextPhysical,
+  selectNextAuth,
+  runOperatorTurn,
+  runApprovalDecision,
+  runPhysicalDecision,
+  runGraphExport,
+} from './turn.js';
 export { buildGameGraph, graphToMermaid, graphToWatchHtml, layoutGrid } from './graph.js';
 export {
   SOVEREIGNTY_STEPS,

@@ -12,6 +12,8 @@ Remove **digital friction** so scarce human energy goes to **physical presence**
 
 This is **serious life infrastructure**. Not a joke. Not a hobby demo. Production-grade from day 0.
 
+**Not the vault:** Portfolio memory of projects started and clustered lives in **`~/life-os`**. ensembly is the **digital clone** that works the digital layer continuously (or frequently) so you **pair** when you can — body work + HITL, not full-time digital thrash. Boundary: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md).
+
 ---
 
 ## Success (how we know it worked)
@@ -71,6 +73,8 @@ If a feature cannot connect to a row above, it is entertainment debt or architec
 - Shipping private persona  
 - Rewriting the kernel into a prompt-only Eve agent  
 - Legacy webpack SPA as the product  
+- Absorbing `~/life-os` vault content into this git tree (vault remains portfolio of record)  
+- Making the Obsidian vault the connector/daemon host (hooks/connectors are ensembly trajectory)
 
 ---
 

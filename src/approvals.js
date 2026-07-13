@@ -1,9 +1,11 @@
 /**
  * Durable HITL wait snapshot — idle-resume pattern (Stately/Eve inspired).
+ * Also holds physical claim/complete so body work closes like auth.
  * Pure state transitions; IO lives in turn.js / CLI.
  */
 
 /** @typedef {'pending' | 'approved' | 'denied'} ApprovalStatus */
+/** @typedef {'open' | 'claimed' | 'completed'} PhysicalStatus */
 /** @typedef {'idle_waiting' | 'clear' | 'partial'} SnapshotStatus */
 
 /**
@@ -15,6 +17,7 @@ export function emptySnapshot(opts = {}) {
     status: 'clear',
     phase: 'IDLE',
     pending: [],
+    physical: [],
     history: [],
     updatedAt: opts.now || new Date().toISOString(),
     meta: { source: opts.source || 'ensembly' },
@@ -131,6 +134,115 @@ export function listPending(snapshot) {
 }
 
 /**
+ * Upsert physical rows from realm-physical actions (do not reopen completed).
+ * @param {Array<object>} actions
+ * @param {object|null} existing
+ */
+export function upsertPhysicalFromActions(actions = [], existing = null, opts = {}) {
+  const snap = existing ? structuredClone(existing) : emptySnapshot(opts);
+  if (!Array.isArray(snap.physical)) snap.physical = [];
+  const now = opts.now || new Date().toISOString();
+  const byId = new Map(snap.physical.map((p) => [p.id, p]));
+
+  for (const action of actions) {
+    const realm = action.realm || action.realmInfo?.realm;
+    if (realm !== 'physical') continue;
+    const id = action.id || action.title;
+    if (!id) continue;
+    const prev = byId.get(id);
+    if (prev && prev.status === 'completed') {
+      // Keep closed; do not re-open automatically
+      continue;
+    }
+    byId.set(id, {
+      id,
+      title: action.title || id,
+      area: action.area || null,
+      status: prev?.status || 'open',
+      createdAt: prev?.createdAt || now,
+      updatedAt: now,
+    });
+  }
+
+  snap.physical = [...byId.values()];
+  snap.updatedAt = now;
+  return snap;
+}
+
+/**
+ * Apply claim | complete | release on a physical action id.
+ * @param {object} snapshot
+ * @param {string} actionId
+ * @param {'claim' | 'complete' | 'release'} decision
+ */
+export function applyPhysicalDecision(snapshot, actionId, decision, opts = {}) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    throw new Error('snapshot required');
+  }
+  if (!['claim', 'complete', 'release'].includes(decision)) {
+    throw new Error('decision must be claim, complete, or release');
+  }
+  const now = opts.now || new Date().toISOString();
+  const next = structuredClone(snapshot);
+  if (!Array.isArray(next.physical)) next.physical = [];
+
+  let item = next.physical.find((p) => p.id === actionId);
+  if (!item) {
+    // Allow claim/complete of an id not yet upserted (operator names the act)
+    item = {
+      id: actionId,
+      title: opts.title || actionId,
+      area: opts.area || null,
+      status: 'open',
+      createdAt: now,
+      updatedAt: now,
+    };
+    next.physical.push(item);
+  }
+
+  if (decision === 'claim') {
+    if (item.status === 'completed') {
+      throw new Error(`physical already completed: ${item.id}`);
+    }
+    item.status = 'claimed';
+  } else if (decision === 'complete') {
+    item.status = 'completed';
+  } else {
+    // release → open again (unless we want complete sticky — release only from claimed)
+    if (item.status === 'completed') {
+      throw new Error(`cannot release completed physical: ${item.id}`);
+    }
+    item.status = 'open';
+  }
+  item.updatedAt = now;
+  item.actor = opts.actor || 'operator';
+  next.history = [
+    ...(next.history || []),
+    { id: item.id, decision: `physical_${decision}`, at: now, actor: item.actor },
+  ];
+  next.updatedAt = now;
+  return next;
+}
+
+/**
+ * Physical rows that are still open or claimed (not completed).
+ */
+export function listActivePhysical(snapshot) {
+  return (snapshot?.physical || []).filter((p) => p.status === 'open' || p.status === 'claimed');
+}
+
+/**
+ * Map of physical id → status from snapshot.
+ */
+export function physicalStatusMap(snapshot) {
+  const map = new Map();
+  for (const p of snapshot?.physical || []) {
+    map.set(p.id, p.status);
+  }
+  return map;
+}
+
+/**
  * JSON-serializable check (round-trip).
  */
 export function serializeSnapshot(snapshot) {
@@ -142,5 +254,7 @@ export function parseSnapshot(json) {
   if (!obj || obj.version !== 1) {
     throw new Error('unsupported snapshot version');
   }
+  // Backward compatible: older snapshots lack physical[]
+  if (!Array.isArray(obj.physical)) obj.physical = [];
   return obj;
 }

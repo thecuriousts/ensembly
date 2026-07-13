@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildGameGraph, graphToMermaid, layoutGrid } from '../src/graph.js';
+import { buildGameGraph, graphToMermaid, graphToWatchHtml, layoutGrid } from '../src/graph.js';
 
 describe('graph (shipped game IR)', () => {
   it('buildGameGraph creates phase, action, physical, hitl nodes and edges', () => {
@@ -64,10 +64,109 @@ describe('graph (shipped game IR)', () => {
     assert.match(md, /phase_ORIENT|ORIENT/);
   });
 
+  it('graphToMermaid quotes labels so parentheses and & parse on Mermaid 11', () => {
+    const graph = buildGameGraph({
+      trail: [{ phase: 'HITL_WAIT' }],
+      projects: [{ id: 'runway', title: 'Runway & admin (local only)' }],
+      actions: [
+        {
+          id: 'apply',
+          title: 'Prepare high-signal FT application packet (public CV path)',
+          realm: 'digital',
+          classification: { hitl: true },
+        },
+      ],
+      schedule: [
+        {
+          start: '06:00',
+          end: '06:30',
+          label: 'Wake',
+          assigned: { id: 'apply', title: 'Apply' },
+        },
+      ],
+      snapshot: {
+        status: 'idle_waiting',
+        pending: [
+          {
+            id: 'auth-apply',
+            actionId: 'apply',
+            title: 'Prepare high-signal FT application packet (public CV path)',
+            status: 'pending',
+          },
+        ],
+      },
+    });
+    const md = graphToMermaid(graph);
+    // Always double-quoted labels (Mermaid 11 breaks on unquoted parens)
+    assert.match(md, /project_runway\["Runway & admin \(local only\)"\]/);
+    assert.match(md, /action_apply\["Prepare high-signal FT application packet \(public CV path\)"\]/);
+    assert.match(md, /hitl_apply\{\{"HITL: Prepare high-signal/);
+    assert.match(md, /slot_0600_0630\[\("06:00-06:30 Wake"\)\]/);
+    // Every node line must quote its label: shapeOpen "label" shapeClose
+    for (const line of md.split('\n')) {
+      if (!line.trim() || line.startsWith('flowchart') || line.includes('-->')) continue;
+      assert.match(
+        line,
+        /^\s+\w+(?:\(|\[|\{)+".*"(?:\)|\]|\})+\s*$/,
+        `expected quoted mermaid label: ${line}`,
+      );
+    }
+  });
+
   it('layoutGrid assigns unique-ish positions', () => {
     const pos = layoutGrid([{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
     assert.ok(pos.a);
     assert.ok(pos.b);
     assert.notEqual(pos.a.x + pos.a.y, undefined);
+  });
+
+  it('graphToWatchHtml includes next-action panel and quoted mermaid labels', () => {
+    const graph = buildGameGraph({
+      trail: [{ phase: 'HITL_WAIT' }],
+      actions: [
+        {
+          id: 'apply',
+          title: 'Prepare packet (public CV path)',
+          realm: 'digital',
+          classification: { hitl: true },
+        },
+        { id: 'grocery', title: 'Grocery & produce', realm: 'physical' },
+      ],
+    });
+    const mermaid = graphToMermaid(graph);
+    const status = {
+      next: {
+        physical: {
+          id: 'grocery',
+          title: 'Grocery & produce',
+          area: 'Relationships',
+          claimStatus: 'open',
+          commands: {
+            claim: 'node bin/swarm.js claim grocery',
+            complete: 'node bin/swarm.js complete grocery',
+          },
+        },
+        authorization: {
+          id: 'auth-apply',
+          title: 'Prepare packet (public CV path)',
+          kind: 'hitl',
+          commands: {
+            approve: 'node bin/swarm.js approve auth-apply',
+            deny: 'node bin/swarm.js deny auth-apply',
+          },
+        },
+      },
+    };
+    const html = graphToWatchHtml(graph, mermaid, { status });
+    assert.match(html, /Next action/);
+    assert.match(html, /Body — next physical/);
+    assert.match(html, /Auth — next authorization/);
+    assert.match(html, /swarm\.js claim grocery/);
+    assert.match(html, /swarm\.js approve auth-apply/);
+    assert.match(mermaid, /\["Prepare packet \(public CV path\)"\]|\{\{"HITL:/);
+    assert.doesNotMatch(mermaid, /\[Prepare packet \(public/);
+    // Graph IR is debug substrate — collapsed, not a second full-page dump
+    assert.match(html, /<details[\s\S]*Graph IR/);
+    assert.doesNotMatch(html, /<div class="panel">\s*<h2>Graph IR<\/h2>/);
   });
 });

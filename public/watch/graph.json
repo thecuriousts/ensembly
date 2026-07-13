@@ -1,11 +1,14 @@
 {
   "version": 1,
-  "date": "2026-07-12",
+  "date": "2026-07-13",
   "meta": {
     "nodeCount": 32,
     "edgeCount": 37,
     "snapshotStatus": "idle_waiting",
-    "generator": "ensembly/src/graph.js"
+    "generator": "ensembly/src/graph.js",
+    "turnStatusAt": "2026-07-13T04:49:54.774Z",
+    "nextPhysicalId": "evening-outdoor",
+    "nextAuthId": "auth-apply-high-signal"
   },
   "nodes": [
     {
@@ -41,7 +44,7 @@
     {
       "id": "game-peram",
       "type": "game",
-      "label": "Game of Peram 2026-07-12",
+      "label": "Game of Peram 2026-07-13",
       "kind": "root",
       "position": {
         "x": 660,
@@ -61,6 +64,30 @@
       }
     },
     {
+      "id": "project-evening-outdoor",
+      "type": "project",
+      "label": "Evening outdoor family walk (cooler window)",
+      "area": "Relationships",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 220,
+        "y": 80
+      }
+    },
+    {
+      "id": "project-grocery-errand",
+      "type": "project",
+      "label": "Grocery errand — turmeric veg fish for family meals",
+      "area": "Relationships",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 440,
+        "y": 80
+      }
+    },
+    {
       "id": "project-healthy-self-energy",
       "type": "project",
       "label": "Healthy Self Energy foundation",
@@ -68,7 +95,7 @@
       "visibility": "private",
       "kind": "project",
       "position": {
-        "x": 220,
+        "x": 660,
         "y": 80
       }
     },
@@ -80,8 +107,8 @@
       "visibility": "public",
       "kind": "project",
       "position": {
-        "x": 440,
-        "y": 80
+        "x": 0,
+        "y": 160
       }
     },
     {
@@ -92,8 +119,8 @@
       "visibility": "private",
       "kind": "project",
       "position": {
-        "x": 660,
-        "y": 80
+        "x": 220,
+        "y": 160
       }
     },
     {
@@ -104,7 +131,7 @@
       "visibility": "public",
       "kind": "project",
       "position": {
-        "x": 0,
+        "x": 440,
         "y": 160
       }
     },
@@ -113,30 +140,6 @@
       "type": "project",
       "label": "collab-finder dual-fit opportunities",
       "area": "Career",
-      "visibility": "public",
-      "kind": "project",
-      "position": {
-        "x": 220,
-        "y": 160
-      }
-    },
-    {
-      "id": "project-ship-swarm-docs",
-      "type": "project",
-      "label": "Ship ensembly swarm README + privacy contract (OSS)",
-      "area": "Systems",
-      "visibility": "public",
-      "kind": "project",
-      "position": {
-        "x": 440,
-        "y": 160
-      }
-    },
-    {
-      "id": "project-skills-looper",
-      "type": "project",
-      "label": "skills library + looper global",
-      "area": "Systems",
       "visibility": "public",
       "kind": "project",
       "position": {
@@ -181,6 +184,19 @@
       }
     },
     {
+      "id": "action-evening-outdoor",
+      "type": "physical",
+      "label": "Evening outdoor family walk (cooler window)",
+      "area": "Relationships",
+      "realm": "physical",
+      "hitl": false,
+      "kind": "action",
+      "position": {
+        "x": 660,
+        "y": 240
+      }
+    },
+    {
       "id": "action-healthy-self-energy",
       "type": "physical",
       "label": "Healthy Self Energy foundation",
@@ -189,8 +205,8 @@
       "hitl": false,
       "kind": "action",
       "position": {
-        "x": 660,
-        "y": 240
+        "x": 0,
+        "y": 320
       }
     },
     {
@@ -202,7 +218,7 @@
       "hitl": false,
       "kind": "action",
       "position": {
-        "x": 0,
+        "x": 220,
         "y": 320
       }
     },
@@ -215,7 +231,7 @@
       "hitl": false,
       "kind": "action",
       "position": {
-        "x": 220,
+        "x": 440,
         "y": 320
       }
     },
@@ -224,19 +240,6 @@
       "type": "action",
       "label": "collab-finder dual-fit opportunities",
       "area": "Career",
-      "realm": "digital",
-      "hitl": false,
-      "kind": "action",
-      "position": {
-        "x": 440,
-        "y": 320
-      }
-    },
-    {
-      "id": "action-ship-swarm-docs",
-      "type": "action",
-      "label": "Ship ensembly swarm README + privacy contract (OSS)",
-      "area": "Systems",
       "realm": "digital",
       "hitl": false,
       "kind": "action",
@@ -404,6 +407,18 @@
       "kind": "project"
     },
     {
+      "id": "e-game-peram-project-evening-outdoor-project",
+      "source": "game-peram",
+      "target": "project-evening-outdoor",
+      "kind": "project"
+    },
+    {
+      "id": "e-game-peram-project-grocery-errand-project",
+      "source": "game-peram",
+      "target": "project-grocery-errand",
+      "kind": "project"
+    },
+    {
       "id": "e-game-peram-project-healthy-self-energy-project",
       "source": "game-peram",
       "target": "project-healthy-self-energy",
@@ -434,18 +449,6 @@
       "kind": "project"
     },
     {
-      "id": "e-game-peram-project-ship-swarm-docs-project",
-      "source": "game-peram",
-      "target": "project-ship-swarm-docs",
-      "kind": "project"
-    },
-    {
-      "id": "e-game-peram-project-skills-looper-project",
-      "source": "game-peram",
-      "target": "project-skills-looper",
-      "kind": "project"
-    },
-    {
       "id": "e-game-peram-action-apply-high-signal-digital_action",
       "source": "game-peram",
       "target": "action-apply-high-signal",
@@ -461,6 +464,12 @@
       "id": "e-game-peram-action-family-presence-physical_pickup",
       "source": "game-peram",
       "target": "action-family-presence",
+      "kind": "physical_pickup"
+    },
+    {
+      "id": "e-game-peram-action-evening-outdoor-physical_pickup",
+      "source": "game-peram",
+      "target": "action-evening-outdoor",
       "kind": "physical_pickup"
     },
     {
@@ -485,12 +494,6 @@
       "id": "e-game-peram-action-collab-finder-digital_action",
       "source": "game-peram",
       "target": "action-collab-finder",
-      "kind": "digital_action"
-    },
-    {
-      "id": "e-game-peram-action-ship-swarm-docs-digital_action",
-      "source": "game-peram",
-      "target": "action-ship-swarm-docs",
       "kind": "digital_action"
     },
     {

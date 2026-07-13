@@ -8,6 +8,15 @@ Read this before any non-trivial change. These are **product law**, not suggesti
 
 **ensembly** is production-grade life infrastructure for one operator (and, later, people who share the same bar). It is **not** a demo, weekend toy, portfolio piece, or “MVP to throw away.”
 
+### life-os vs this repo (do not confuse)
+
+| | **`~/life-os`** | **ensembly (this repo)** |
+|--|-----------------|---------------------------|
+| Role | Clustered **Projects/Areas vault** — wiki of what was started and organized over time | **Digital clone / continuous life swarm** — data-aware friction removal; human joins as **pair** for physical + HITL |
+| Not | Always-on connector runtime | Obsidian portfolio of record |
+
+Binding detail: [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md). **Refuse** merging the vault into this git tree or treating life-os notes as the turn/approvals kernel.
+
 It must be:
 
 | Pillar | Meaning |
@@ -87,6 +96,7 @@ A session is not done when code compiles. It is done when:
 | Doc | Role |
 |-----|------|
 | [docs/PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) | Why this exists; fun + impact + growth bar |
+| [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md) | life-os vault vs ensembly digital clone (pair model) |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Push boundary |
 | [docs/EVE-FIT.md](docs/EVE-FIT.md) | Cloud bridge adopt/adapt/refuse |
 | [docs/SWARM-DESIGN.md](docs/SWARM-DESIGN.md) | Day loop iron-peak |

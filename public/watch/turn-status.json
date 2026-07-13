@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "date": "2026-07-13",
+  "snapshotStatus": "idle_waiting",
+  "phase": "HITL_WAIT",
+  "next": {
+    "physical": {
+      "id": "evening-outdoor",
+      "title": "Evening outdoor family walk (cooler window)",
+      "area": "Relationships",
+      "claimStatus": "open",
+      "scheduleWindow": null,
+      "reason": "priority",
+      "commands": {
+        "claim": "node bin/swarm.js claim evening-outdoor",
+        "complete": "node bin/swarm.js complete evening-outdoor"
+      }
+    },
+    "authorization": {
+      "id": "auth-apply-high-signal",
+      "title": "Prepare high-signal FT application packet (public CV path)",
+      "kind": "job_application_submit",
+      "actionId": "apply-high-signal",
+      "commands": {
+        "approve": "node bin/swarm.js approve auth-apply-high-signal",
+        "deny": "node bin/swarm.js deny auth-apply-high-signal"
+      }
+    }
+  },
+  "physical": [
+    {
+      "id": "evening-outdoor",
+      "title": "Evening outdoor family walk (cooler window)",
+      "area": "Relationships",
+      "claimStatus": "open"
+    },
+    {
+      "id": "healthy-self-energy",
+      "title": "Healthy Self Energy foundation",
+      "area": "Health",
+      "claimStatus": "open"
+    }
+  ],
+  "pending": [
+    {
+      "id": "auth-apply-high-signal",
+      "title": "Prepare high-signal FT application packet (public CV path)",
+      "kind": "job_application_submit",
+      "actionId": "apply-high-signal",
+      "status": "pending"
+    }
+  ],
+  "counts": {
+    "physical": 2,
+    "pending": 1
+  }
+}

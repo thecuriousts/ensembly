@@ -166,6 +166,7 @@ export function layoutGrid(nodes = [], opts = {}) {
 
 /**
  * Export mermaid flowchart for watch / docs.
+ * Labels are always double-quoted so real titles with (), &, +, : parse on Mermaid 11+.
  */
 export function graphToMermaid(graph) {
   const lines = ['flowchart TB'];
@@ -173,10 +174,11 @@ export function graphToMermaid(graph) {
     const safeId = sanitizeId(n.id);
     const label = escapeLabel(n.label || n.id);
     const shape = shapeFor(n.type);
-    lines.push(`  ${safeId}${shape.open}${label}${shape.close}`);
+    lines.push(`  ${safeId}${shape.open}"${label}"${shape.close}`);
   }
   for (const e of graph.edges || []) {
-    lines.push(`  ${sanitizeId(e.source)} -->|${e.kind || 'flow'}| ${sanitizeId(e.target)}`);
+    const kind = sanitizeEdgeLabel(e.kind || 'flow');
+    lines.push(`  ${sanitizeId(e.source)} -->|${kind}| ${sanitizeId(e.target)}`);
   }
   return lines.join('\n');
 }
@@ -185,8 +187,19 @@ function sanitizeId(id) {
   return String(id).replace(/[^a-zA-Z0-9_]/g, '_');
 }
 
+/** Mermaid node text inside "..." — strip chars that still break quoted labels. */
 function escapeLabel(s) {
-  return String(s).replace(/"/g, "'").slice(0, 60);
+  return String(s)
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/"/g, "'")
+    .replace(/[<>]/g, '')
+    .slice(0, 60)
+    .trim();
+}
+
+/** Edge mid-labels: keep identifiers only (no | or newlines). */
+function sanitizeEdgeLabel(kind) {
+  return String(kind).replace(/[^a-zA-Z0-9_ -]/g, '_').slice(0, 40) || 'flow';
 }
 
 function shapeFor(type) {
@@ -207,10 +220,15 @@ function shapeFor(type) {
 }
 
 /**
- * Minimal HTML watch page embedding mermaid (CDN) for local viewing.
+ * Minimal HTML watch page: next-action panel + mermaid (CDN) + graph IR.
+ * @param {object} graph
+ * @param {string} [mermaidSource]
+ * @param {{ status?: object|null }} [opts] turn status IR (next physical / next auth)
  */
-export function graphToWatchHtml(graph, mermaidSource) {
+export function graphToWatchHtml(graph, mermaidSource, opts = {}) {
   const mermaid = mermaidSource || graphToMermaid(graph);
+  const status = opts.status || graph.meta?.turnStatus || null;
+  const actionPanel = renderActionPanel(status);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -219,23 +237,43 @@ export function graphToWatchHtml(graph, mermaidSource) {
   <style>
     body { font-family: system-ui, sans-serif; margin: 1.5rem; background: #0b1020; color: #e8ecf4; }
     h1 { font-size: 1.25rem; }
+    h2 { font-size: 1.05rem; margin: 0 0 0.75rem; }
     .meta { opacity: 0.8; font-size: 0.9rem; }
     .panel { background: #141a2e; border-radius: 12px; padding: 1rem; margin-top: 1rem; }
-    pre.json { overflow: auto; max-height: 240px; font-size: 0.75rem; }
+    .next { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+    .card { background: #0f1528; border: 1px solid #2a3555; border-radius: 10px; padding: 0.85rem 1rem; }
+    .card h3 { margin: 0 0 0.4rem; font-size: 0.95rem; color: #9ecbff; }
+    .card.auth h3 { color: #ffb4a2; }
+    .card p { margin: 0.25rem 0; font-size: 0.9rem; }
+    .card code, .card pre { font-size: 0.78rem; }
+    .card pre { background: #080c18; padding: 0.6rem 0.75rem; border-radius: 8px; overflow: auto; margin: 0.5rem 0 0; }
+    pre.json { overflow: auto; max-height: 320px; font-size: 0.75rem; }
+    .empty { opacity: 0.65; font-style: italic; }
+    details.ir { margin-top: 1rem; }
+    details.ir > summary {
+      cursor: pointer; list-style: none; opacity: 0.75; font-size: 0.85rem;
+      padding: 0.5rem 0;
+    }
+    details.ir > summary:hover { opacity: 1; }
+    details.ir > summary::-webkit-details-marker { display: none; }
+    details.ir[open] > summary { margin-bottom: 0.5rem; opacity: 0.9; }
+    .ir-note { font-size: 0.8rem; opacity: 0.7; margin: 0 0 0.5rem; }
   </style>
 </head>
 <body>
   <h1>Game of Peram — live watch</h1>
-  <p class="meta">nodes: ${graph.meta?.nodeCount ?? 0} · edges: ${graph.meta?.edgeCount ?? 0} · snapshot: ${graph.meta?.snapshotStatus ?? 'n/a'}</p>
+  <p class="meta">nodes: ${graph.meta?.nodeCount ?? 0} · edges: ${graph.meta?.edgeCount ?? 0} · snapshot: ${graph.meta?.snapshotStatus ?? 'n/a'}${graph.meta?.turnStatusAt ? ` · updated: ${escapeHtml(String(graph.meta.turnStatusAt))}` : ''}${graph.meta?.nextPhysicalId != null ? ` · next body: ${escapeHtml(String(graph.meta.nextPhysicalId || '—'))}` : ''}</p>
+  ${actionPanel}
   <div class="panel">
     <pre class="mermaid">
 ${mermaid}
     </pre>
   </div>
-  <div class="panel">
-    <h2>Graph IR</h2>
+  <details class="panel ir">
+    <summary>Graph IR (debug · agents) — collapsed; not for day-to-day pickup</summary>
+    <p class="ir-note">Machine nodes/edges that <em>feed</em> the diagram and game. Humans use <strong>Next action</strong> + Mermaid above. Full file: <code>public/watch/graph.json</code></p>
     <pre class="json">${escapeHtml(JSON.stringify(graph, null, 2))}</pre>
-  </div>
+  </details>
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
     mermaid.initialize({ startOnLoad: true, theme: 'dark' });
@@ -243,6 +281,36 @@ ${mermaid}
 </body>
 </html>
 `;
+}
+
+function renderActionPanel(status) {
+  if (!status || !status.next) {
+    return `<div class="panel"><h2>Next action</h2><p class="empty">No turn status attached — run <code>npm run swarm:graph</code> after turn, or <code>node bin/swarm.js graph --html</code>.</p></div>`;
+  }
+  const phys = status.next.physical;
+  const auth = status.next.authorization;
+  const physCard = phys
+    ? `<div class="card">
+        <h3>Body — next physical</h3>
+        <p><strong>${escapeHtml(phys.title)}</strong></p>
+        <p>id: <code>${escapeHtml(phys.id)}</code> · ${escapeHtml(phys.area || '—')} · ${escapeHtml(phys.claimStatus || 'open')}</p>
+        ${
+          phys.scheduleWindow
+            ? `<p>window: ${escapeHtml(phys.scheduleWindow.start)}–${escapeHtml(phys.scheduleWindow.end)}${phys.scheduleWindow.label ? ` · ${escapeHtml(phys.scheduleWindow.label)}` : ''}</p>`
+            : ''
+        }
+        <pre>${escapeHtml((phys.commands && phys.commands.claim) || '')}\n${escapeHtml((phys.commands && phys.commands.complete) || '')}</pre>
+      </div>`
+    : `<div class="card"><h3>Body — next physical</h3><p class="empty">Queue clear</p></div>`;
+  const authCard = auth
+    ? `<div class="card auth">
+        <h3>Auth — next authorization</h3>
+        <p><strong>${escapeHtml(auth.title)}</strong></p>
+        <p>id: <code>${escapeHtml(auth.id)}</code> · ${escapeHtml(auth.kind || 'hitl')}</p>
+        <pre>${escapeHtml((auth.commands && auth.commands.approve) || '')}\n${escapeHtml((auth.commands && auth.commands.deny) || '')}</pre>
+      </div>`
+    : `<div class="card auth"><h3>Auth — next authorization</h3><p class="empty">No pending HITL</p></div>`;
+  return `<div class="panel"><h2>Next action</h2><div class="next">${physCard}${authCard}</div></div>`;
 }
 
 function escapeHtml(s) {

@@ -6,6 +6,8 @@ Digital thrash is the trash mob. You keep the boss fights: **body-world pickups*
 
 Production life infrastructure — not a toy. Bar: [PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) · [AGENTS.md](AGENTS.md)
 
+**life-os vs this repo:** `~/life-os` is the clustered Projects/Areas **vault** (portfolio memory). **ensembly** is the **digital clone** that removes digital friction so you pair for physical + HITL. See [LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md).
+
 ---
 
 ## Drop in
@@ -69,16 +71,21 @@ Deep dives: [GAME-STACK](docs/GAME-STACK.md) · [ENGINE](docs/ENGINE.md) · [WOR
 
 | Mode | Command | You get |
 |------|---------|---------|
-| **Turn** | `npm run swarm:turn` | Physical quest list + open gates |
+| **Turn** | `npm run swarm:turn` | **Next** body act + **next** auth gate, full queues |
+| **Status IR** | `node bin/swarm.js turn --json` | Machine-readable `next` / queues (agents) |
 | **Day** | `npm run swarm:day` | Plan: projects · actions · schedule · balance · privacy |
-| **Map** | `npm run swarm:graph` | Graph IR → mermaid / `public/watch/` |
+| **Map** | `npm run swarm:graph` | Watch: next-action panel + mermaid / `public/watch/` |
 | **Gate** | `node bin/swarm.js approve <id>` | Clear a wait snapshot |
 | | `node bin/swarm.js deny <id>` | |
+| **Body** | `node bin/swarm.js claim <id>` | Claim physical pickup |
+| | `node bin/swarm.js complete <id>` | Complete physical (leave open queue) |
 
 ```bash
 node bin/swarm.js turn --fixture fixtures/state-sample.json --stdout
+node bin/swarm.js turn --fixture fixtures/state-sample.json --json --no-write
 ```
 
+Foundation critique (visualize → act): [docs/FOUNDATION-CRITIQUE.md](docs/FOUNDATION-CRITIQUE.md).
 ---
 
 ## Multiplayer later · Eve bridge
