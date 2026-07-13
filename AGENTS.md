@@ -17,6 +17,8 @@ Read this before any non-trivial change. These are **product law**, not suggesti
 
 Binding detail: [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md). **Refuse** merging the vault into this git tree or treating life-os notes as the turn/approvals kernel.
 
+**Clone as copilot (phase 1):** Free to work across **life-os portfolio code projects** as copilot — keep ideas/schedules in `private/clone/`, surface **proposals** for human oversee, then **open PRs** when allowed. Human pairs for physical + HITL and merge. Law: [docs/CLONE-COPILOT.md](docs/CLONE-COPILOT.md).
+
 It must be:
 
 | Pillar | Meaning |
@@ -97,6 +99,7 @@ A session is not done when code compiles. It is done when:
 |-----|------|
 | [docs/PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) | Why this exists; fun + impact + growth bar |
 | [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md) | life-os vault vs ensembly digital clone (pair model) |
+| [docs/CLONE-COPILOT.md](docs/CLONE-COPILOT.md) | Clone works portfolio projects; propose → PR; internal schedule |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Push boundary |
 | [docs/EVE-FIT.md](docs/EVE-FIT.md) | Cloud bridge adopt/adapt/refuse |
 | [docs/SWARM-DESIGN.md](docs/SWARM-DESIGN.md) | Day loop iron-peak |

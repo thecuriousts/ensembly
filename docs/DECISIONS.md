@@ -85,3 +85,9 @@ Binding: [AGENTS.md](../AGENTS.md) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md)
 **Verdict:** **`~/life-os`** is the **clustered Projects/Areas vault** (started-and-organized portfolio memory). **ensembly** is the **digital clone / continuous friction swarm** (data, hooks/connectors trajectory, human as intermittent **pair** for physical + HITL). **Refuse** merging vault into product git; **refuse** treating life-os as runtime clone. Continuous connectors = ensembly trajectory, not vault duty. Experiment/archive satellites freely.
 
 Full law: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · Binding entry: [../AGENTS.md](../AGENTS.md)
+
+## Clone as copilot (2026-07-13)
+
+**Verdict:** Digital clone is **free to copilot life-os portfolio projects**. Maintains **internal** ideas/schedule (`private/clone/`); **phase 1** = human oversees proposals, then clone **opens PRs**. Human remains merge authority, capacity veto, physical + HITL. Not unattended external mutate.
+
+Law: [CLONE-COPILOT.md](CLONE-COPILOT.md)

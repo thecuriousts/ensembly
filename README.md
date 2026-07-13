@@ -8,6 +8,8 @@ Production life infrastructure — not a toy. Bar: [PRODUCT-CHARTER.md](docs/PRO
 
 **life-os vs this repo:** `~/life-os` is the clustered Projects/Areas **vault** (portfolio memory). **ensembly** is the **digital clone** that removes digital friction so you pair for physical + HITL. See [LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md).
 
+**Copilot:** Free to work portfolio code projects — internal schedule in `private/clone/`, proposals for human oversee, then PRs. See [CLONE-COPILOT.md](docs/CLONE-COPILOT.md).
+
 ---
 
 ## Drop in

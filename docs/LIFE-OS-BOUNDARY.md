@@ -16,6 +16,8 @@
 
 **Pair model:** The clone does digital work in the virtual layer that applies to the digital world; the human pairs in for body-world acts and authorizations. Experiment with new satellite projects freely; **archive** them when they stop earning capacity.
 
+**Copilot model (phase 1 — supervised):** The clone is **free to work on life-os portfolio projects as a copilot**. It maintains **ideas and schedules internally** (`private/clone/`), surfaces **proposals** for human oversight, then **opens PRs** when permitted. Human remains merge authority and capacity veto. Full law: [CLONE-COPILOT.md](CLONE-COPILOT.md).
+
 **Privacy:** “Digital clone of me” means **local kernel + redacted bridges**, never “upload the full persona/vault to the cloud.” Default-deny remains binding ([PRIVACY.md](PRIVACY.md)).
 
 ---
@@ -50,6 +52,8 @@ Continuous connectors and frequent event hooks are **ensembly trajectory**, not 
 | One mega-repo “Life OS runtime” thrash | Clean boundary; satellites link by path and project cards |
 | Continuous daemons *as vault plugins* without a product kernel | Hooks/connectors as ensembly host/bridge layer calling pure kernel |
 | Archiving life-os projects by agent whim | Archive only with operator intent / explicit list |
+| Silent force-push / merge to main without oversee | Propose → human OK → **open PR** (phase 1) |
+| Clone with no internal plan (pure reactive thrash) | Internal ideas/schedule ledger + ranked proposals |
 
 ---
 
@@ -81,6 +85,8 @@ Continuous connectors and frequent event hooks are **ensembly trajectory**, not 
 |------|----------------|
 | Update project `next_action`, energy, portfolio MOC, area notes | **life-os** |
 | Operator turn, next physical / next auth, claim/complete, day plan, privacy classify, graph watch, game focus | **ensembly** |
+| Copilot implement on a portfolio code repo (proposal → PR) | **That repo** + life-os card/session update; law in [CLONE-COPILOT.md](CLONE-COPILOT.md) |
+| Clone’s own ideas / working schedule | **ensembly** `private/clone/` (local only) |
 | New experiment repo | New or existing satellite; **register** card in life-os; do **not** dump into ensembly kernel |
 | Continuous hooks, calendar/email *connectors* (read-mostly → HITL mutate) | **ensembly trajectory** (not implemented by this doc) |
 | Archive a failed/stale experiment | life-os Archives + repo archive; leave ensembly kernel clean |

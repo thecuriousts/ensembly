@@ -14,6 +14,8 @@ This is **serious life infrastructure**. Not a joke. Not a hobby demo. Productio
 
 **Not the vault:** Portfolio memory of projects started and clustered lives in **`~/life-os`**. ensembly is the **digital clone** that works the digital layer continuously (or frequently) so you **pair** when you can — body work + HITL, not full-time digital thrash. Boundary: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md).
 
+**Copilot:** The clone may implement across portfolio code projects under human **proposal oversight** and **PR** flow (phase 1). See [CLONE-COPILOT.md](CLONE-COPILOT.md).
+
 ---
 
 ## Success (how we know it worked)
