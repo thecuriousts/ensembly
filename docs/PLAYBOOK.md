@@ -5,7 +5,7 @@
 **Last updated:** 2026-07-13  
 
 This is how you **use** ensembly to maximize real-day productivity — not how the modules are named.  
-Companion law: [MAP.md](MAP.md) (capabilities · hosts · layers · IR) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · [EVE-FIT.md](EVE-FIT.md) · [CLONE-COPILOT.md](CLONE-COPILOT.md)
+Companion law: [MAP.md](MAP.md) (capabilities · hosts · layers · IR) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · [PREMFLOW-FIT.md](PREMFLOW-FIT.md) (notes/tasks/pomo vs turn) · [EVE-FIT.md](EVE-FIT.md) · [CLONE-COPILOT.md](CLONE-COPILOT.md)
 
 ---
 
@@ -31,6 +31,7 @@ Companion law: [MAP.md](MAP.md) (capabilities · hosts · layers · IR) · [PROD
 | **Status IR (JSON)** | Agents / scripts / future phone bots | `node bin/swarm.js turn --json` |
 | **Watch map** | See next act + diagram without game loop | `npm run swarm:graph` → open `public/watch/index.html` |
 | **Life dashboard** | Stats, insights, overview of progress | `npm run swarm:dashboard` → open `public/watch/dashboard.html` |
+| **Shared notes/tasks/pomo** | One inbox with premflow + vault (`~/.premflow`) | `node bin/swarm.js flow …` · `npm run flow:link` · [PREMFLOW-FIT.md](PREMFLOW-FIT.md) |
 | **Day plan** | Morning structure: projects, schedule, balance | `npm run swarm:day` |
 | **Remote channels** (Eve trajectory) | Slack/web/phone: digest + approve/deny away from desk | See [§5 Remote](#5-remote--channels-not-just-the-laptop) · [EVE-FIT.md](EVE-FIT.md) |
 

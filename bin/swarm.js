@@ -2,7 +2,7 @@
 /**
  * ensembly swarm CLI — Game of Peram control plane
  *
- *   node bin/swarm.js day|turn|approve|deny|claim|complete|graph|activity|log|dashboard [options]
+ *   node bin/swarm.js day|turn|…|dashboard|flow|activity|log [options]
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,6 +18,13 @@ import {
 import { graphToWatchHtml } from '../src/graph.js';
 import { openActivityStore } from '../src/activity/index.js';
 import { runDashboard } from '../src/dashboard.js';
+import {
+  runPremflow,
+  sharedCaptureStatus,
+  ensureLifeOsCaptureLink,
+  readSharedCaptureSnapshot,
+  projectCaptureForShare,
+} from '../src/premflow/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -73,6 +80,9 @@ function parseArgs(argv) {
       args.message = args.positional.slice(1).join(' ');
     }
   }
+  if (['flow', 'pf', 'premflow'].includes(args.cmd)) {
+    args.flowArgs = args.positional.slice();
+  }
   return args;
 }
 
@@ -89,7 +99,8 @@ Commands:
   release <id>        Release a claimed physical back to open
   graph               Export serializable game graph (+ mermaid / HTML watch)
   dashboard           Life progress: stats, insights, overview → public/watch/dashboard.*
-  activity list|append   Durable activity stream (SQLite under data/local/)
+  flow|pf …           Shared micro-capture via premflow (notes/tasks/pomo/review) — one SoT ~/.premflow
+  activity list|append   Durable swarm activity audit (SQLite under data/local/) — not the note inbox
   log list|append        Convenience for log.* kinds (same store)
 
 Options:
@@ -120,7 +131,85 @@ Examples:
   node bin/swarm.js activity list --json --limit 20
   node bin/swarm.js dashboard --json
   npm run swarm:dashboard
+  node bin/swarm.js flow path          # shared capture root + life-os link
+  node bin/swarm.js flow link          # symlink life-os Projects/premflow/capture → ~/.premflow
+  node bin/swarm.js flow task list     # wrapper → premflow (same files)
+  node bin/swarm.js flow note "idea"
+  node bin/swarm.js flow review
 `);
+}
+
+function runFlowCmd(args) {
+  const flowArgs = args.flowArgs || [];
+  const head = flowArgs[0] || '';
+
+  if (head === 'path' || head === 'status') {
+    // --json defaults to share-safe projection (no raw private lines) for agents/logs
+    const st = sharedCaptureStatus({ shareSafe: Boolean(args.json) });
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(st, null, 2)}\n`);
+    } else {
+      console.log(`shared capture SoT (premflow data): ${st.sharedRoot}`);
+      console.log(`life-os capture link: ${st.lifeOsCaptureLink} (${st.lifeOsLinkHealthy ? 'OK → same tree' : 'MISSING/broken — run: node bin/swarm.js flow link'})`);
+      console.log(`premflow bin: ${st.premflowBin || '(not found)'}`);
+      console.log(`privacy: capture is PRIVATE by default — do not commit capture/ or paste raw todos into public IR / Eve`);
+      if (st.privacy?.shareableProjection) {
+        const p = st.privacy.shareableProjection;
+        console.log(
+          `counts: todos public=${p.todoPublicCount} private=${p.todoPrivateCount} · log public=${p.logPublicCount} private=${p.logPrivateCount}`,
+        );
+      }
+      console.log(`open todos (local sample up to 5 of ${st.todoCount}):`);
+      for (const t of st.sampleTodos) console.log(`  ${t}`);
+      console.log(`law: ${st.law}`);
+    }
+    return;
+  }
+
+  if (head === 'link' || head === 'setup') {
+    const r = ensureLifeOsCaptureLink();
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);
+    } else {
+      console.log(r.ok ? `LINK_OK action=${r.action}` : `LINK_FAIL ${r.error}`);
+      console.log(`link: ${r.linkPath}`);
+      console.log(`shared: ${r.sharedRoot}`);
+    }
+    if (!r.ok) process.exit(1);
+    return;
+  }
+
+  if (head === 'snapshot' || head === 'show') {
+    const snap = readSharedCaptureSnapshot({ todoLimit: args.limit || 50, logLimit: 40 });
+    // --json is share-safe (redacted); human TTY gets full local view
+    if (args.json) {
+      const proj = projectCaptureForShare(snap);
+      process.stdout.write(
+        `${JSON.stringify({ root: snap.root, ...proj, note: 'share-safe; use bare snapshot for local full text' }, null, 2)}\n`,
+      );
+    } else {
+      console.log(`# Shared capture @ ${snap.root} (LOCAL — may include finance/PII; do not paste to cloud)`);
+      console.log(`## todos (${snap.todos.length})`);
+      for (const t of snap.todos) console.log(t);
+      console.log(`## log tail (${snap.logTail.length})`);
+      for (const l of snap.logTail) console.log(l);
+      console.log(`## journal files: ${snap.journalFiles.join(', ') || '(none)'}`);
+    }
+    return;
+  }
+
+  // Passthrough to real premflow (empty → help)
+  const forward =
+    head === 'help' || head === '--help' ? [] : flowArgs;
+  const result = runPremflow(forward);
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.error) console.error(result.error);
+  if (!result.ok && result.plan?.missingBin) {
+    console.error(`Shared data root remains: ${result.plan.dataDir}`);
+    console.error('Install premflow or set PREMFLOW_BIN.');
+  }
+  process.exit(result.status || (result.ok ? 0 : 1));
 }
 
 async function runActivityCmd(args) {
@@ -179,6 +268,11 @@ async function main() {
   if (args.help || args.cmd === 'help') {
     help();
     process.exit(0);
+  }
+
+  if (args.cmd === 'flow' || args.cmd === 'pf' || args.cmd === 'premflow') {
+    runFlowCmd(args);
+    return;
   }
 
   if (args.cmd === 'activity' || args.cmd === 'log') {

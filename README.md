@@ -83,6 +83,7 @@ Deep dives: [MAP](docs/MAP.md) · [PLAYBOOK](docs/PLAYBOOK.md) · [GAME-STACK](d
 | **Day** | `npm run swarm:day` | Plan: projects · actions · schedule · balance · privacy |
 | **Map** | `npm run swarm:graph` | Watch: next-action panel + mermaid / `public/watch/` |
 | **Dashboard** | `npm run swarm:dashboard` | Life progress: stats · insights · overview → `public/watch/dashboard.html` |
+| **Flow** | `node bin/swarm.js flow …` | Shared notes/tasks/pomo via premflow (`~/.premflow`; vault: `Projects/premflow/capture`) |
 | **Gate** | `node bin/swarm.js approve <id>` | Clear a wait snapshot |
 | | `node bin/swarm.js deny <id>` | |
 | **Body** | `node bin/swarm.js claim <id>` | Claim physical pickup |

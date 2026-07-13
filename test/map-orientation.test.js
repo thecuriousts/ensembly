@@ -71,6 +71,18 @@ describe('docs/MAP orientation (shipped truth)', () => {
     assert.match(readme, /docs\/MAP\.md/);
     assert.match(agents, /docs\/MAP\.md/);
     assert.ok(fs.existsSync(mapPath));
+    // Premflow integration discoverability (life-os · ensembly · premflow)
+    const premflowFit = path.join(root, 'docs', 'PREMFLOW-FIT.md');
+    assert.ok(fs.existsSync(premflowFit), 'docs/PREMFLOW-FIT.md must exist');
+    const boundary = read('docs/LIFE-OS-BOUNDARY.md');
+    const map = read('docs/MAP.md');
+    assert.match(boundary, /PREMFLOW-FIT\.md/);
+    assert.match(map, /PREMFLOW-FIT\.md/);
+    assert.match(agents, /PREMFLOW-FIT\.md/);
+    const fit = read('docs/PREMFLOW-FIT.md');
+    assert.match(fit, /Primary SoT|Source of truth by concern/i);
+    assert.match(fit, /Refuse|triple equal|not day/i);
+    assert.match(fit, /Daily operator loop|premflow pomo|swarm:turn/i);
   });
 
   it('layer paths referenced by MAP exist on disk', () => {

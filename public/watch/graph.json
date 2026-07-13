@@ -5,7 +5,10 @@
     "nodeCount": 36,
     "edgeCount": 37,
     "snapshotStatus": "idle_waiting",
-    "generator": "ensembly/src/graph.js"
+    "generator": "ensembly/src/graph.js",
+    "turnStatusAt": "2026-07-13T09:24:11.487Z",
+    "nextPhysicalId": "evening-outdoor",
+    "nextAuthId": "auth-apply-high-signal"
   },
   "nodes": [
     {

@@ -144,6 +144,12 @@ Law: [CLONE-COPILOT.md](CLONE-COPILOT.md)
 **Ship path:** `src/activity/*` · default file `data/local/activity.sqlite` · CLI `activity` / `log`.  
 **Near-term confidence:** 88%. **Thrive bet:** 80%.
 
+## Premflow between life-os and ensembly (2026-07-13)
+
+**Verdict:** **One filesystem SoT** for notes/tasks/journal/pomo: `~/.premflow/`. Views: premflow CLI, ensembly `flow` wrapper, life-os `Projects/premflow/capture` symlink. Day/HITL stays ensembly; portfolio frontmatter stays life-os. Refuse multi-master DBs and dual-live `todo.txt` copies.
+
+Full law: [PREMFLOW-FIT.md](PREMFLOW-FIT.md). Ship: `src/premflow/*`, `node bin/swarm.js flow`, `npm run flow:link`.
+
 ## Life progress dashboard (2026-07-13)
 
 **Verdict:** **Dashboard IR v1** (pure stats + rule-based insights + overview) projected to **static watch-family HTML** under `public/watch/dashboard.html`. Not a SPA, not the game center (world > chrome).

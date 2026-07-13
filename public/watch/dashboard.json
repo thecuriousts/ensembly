@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-13T08:21:02.745Z",
+  "generatedAt": "2026-07-13T09:24:11.488Z",
   "overview": {
     "date": "2026-07-13",
     "phase": "HITL_WAIT",
@@ -10,7 +10,7 @@
     "physicalCompleted": 1,
     "pendingAuth": 1,
     "balanceScore": 1,
-    "historyLen": 4
+    "historyLen": 1
   },
   "next": {
     "physical": {

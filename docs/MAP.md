@@ -276,6 +276,8 @@ Rust entry: `crates/peram-core/src/{lib,world,layout}.rs` → WASM exports `worl
 | Why Rust+WebGPU race-car | [GAME-STACK.md](GAME-STACK.md) |
 | World biome / sprites extend | [WORLD-FOUNDATION.md](WORLD-FOUNDATION.md) |
 | Privacy push boundary | [PRIVACY.md](PRIVACY.md) |
+| life-os vs ensembly | [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) |
+| Premflow shared capture (`~/.premflow` + `flow` wrapper + life-os link) | [PREMFLOW-FIT.md](PREMFLOW-FIT.md) |
 | Remote Eve adopt/refuse | [EVE-FIT.md](EVE-FIT.md) |
 | Roadmap SN cards | [arch-design/coming-next.md](arch-design/coming-next.md) |
 | Material decisions log | [DECISIONS.md](DECISIONS.md) |

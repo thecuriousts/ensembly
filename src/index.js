@@ -74,4 +74,15 @@ export {
   runDashboard,
   syncPublicDashboard,
 } from './dashboard.js';
+export {
+  resolveSharedCaptureRoot,
+  resolveLifeOsPremflowCard,
+  resolveLifeOsCaptureLinkPath,
+  ensureLifeOsCaptureLink,
+  readSharedCaptureSnapshot,
+  buildPremflowSpawn,
+  runPremflow,
+  sharedCaptureStatus,
+  resolvePremflowBin,
+} from './premflow/index.js';
 

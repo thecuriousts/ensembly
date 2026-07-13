@@ -20,6 +20,7 @@ Ensembly is a **life swarm control plane**. It may *read* private operator conte
 4. **HITL** — external email, job submit, calendar mutate, finance transfer, shared git push, publish-private require human pause (listed in daily plan). Optional cloud bridge ([EVE-FIT.md](EVE-FIT.md)): Eve channels may surface **redacted** turn digests and park tool approvals; **never** host full `private/persona` or finance/medical vaults on Eve by default.
 5. **Sources** — `~/life-os/private/llm.txt` and collab-finder `data/` may be read/copied into ignored paths only; never committed.
 6. **Activity store** — durable activities/logs live in local SQLite under `data/local/` (see [DECISIONS.md](DECISIONS.md) storage foundation). Browser IndexedDB / Eve / remote DBs are **not** sources of truth for private activity; export **redacted** IR only at channel boundaries.
+7. **Shared micro-capture** (`~/.premflow/`, life-os `Projects/premflow/capture` symlink) — may contain finance, health, family, and other PII. **Local views OK.** Never commit capture contents; never paste raw todos/logs into `public/`, Eve digests, or shareable IR. Derived stats/insights use **redacted projection** (`projectCaptureForShare` / `flow path --json`). Law: [PREMFLOW-FIT.md](PREMFLOW-FIT.md).
 
 ## Enforcement
 

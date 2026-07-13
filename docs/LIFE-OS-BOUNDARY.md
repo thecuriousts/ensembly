@@ -36,7 +36,7 @@ Continuous connectors and frequent event hooks are **ensembly trajectory**, not 
 1. **Memory ≠ runtime.** A wiki of projects is not a process that clears digital thrash.
 2. **Capacity is scarce.** Family/health time is the product constraint; both systems must respect it, but only ensembly *schedules and gates* a day.
 3. **Human pairs intermittently.** Full-time digital babysitting is the failure mode; HITL + physical pickup are the pair surfaces.
-4. **Experiment / archive is allowed.** Satellites (collab-finder, premflow, skills labs, …) may start, cluster in life-os, and archive without becoming kernel rewrites.
+4. **Experiment / archive is allowed.** Satellites (collab-finder, premflow, skills labs, …) may start, cluster in life-os, and archive without becoming kernel rewrites. Terminal micro-capture (premflow) is a satellite **SoT for notes/tasks/pomo**, not a third day kernel — integration law: [PREMFLOW-FIT.md](PREMFLOW-FIT.md).
 5. **Iron-peak stays pure and local.** Day / privacy / realm / approvals / turn / graph IR must not dissolve into vault notes or cloud prompts.
 
 ---
@@ -85,6 +85,7 @@ Continuous connectors and frequent event hooks are **ensembly trajectory**, not 
 |------|----------------|
 | Update project `next_action`, energy, portfolio MOC, area notes | **life-os** |
 | Operator turn, next physical / next auth, claim/complete, day plan, privacy classify, graph watch, game focus | **ensembly** |
+| Fleeting note, inbox task dump, pomo focus clock, evening micro-review | **premflow** (`~/.premflow/`) — not ensembly turn; portfolio card only at `~/life-os/Projects/premflow/` — see [PREMFLOW-FIT.md](PREMFLOW-FIT.md) |
 | Copilot implement on a portfolio code repo (proposal → PR) | **That repo** + life-os card/session update; law in [CLONE-COPILOT.md](CLONE-COPILOT.md) |
 | Clone’s own ideas / working schedule | **ensembly** `private/clone/` (local only) |
 | New experiment repo | New or existing satellite; **register** card in life-os; do **not** dump into ensembly kernel |
@@ -119,4 +120,5 @@ life-os **continues** as the clustered human+agent wiki. Autonomous vault agents
 ## Cross-links
 
 - ensembly law: [../AGENTS.md](../AGENTS.md) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [DECISIONS.md](DECISIONS.md) · [PRIVACY.md](PRIVACY.md)
+- Premflow + terminal loop: [PREMFLOW-FIT.md](PREMFLOW-FIT.md)
 - life-os vault (outside this repo): `~/life-os/README.md`, `~/life-os/AGENTS.md`
