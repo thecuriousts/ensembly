@@ -3,7 +3,7 @@
 **Audience:** new readers, agents, and the operator who need a single orientation pass.  
 **Not this doc:** how to play (→ [PLAYBOOK.md](PLAYBOOK.md)), race-car stack decision (→ [GAME-STACK.md](GAME-STACK.md)), WASM/desktop engine detail (→ [ENGINE.md](ENGINE.md)), product why (→ [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md)).
 
-**Last verified against shipped code:** 2026-07-13
+**Last verified against shipped code:** 2026-07-15
 
 ---
 
@@ -32,17 +32,20 @@ Only features with a **dogfood path** (command, URL, or unit-tested pure export)
 | **Turn status IR** | `node bin/swarm.js turn --json` | Machine-readable JSON: `next.physical`, `next.authorization`, queues, counts (agents/scripts) |
 | **Approve / deny** | `node bin/swarm.js approve <id>` · `deny <id>` | HITL decision against durable wait snapshot (`private/state/wait-snapshot.json`) |
 | **Claim / complete / release** | `claim` · `complete` · `release` | Physical pickup lifecycle (body work in progress → done / back to open) |
-| **Graph export** | `npm run swarm:graph` · `node bin/swarm.js graph [--html]` | Serializable game graph (+ mermaid stdout, optional `public/watch/` HTML + JSON) |
+| **Graph export** | `npm run swarm:graph` · `node bin/swarm.js graph [--html]` | **Life-derived** playable graph (beacons = next physical + next auth) → `public/watch/` + `public/game/life-graph.json` (gitignored local export; sample-graph is fallback only) |
+| **life-os portfolio** | pure: `src/lifeos/portfolio.js` · turn merges when vault present | Project cards `next_action` → day/graph candidates; vault **not** in git |
+| **Digital-flow (Bank)** | `node bin/swarm.js digital-flow …` · pure: `src/digital-flow.js` | bill_pay → HITL `finance_transfer` → **dry-run** execute hook (no unattended bank mutate) |
 | **Privacy classify** | pure: `src/privacy.js` · used by day/turn | Default-deny classifier; partition public vs private; never commit `private/` |
 | **Realm split** | pure: `src/realm.js` | Physical pickups vs digital actions; HITL enrichment |
 | **Prioritize / balance / loop** | pure: `prioritize.js`, `balance.js`, `loop.js`, `day.js` | Eisenhower + capacity balance + looper phases |
 | **Persona boundary** | load via `ingest.js` | Full persona only under `private/persona/`; public projection under `public/persona/` |
+| **Rust life kernel (SoT trajectory)** | `cargo run -p peram-kernel -- …` · `npm run peram -- …` | `rank_now` FocusPlan, HITL, bill_pay dry-run, T1 SQLite, sealed backup; Node `src/*` is **legacy** |
 
 ### 1.2 Game of Peram (browser host)
 
 | Capability | Entry | What you get |
 |------------|-------|--------------|
-| **Play session** | `npm run game` → `http://127.0.0.1:4173/game/` | Courtyard world, focus cycle, claim / approve / deny, growth board, **$SPN** ticker |
+| **Play session** | `npm run game` → `http://127.0.0.1:4173/game/` | Courtyard world loads **life-graph** first (then watch graph, then sample), focus cycle, claim / approve / deny, growth board, **$SPN** ticker |
 | **Session / focus SoT** | pure: `src/game/session.js`, `store.js` | Focus index, dispatch, undo/redo-shaped commands — **source of truth** |
 | **Growth + $SPN** | pure: `src/game/growth.js`, `spn.js` | XP, quests, level titles, personal tape from real claim/HITL events |
 | **Input map** | pure: `src/game/input.js`, `voice.js` | Keyboard, gamepad-shaped, voice vocabulary (Web Speech in host) |

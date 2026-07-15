@@ -133,21 +133,42 @@ function fadeEdgeHint() {
   setTimeout(() => hint.classList.add('faded'), 4500);
 }
 
+/**
+ * Prefer life-derived operator graph (CLI export) over sample fixture.
+ * Order: /game/life-graph.json → /watch/graph.json → sample-graph.json → inline fallback.
+ */
 async function loadGraph() {
-  try {
-    const res = await fetch('/game/sample-graph.json', { cache: 'no-store' });
-    return await res.json();
-  } catch {
-    return {
-      nodes: [
-        { id: 'a', type: 'action', label: 'Ship craft', area: 'craft' },
-        { id: 'b', type: 'physical', realm: 'physical', label: 'Garden' },
-        { id: 'c', type: 'schedule', label: 'Family walk', area: 'family' },
-        { id: 'd', type: 'hitl', hitl: true, label: 'HITL gate' },
-      ],
-      pending: [{ id: 'auth-x', title: 'Gate', status: 'pending' }],
-    };
+  const candidates = [
+    '/game/life-graph.json',
+    '/watch/graph.json',
+    '/game/sample-graph.json',
+  ];
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) continue;
+      const graph = await res.json();
+      if (graph && Array.isArray(graph.nodes) && graph.nodes.length) {
+        graph.meta = {
+          ...(graph.meta || {}),
+          loadedFrom: url,
+        };
+        return graph;
+      }
+    } catch {
+      // try next
+    }
   }
+  return {
+    nodes: [
+      { id: 'a', type: 'action', label: 'Ship craft', area: 'craft' },
+      { id: 'b', type: 'physical', realm: 'physical', label: 'Garden' },
+      { id: 'c', type: 'schedule', label: 'Family walk', area: 'family' },
+      { id: 'd', type: 'hitl', hitl: true, label: 'HITL gate' },
+    ],
+    pending: [{ id: 'auth-x', title: 'Gate', status: 'pending' }],
+    meta: { loadedFrom: 'inline-fallback', source: 'empty-host' },
+  };
 }
 
 function runAction(action) {

@@ -24,7 +24,9 @@
     "game:serve": "node scripts/serve-game.mjs",
     "game:smoke": "node scripts/smoke-game.mjs",
     "test": "node --test test/*.test.js",
-    "test:rust": "cargo test --manifest-path crates/peram-core/Cargo.toml",
+    "test:rust": "cargo test -p peram-core -p peram-kernel",
+    "test:kernel": "cargo test -p peram-kernel",
+    "peram": "cargo run -q -p peram-kernel --",
     "start": "node scripts/serve-game.mjs"
   },
   "repository": {

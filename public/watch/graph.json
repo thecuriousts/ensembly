@@ -2,13 +2,17 @@
   "version": 1,
   "date": "2026-07-13",
   "meta": {
-    "nodeCount": 36,
-    "edgeCount": 37,
+    "nodeCount": 38,
+    "edgeCount": 39,
     "snapshotStatus": "idle_waiting",
-    "generator": "ensembly/src/graph.js",
-    "turnStatusAt": "2026-07-13T09:24:11.487Z",
+    "generator": "ensembly/src/play.js",
+    "source": "life-operator-ir",
     "nextPhysicalId": "evening-outdoor",
-    "nextAuthId": "auth-apply-high-signal"
+    "nextAuthId": "auth-apply-high-signal",
+    "nextPhysicalLabel": "Evening outdoor family walk (cooler window)",
+    "nextAuthLabel": "Prepare high-signal FT application packet (public CV path)",
+    "digitalFlowCount": 0,
+    "turnStatusAt": "2026-07-15T14:44:09.203Z"
   },
   "nodes": [
     {
@@ -19,7 +23,9 @@
       "position": {
         "x": 0,
         "y": 0
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "phase-PLAN",
@@ -29,7 +35,9 @@
       "position": {
         "x": 220,
         "y": 0
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "phase-HITL_WAIT",
@@ -39,7 +47,9 @@
       "position": {
         "x": 440,
         "y": 0
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "game-peram",
@@ -49,7 +59,9 @@
       "position": {
         "x": 660,
         "y": 0
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "project-family-presence",
@@ -61,7 +73,9 @@
       "position": {
         "x": 0,
         "y": 80
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "project-evening-outdoor",
@@ -73,7 +87,9 @@
       "position": {
         "x": 220,
         "y": 80
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "project-grocery-errand",
@@ -85,7 +101,9 @@
       "position": {
         "x": 440,
         "y": 80
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "project-healthy-self-energy",
@@ -97,7 +115,23 @@
       "position": {
         "x": 660,
         "y": 80
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
+    },
+    {
+      "id": "project-lifeos-wealth-due-diligence",
+      "type": "project",
+      "label": "Map code/data via private path map; copy sample fixture → gitignored private ledger; run brief (Rust wealth-core pref…",
+      "area": "Finance",
+      "visibility": "private",
+      "kind": "project",
+      "position": {
+        "x": 0,
+        "y": 160
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "project-apply-high-signal",
@@ -107,9 +141,11 @@
       "visibility": "public",
       "kind": "project",
       "position": {
-        "x": 0,
+        "x": 220,
         "y": 160
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "project-runway-private",
@@ -119,9 +155,11 @@
       "visibility": "private",
       "kind": "project",
       "position": {
-        "x": 220,
+        "x": 440,
         "y": 160
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "project-ensembly-swarm",
@@ -131,21 +169,11 @@
       "visibility": "public",
       "kind": "project",
       "position": {
-        "x": 440,
-        "y": 160
-      }
-    },
-    {
-      "id": "project-collab-finder",
-      "type": "project",
-      "label": "collab-finder dual-fit opportunities",
-      "area": "Career",
-      "visibility": "public",
-      "kind": "project",
-      "position": {
         "x": 660,
         "y": 160
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "action-apply-high-signal",
@@ -158,7 +186,9 @@
       "position": {
         "x": 0,
         "y": 240
-      }
+      },
+      "beacon": true,
+      "beaconRole": "next_auth"
     },
     {
       "id": "hitl-apply-high-signal",
@@ -168,7 +198,9 @@
       "position": {
         "x": 220,
         "y": 240
-      }
+      },
+      "beacon": true,
+      "beaconRole": "next_auth"
     },
     {
       "id": "action-family-presence",
@@ -181,7 +213,9 @@
       "position": {
         "x": 440,
         "y": 240
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "action-evening-outdoor",
@@ -194,7 +228,9 @@
       "position": {
         "x": 660,
         "y": 240
-      }
+      },
+      "beacon": true,
+      "beaconRole": "next_physical"
     },
     {
       "id": "action-healthy-self-energy",
@@ -207,7 +243,36 @@
       "position": {
         "x": 0,
         "y": 320
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
+    },
+    {
+      "id": "action-lifeos-wealth-due-diligence",
+      "type": "action",
+      "label": "Map code/data via private path map; copy sample fixture → gitignored private ledger; run brief (Rust wealth-core pref…",
+      "area": "Finance",
+      "realm": "digital",
+      "hitl": true,
+      "kind": "action",
+      "position": {
+        "x": 220,
+        "y": 320
+      },
+      "beacon": false,
+      "beaconRole": null
+    },
+    {
+      "id": "hitl-lifeos-wealth-due-diligence",
+      "type": "hitl",
+      "label": "HITL: Map code/data via private path map; copy sample fixture → gitignored private ledger; run brief (Rust wealth-core pref…",
+      "kind": "hitl_wait",
+      "position": {
+        "x": 440,
+        "y": 320
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "action-runway-private",
@@ -218,9 +283,11 @@
       "hitl": false,
       "kind": "action",
       "position": {
-        "x": 220,
+        "x": 660,
         "y": 320
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "action-ensembly-swarm",
@@ -231,22 +298,11 @@
       "hitl": false,
       "kind": "action",
       "position": {
-        "x": 440,
-        "y": 320
-      }
-    },
-    {
-      "id": "action-collab-finder",
-      "type": "action",
-      "label": "collab-finder dual-fit opportunities",
-      "area": "Career",
-      "realm": "digital",
-      "hitl": false,
-      "kind": "action",
-      "position": {
-        "x": 660,
-        "y": 320
-      }
+        "x": 0,
+        "y": 400
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "auth-auth-apply-high-signal",
@@ -255,9 +311,24 @@
       "status": "pending",
       "kind": "authorization",
       "position": {
-        "x": 0,
+        "x": 220,
         "y": 400
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
+    },
+    {
+      "id": "auth-auth-lifeos-wealth-due-diligence",
+      "type": "hitl",
+      "label": "pending: Map code/data via private path map; copy sample fixture → gitignored private ledger; run brief (Rust wealth-core pref…",
+      "status": "pending",
+      "kind": "authorization",
+      "position": {
+        "x": 440,
+        "y": 400
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-0600-0630",
@@ -266,9 +337,11 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 220,
+        "x": 660,
         "y": 400
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-0630-0730",
@@ -277,9 +350,11 @@
       "non_negotiable": true,
       "kind": "schedule",
       "position": {
-        "x": 440,
-        "y": 400
-      }
+        "x": 0,
+        "y": 480
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "action-rhythm-outdoor_family_light",
@@ -289,9 +364,11 @@
       "kind": "action",
       "realm": "digital",
       "position": {
-        "x": 660,
-        "y": 400
-      }
+        "x": 220,
+        "y": 480
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-0730-0800",
@@ -300,9 +377,11 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 0,
+        "x": 440,
         "y": 480
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-0800-1000",
@@ -311,9 +390,11 @@
       "non_negotiable": true,
       "kind": "schedule",
       "position": {
-        "x": 220,
+        "x": 660,
         "y": 480
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "action-rhythm-family_support",
@@ -323,9 +404,11 @@
       "kind": "action",
       "realm": "digital",
       "position": {
-        "x": 440,
-        "y": 480
-      }
+        "x": 0,
+        "y": 560
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-1000-1300",
@@ -334,9 +417,11 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 660,
-        "y": 480
-      }
+        "x": 220,
+        "y": 560
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-1300-1400",
@@ -345,9 +430,11 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 0,
+        "x": 440,
         "y": 560
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-1400-1500",
@@ -356,9 +443,11 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 220,
+        "x": 660,
         "y": 560
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-1700-1800",
@@ -367,9 +456,11 @@
       "non_negotiable": true,
       "kind": "schedule",
       "position": {
-        "x": 440,
-        "y": 560
-      }
+        "x": 0,
+        "y": 640
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "action-rhythm-evening_family",
@@ -379,9 +470,11 @@
       "kind": "action",
       "realm": "digital",
       "position": {
-        "x": 660,
-        "y": 560
-      }
+        "x": 220,
+        "y": 640
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-1815-1900",
@@ -390,9 +483,11 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 0,
+        "x": 440,
         "y": 640
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-1900-2200",
@@ -401,9 +496,11 @@
       "non_negotiable": false,
       "kind": "schedule",
       "position": {
-        "x": 220,
+        "x": 660,
         "y": 640
-      }
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "slot-2200-0600",
@@ -412,9 +509,11 @@
       "non_negotiable": true,
       "kind": "schedule",
       "position": {
-        "x": 440,
-        "y": 640
-      }
+        "x": 0,
+        "y": 720
+      },
+      "beacon": false,
+      "beaconRole": null
     },
     {
       "id": "action-rhythm-sleep",
@@ -424,9 +523,11 @@
       "kind": "action",
       "realm": "digital",
       "position": {
-        "x": 660,
-        "y": 640
-      }
+        "x": 220,
+        "y": 720
+      },
+      "beacon": false,
+      "beaconRole": null
     }
   ],
   "edges": [
@@ -473,6 +574,12 @@
       "kind": "project"
     },
     {
+      "id": "e-game-peram-project-lifeos-wealth-due-diligence-project",
+      "source": "game-peram",
+      "target": "project-lifeos-wealth-due-diligence",
+      "kind": "project"
+    },
+    {
       "id": "e-game-peram-project-apply-high-signal-project",
       "source": "game-peram",
       "target": "project-apply-high-signal",
@@ -488,12 +595,6 @@
       "id": "e-game-peram-project-ensembly-swarm-project",
       "source": "game-peram",
       "target": "project-ensembly-swarm",
-      "kind": "project"
-    },
-    {
-      "id": "e-game-peram-project-collab-finder-project",
-      "source": "game-peram",
-      "target": "project-collab-finder",
       "kind": "project"
     },
     {
@@ -527,6 +628,18 @@
       "kind": "physical_pickup"
     },
     {
+      "id": "e-game-peram-action-lifeos-wealth-due-diligence-digital_action",
+      "source": "game-peram",
+      "target": "action-lifeos-wealth-due-diligence",
+      "kind": "digital_action"
+    },
+    {
+      "id": "e-action-lifeos-wealth-due-diligence-hitl-lifeos-wealth-due-diligence-requires_auth",
+      "source": "action-lifeos-wealth-due-diligence",
+      "target": "hitl-lifeos-wealth-due-diligence",
+      "kind": "requires_auth"
+    },
+    {
       "id": "e-game-peram-action-runway-private-digital_action",
       "source": "game-peram",
       "target": "action-runway-private",
@@ -539,15 +652,15 @@
       "kind": "digital_action"
     },
     {
-      "id": "e-game-peram-action-collab-finder-digital_action",
-      "source": "game-peram",
-      "target": "action-collab-finder",
-      "kind": "digital_action"
-    },
-    {
       "id": "e-action-apply-high-signal-auth-auth-apply-high-signal-authorization",
       "source": "action-apply-high-signal",
       "target": "auth-auth-apply-high-signal",
+      "kind": "authorization"
+    },
+    {
+      "id": "e-action-lifeos-wealth-due-diligence-auth-auth-lifeos-wealth-due-diligence-authorization",
+      "source": "action-lifeos-wealth-due-diligence",
+      "target": "auth-auth-lifeos-wealth-due-diligence",
       "kind": "authorization"
     },
     {
@@ -651,6 +764,22 @@
       "source": "slot-2200-0600",
       "target": "action-rhythm-sleep",
       "kind": "assigned"
+    }
+  ],
+  "pending": [
+    {
+      "id": "auth-apply-high-signal",
+      "title": "Prepare high-signal FT application packet (public CV path)",
+      "actionId": "apply-high-signal",
+      "status": "pending",
+      "kind": "job_application_submit"
+    },
+    {
+      "id": "auth-lifeos-wealth-due-diligence",
+      "title": "Map code/data via private path map; copy sample fixture → gitignored private ledger; run brief (Rust wealth-core pref…",
+      "actionId": "lifeos-wealth-due-diligence",
+      "status": "pending",
+      "kind": "finance_transfer"
     }
   ]
 }

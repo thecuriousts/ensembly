@@ -163,3 +163,58 @@ Full law: [PREMFLOW-FIT.md](PREMFLOW-FIT.md). Ship: `src/premflow/*`, `node bin/
 
 **Ship:** `src/dashboard.js` · `npm run swarm:dashboard` · `public/watch/dashboard.{html,json}`  
 **Near-term confidence:** 85%.
+
+## Life-mirror play path + HITL digital-flow spine (2026-07-15)
+
+**Verdict:** Game host must load a **life-derived** graph (operator turn IR beacons: next physical + next auth), not sample-only theater. **life-os** portfolio cards project into day candidates via pure IR (`src/lifeos/`). First digital flow class is **bill_pay / Bank**: activate → HITL pending → approve → **dry-run** execute hook (live bank mutate refused until explicit greenlight; never unattended).
+
+| Adopt | Refuse |
+|-------|--------|
+| `buildPlayableGraphFromTurn` + beacons from real turn | Sample fixture as the only play surface |
+| life-os `Projects/*/README` `next_action` projection | Merging vault into ensembly git |
+| Digital-flow IR + injected executeHook (dry_run default) | Fake “Bank paid” UI without IR/HITL |
+| `public/game/life-graph.json` local export (gitignored) | Unattended finance_transfer / bank API |
+
+**Ship:** `src/play.js` · `src/digital-flow.js` · `src/lifeos/portfolio.js` · `node bin/swarm.js graph` · `digital-flow` · host `loadGraph` order life → watch → sample.  
+**Near-term confidence:** 86%.
+
+## Rust life-console restart (2026-07-15)
+
+**Verdict:** Node ESM control plane is **legacy dogfood** (bugfix-only). **Iron-peak** moves to **Rust `peram-kernel`**: typed day/turn/privacy/HITL/digital-flow + **tiered durable data** + native console trajectory. Browser/WASM remains optional thin host; sample-graph is never product truth.
+
+### Data plane (T0–T4)
+
+| Tier | Store | Role |
+|------|-------|------|
+| **T0** | OS keyring | Unlock wrappers, connector tokens — never git, never plaintext SQLite |
+| **T1** | SQLite (WAL, single-writer) | Wait snapshot, audit, flows, FocusPlan cache — crash-safe ops ledger |
+| **T2** | PQ sealed vault (peram-vault law: ML-KEM-768 + AES-256-GCM) | High-sens blobs, recovery material — ciphertext SoT |
+| **T3** | Content-addressed packs | Backups / media on operator volume |
+| **T4** | Remote redacted views | Eve/Grok/share only after classifier |
+
+### Threat model (design floor)
+
+Stolen **laptop + network** access: disk theft without unlock must not yield vault plaintext; cloud sees redacted IR only; external mutate always HITL. Honest limit: unlocked session + malware-as-user cannot be fully defeated in pure software — minimize blast radius + audit + recovery.
+
+### Polyglot / P2P / web3
+
+| Welcome when better | Refuse |
+|---------------------|--------|
+| Rust kernel; premflow C capture SoT; life-os markdown portfolio; wealth-core math | Multi-language HITL SoTs |
+| Encrypted backup packs; optional Shamir recovery shards; P2P sealed off-site **after** local backup green | On-chain life plaintext; multi-master CRDT for turn day-0; web3 as product personality |
+
+### Host trajectory
+
+1. **Now:** `peram` Rust CLI + kernel tests (parity with fixtures).  
+2. **Next:** `peram-console` native (Hyprland) — one window, evolving world from `rank_now`.  
+3. **Later:** WASM thin client + Eve redacted approve bridge.
+
+| Adopt | Refuse |
+|-------|--------|
+| `crates/peram-kernel` as control SoT | Expanding product features in Node `src/` |
+| Backup/restore as tested product paths | “Backup = hope” |
+| Vault bridge to peram-vault law | Reinventing crypto in the game loop |
+| FocusPlan = rank_now(ContextFrame) | Sample-graph theater as daily surface |
+
+**Ship path:** `crates/peram-kernel` · `cargo test -p peram-kernel` · `cargo run -p peram-kernel -- turn`  
+**Near-term confidence:** 75%. **Thrive bet:** 85%.

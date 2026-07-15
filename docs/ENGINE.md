@@ -12,26 +12,33 @@
 
 We do **not** ship a 14B neural world model here — we ship a **shareable deterministic world engine** that can later feed or sit beside neural generators.
 
-## Split
+## Split (restart 2026-07-15)
 
 ```text
 ┌─────────────────────────────────────────────┐
 │  Host shell (thin)                          │
-│  browser: public/game/*.js  (input + canvas)│
-│  desktop later: winit/wgpu or Tauri         │
+│  primary trajectory: native peram-console   │
+│  browser: public/game/*.js  (legacy demo)   │
 └─────────────────┬───────────────────────────┘
-                  │ draw_buffer / events
+                  │ draw_buffer / FocusPlan bind
 ┌─────────────────▼───────────────────────────┐
-│  peram-core (Rust)  ← single source of truth │
+│  peram-core / world (Rust)                  │
 │  world sim · layout · entity seek · props   │
-│  crate-type: rlib + cdylib (wasm-bindgen)   │
 └─────────────────┬───────────────────────────┘
-                  │ optional bind
+                  │
 ┌─────────────────▼───────────────────────────┐
-│  Control plane (Node, stays JS/TS)          │
-│  day / turn / privacy / persona             │
+│  peram-kernel (Rust)  ← control SoT         │
+│  privacy · realm · approvals · rank_now     │
+│  digital_flow · T1 SQLite · backup · vault  │
+└─────────────────┬───────────────────────────┘
+                  │
+┌─────────────────▼───────────────────────────┐
+│  Node src/*  = LEGACY dogfood (bugfix only) │
+│  Do not expand product features here        │
 └─────────────────────────────────────────────┘
 ```
+
+**Law:** [DECISIONS.md](DECISIONS.md) · Rust life-console restart.
 
 ## Crate layout
 

@@ -31,11 +31,25 @@ function mapUrl(urlPath) {
   if (urlPath.startsWith('/game/')) {
     return `/public/game/${urlPath.slice('/game/'.length)}`;
   }
+  // Life-derived watch graph (CLI export) — same host as the game
+  if (urlPath === '/watch' || urlPath === '/watch/') return '/public/watch/index.html';
+  if (urlPath.startsWith('/watch/')) {
+    return `/public/watch/${urlPath.slice('/watch/'.length)}`;
+  }
   // Legacy absolute public paths still work
   if (urlPath.startsWith('/public/')) return urlPath;
   if (urlPath.startsWith('/src/')) return urlPath;
   // Bare asset mistakes from relative URLs without trailing slash
-  if (['/styles.css', '/main.js', '/engine.js', '/render.js', '/sample-graph.json'].includes(urlPath)) {
+  if (
+    [
+      '/styles.css',
+      '/main.js',
+      '/engine.js',
+      '/render.js',
+      '/sample-graph.json',
+      '/life-graph.json',
+    ].includes(urlPath)
+  ) {
     return `/public/game${urlPath}`;
   }
   if (urlPath.startsWith('/pkg/')) return `/public/game${urlPath}`;

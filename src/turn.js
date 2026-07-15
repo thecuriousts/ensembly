@@ -15,12 +15,27 @@ import {
   emptySnapshot,
   parseSnapshot,
   serializeSnapshot,
+  deriveStatus,
 } from './approvals.js';
 import { classifyItem } from './privacy.js';
 import { buildDayPlan } from './day.js';
 import { loadPersona, loadLocalState, resolveRoot, loadJson } from './ingest.js';
-import { buildGameGraph, graphToMermaid, graphToWatchHtml } from './graph.js';
+import { graphToMermaid, graphToWatchHtml } from './graph.js';
 import { syncPublicDashboard } from './dashboard.js';
+import {
+  loadPortfolioProjection,
+  mergeLifeOsIntoState,
+} from './lifeos/portfolio.js';
+import { buildPlayableGraphFromTurn } from './play.js';
+import {
+  createDigitalFlow,
+  activateDigitalFlow,
+  applyFlowDecision,
+  executeDigitalFlow,
+  flowToActionCandidate,
+  flowToApprovalRecord,
+  runDigitalFlowCycle,
+} from './digital-flow.js';
 
 /**
  * Parse HH:MM to minutes from midnight. Returns null if invalid.
@@ -446,18 +461,9 @@ export function syncPublicWatch(root, turn) {
   const watchDir = publicWatchDir(root);
   fs.mkdirSync(watchDir, { recursive: true });
 
-  const graph = buildGameGraph({
-    date: turn.date,
-    card: { phase: turn.summary?.phase, goal: 'Game of Peram day' },
-    trail: [
-      { phase: 'ORIENT' },
-      { phase: 'PLAN' },
-      { phase: turn.summary?.phase || 'HITL_WAIT' },
-    ],
-    actions: turn.plan.actions,
-    projects: turn.plan.projects,
-    schedule: turn.plan.schedule,
-    snapshot: turn.snapshot,
+  const graph = buildPlayableGraphFromTurn({
+    turn,
+    digitalFlows: turn.digitalFlows || [],
   });
   // Stamp status freshness on graph meta for the HTML header
   graph.meta = {
@@ -475,14 +481,27 @@ export function syncPublicWatch(root, turn) {
   fs.writeFileSync(htmlPath, graphToWatchHtml(graph, mermaid, { status: turn.status }), 'utf8');
   fs.writeFileSync(irPath, `${JSON.stringify(graph, null, 2)}\n`, 'utf8');
   fs.writeFileSync(statusPath, `${JSON.stringify(turn.status, null, 2)}\n`, 'utf8');
+
+  // Life-derived graph for the game host (sample-graph is fallback only)
+  const gameGraphPath = path.join(root, 'public', 'game', 'life-graph.json');
+  fs.mkdirSync(path.dirname(gameGraphPath), { recursive: true });
+  fs.writeFileSync(gameGraphPath, `${JSON.stringify(graph, null, 2)}\n`, 'utf8');
+
   // Best-effort life dashboard (status/plan only; full activity merge via `dashboard` CLI)
   const dashPaths = syncPublicDashboard(root, turn);
 
-  return { htmlPath, statusPath, irPath, dashboardHtml: dashPaths?.htmlPath || null };
+  return {
+    htmlPath,
+    statusPath,
+    irPath,
+    gameGraphPath,
+    dashboardHtml: dashPaths?.htmlPath || null,
+  };
 }
 
 /**
  * Full operator turn from repo state (IO).
+ * Optionally merges life-os portfolio next_action candidates (local projection).
  */
 export function runOperatorTurn(opts = {}) {
   const root = opts.root || resolveRoot();
@@ -493,6 +512,35 @@ export function runOperatorTurn(opts = {}) {
   } else {
     state = loadLocalState(root).state;
   }
+
+  // life-os portfolio → day candidates (never commits vault; default-on when vault present)
+  let lifeOsMeta = null;
+  if (opts.lifeOs !== false) {
+    try {
+      const proj = loadPortfolioProjection({
+        lifeOsRoot: opts.lifeOsRoot,
+        home: opts.home,
+      });
+      if (proj.candidates.length) {
+        state = mergeLifeOsIntoState(state, proj.candidates);
+        lifeOsMeta = {
+          lifeOsRoot: proj.lifeOsRoot,
+          cardCount: proj.cards.length,
+          candidateCount: proj.candidates.length,
+        };
+      }
+    } catch {
+      // vault missing or unreadable — turn still works from local state
+    }
+  }
+
+  // Optional digital-flow actions (e.g. bill_pay Bank) injected into the day
+  const digitalFlows = Array.isArray(opts.digitalFlows) ? opts.digitalFlows : [];
+  if (digitalFlows.length) {
+    const flowActions = digitalFlows.map(flowToActionCandidate);
+    state = mergeLifeOsIntoState(state, flowActions);
+  }
+
   const plan = buildDayPlan(persona, state, { date: opts.date || state.date });
   const snapFile = snapshotPath(root, opts);
   const existing = opts.snapshot || (opts.noLoad ? emptySnapshot() : loadSnapshot(snapFile));
@@ -505,6 +553,8 @@ export function runOperatorTurn(opts = {}) {
   });
 
   turn.plan = plan;
+  turn.lifeOs = lifeOsMeta;
+  turn.digitalFlows = digitalFlows;
 
   if (opts.write !== false) {
     saveSnapshot(snapFile, turn.snapshot);
@@ -624,20 +674,147 @@ export function runPhysicalDecision(decision, actionId, opts = {}) {
 }
 
 /**
- * Build graph from current day + snapshot for watch.
+ * Build life-derived playable graph from current day + snapshot for watch/game.
  */
 export function runGraphExport(opts = {}) {
   const root = opts.root || resolveRoot();
   const turn = runOperatorTurn({ ...opts, root, write: opts.write === true });
-  const graph = buildGameGraph({
-    date: turn.date,
-    card: { phase: turn.summary.phase, goal: 'Game of Peram day' },
-    trail: [{ phase: 'ORIENT' }, { phase: 'PLAN' }, { phase: turn.summary.phase }],
-    actions: turn.plan.actions,
-    projects: turn.plan.projects,
-    schedule: turn.plan.schedule,
-    snapshot: turn.snapshot,
+  const graph = buildPlayableGraphFromTurn({
+    turn,
+    digitalFlows: opts.digitalFlows || turn.digitalFlows || [],
   });
   const mermaid = graphToMermaid(graph);
+
+  // Optional write of life-graph for game host without full turn write
+  if (opts.writeGameGraph) {
+    const gameGraphPath = path.join(root, 'public', 'game', 'life-graph.json');
+    fs.mkdirSync(path.dirname(gameGraphPath), { recursive: true });
+    fs.writeFileSync(gameGraphPath, `${JSON.stringify(graph, null, 2)}\n`, 'utf8');
+    return { graph, mermaid, turn, gameGraphPath };
+  }
   return { graph, mermaid, turn };
+}
+
+/**
+ * Run digital-flow cycle (bill_pay default) with optional durable snapshot merge.
+ * Deny never executes. Default executionMode is dry_run.
+ *
+ * @param {'activate' | 'approve' | 'deny' | 'execute' | 'cycle'} cmd
+ * @param {{
+ *   flowId?: string,
+ *   kind?: string,
+ *   title?: string,
+ *   payeeLabel?: string,
+ *   amountLabel?: string,
+ *   executionMode?: 'dry_run' | 'live',
+ *   executeHook?: Function,
+ *   write?: boolean,
+ *   root?: string,
+ *   snapshotFile?: string,
+ * }} [opts]
+ */
+export function runDigitalFlowCommand(cmd, opts = {}) {
+  const root = opts.root || resolveRoot();
+  const now = opts.now || new Date().toISOString();
+  const flowPath = opts.flowFile || path.join(root, 'private', 'state', 'digital-flows.json');
+
+  let store = { version: 1, flows: [] };
+  if (fs.existsSync(flowPath)) {
+    try {
+      store = JSON.parse(fs.readFileSync(flowPath, 'utf8'));
+    } catch {
+      store = { version: 1, flows: [] };
+    }
+  }
+
+  const flowId = opts.flowId || opts.id || 'flow-bill_pay';
+  let flow = (store.flows || []).find((f) => f.id === flowId);
+  if (!flow) {
+    flow = createDigitalFlow({
+      id: flowId,
+      kind: opts.kind || 'bill_pay',
+      title: opts.title,
+      payeeLabel: opts.payeeLabel || 'monthly bill',
+      amountLabel: opts.amountLabel || null,
+      executionMode: opts.executionMode || 'dry_run',
+      now,
+    });
+  }
+
+  let result;
+  if (cmd === 'cycle') {
+    result = runDigitalFlowCycle(flow, opts.decision || 'approve', {
+      now,
+      actor: opts.actor || 'operator',
+      executionMode: opts.executionMode || flow.executionMode,
+      executeHook: opts.executeHook,
+    });
+    flow = result.flow;
+    // Ensure approval on result reflects closed gate after dry_run_ok/executed
+    result.approval = flowToApprovalRecord(flow);
+  } else if (cmd === 'activate') {
+    flow = activateDigitalFlow(flow, { now, actor: opts.actor });
+    result = { flow, approval: flowToApprovalRecord(flow), executed: false };
+  } else if (cmd === 'approve' || cmd === 'deny') {
+    // Re-activate from terminal statuses so durable store is not a one-shot trap
+    if (flow.status !== 'pending_auth') {
+      flow = activateDigitalFlow(flow, { now, actor: opts.actor });
+    }
+    flow = applyFlowDecision(flow, cmd, { now, actor: opts.actor });
+    result = { flow, approval: flowToApprovalRecord(flow), executed: false };
+  } else if (cmd === 'execute') {
+    flow = executeDigitalFlow(flow, {
+      now,
+      actor: opts.actor,
+      executeHook: opts.executeHook,
+    });
+    result = {
+      flow,
+      executed: true,
+      result: flow.lastResult,
+      approval: flowToApprovalRecord(flow),
+    };
+  } else {
+    throw new Error(`unknown digital-flow cmd: ${cmd}`);
+  }
+
+  // Upsert flow store
+  const others = (store.flows || []).filter((f) => f.id !== flow.id);
+  store.flows = [...others, flow];
+  store.updatedAt = now;
+
+  if (opts.write !== false) {
+    fs.mkdirSync(path.dirname(flowPath), { recursive: true });
+    fs.writeFileSync(flowPath, `${JSON.stringify(store, null, 2)}\n`, 'utf8');
+    result.flowPath = flowPath;
+
+    // Merge auth into wait snapshot: pending on activate; closed after approve/deny/cycle/execute
+    if (
+      cmd === 'activate' ||
+      cmd === 'approve' ||
+      cmd === 'deny' ||
+      cmd === 'cycle' ||
+      cmd === 'execute'
+    ) {
+      const snapFile = snapshotPath(root, opts);
+      let snap = loadSnapshot(snapFile);
+      const approval = flowToApprovalRecord(flow);
+      const pending = [...(snap.pending || [])];
+      const idx = pending.findIndex((p) => p.id === approval.id || p.actionId === approval.actionId);
+      if (idx >= 0) pending[idx] = { ...pending[idx], ...approval, updatedAt: now };
+      else pending.push({ ...approval, createdAt: now, updatedAt: now });
+      snap.pending = pending;
+      snap.updatedAt = now;
+      // Open gate only when status === 'pending' (dry_run_ok/executed → approved)
+      snap.status = deriveStatus(pending);
+      snap.phase =
+        snap.status === 'idle_waiting' ? 'HITL_WAIT' : snap.status === 'clear' ? 'CLEAR' : 'PARTIAL';
+      saveSnapshot(snapFile, snap);
+      result.snapshotPath = snapFile;
+      result.snapshot = snap;
+      result.approval = approval;
+    }
+  }
+
+  return result;
 }

@@ -58,8 +58,24 @@ async function main() {
 
   // Drive pure session (same as browser) via dynamic import
   const mod = await import(pathToFileURL(path.join(root, 'src/game/index.js')).href);
-  const graph = JSON.parse(
-    fs.readFileSync(path.join(root, 'public/game/sample-graph.json'), 'utf8'),
+  // Prefer life-derived graph (CLI export) when present — sample is fallback only
+  const lifePath = path.join(root, 'public/game/life-graph.json');
+  const samplePath = path.join(root, 'public/game/sample-graph.json');
+  const graphPath = fs.existsSync(lifePath) ? lifePath : samplePath;
+  const graph = JSON.parse(fs.readFileSync(graphPath, 'utf8'));
+  const lifeLoad = await fetchText(`${base}/game/life-graph.json`);
+  const mainSrc = mainJs.body;
+  fs.writeFileSync(
+    path.join(scratch, 'game-life-graph-load.txt'),
+    [
+      `graphPath=${path.relative(root, graphPath)}`,
+      `source=${graph.meta?.source || graph.meta?.generator || 'n/a'}`,
+      `nextPhysicalId=${graph.meta?.nextPhysicalId || '-'}`,
+      `nextAuthId=${graph.meta?.nextAuthId || '-'}`,
+      `lifeHttpStatus=${lifeLoad.status}`,
+      `mainPrefersLife=${/life-graph\.json/.test(mainSrc)}`,
+      `nodeCount=${(graph.nodes || []).length}`,
+    ].join('\n') + '\n',
   );
   let s = mod.createSession(graph, { pending: graph.pending });
   const before = mod.sessionView(s);

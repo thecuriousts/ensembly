@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-07-13T09:24:11.488Z",
+  "generatedAt": "2026-07-15T14:44:09.204Z",
   "overview": {
     "date": "2026-07-13",
     "phase": "HITL_WAIT",
@@ -8,7 +8,7 @@
     "physicalOpen": 2,
     "physicalClaimed": 0,
     "physicalCompleted": 1,
-    "pendingAuth": 1,
+    "pendingAuth": 2,
     "balanceScore": 1,
     "historyLen": 1
   },
@@ -43,9 +43,9 @@
     "activityByKind": {},
     "scheduleBlocks": 11,
     "areaCounts": {
-      "Career": 2,
+      "Career": 1,
       "Health": 1,
-      "Finance": 1,
+      "Finance": 2,
       "Learning": 0,
       "Relationships": 2,
       "Systems": 1,
@@ -70,7 +70,7 @@
       "severity": "steer",
       "message": "Clear the open authorization gate before more digital thrash.",
       "evidence": {
-        "pendingAuth": 1,
+        "pendingAuth": 2,
         "nextAuthId": "auth-apply-high-signal",
         "kind": "job_application_submit"
       },

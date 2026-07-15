@@ -8,6 +8,18 @@ Read this before any non-trivial change. These are **product law**, not suggesti
 
 **ensembly** is production-grade life infrastructure for one operator (and, later, people who share the same bar). It is **not** a demo, weekend toy, portfolio piece, or “MVP to throw away.”
 
+### Substrate restart (2026-07-15) — binding
+
+| Layer | SoT | Notes |
+|-------|-----|-------|
+| **Control / HITL / turn / digital-flow** | **`crates/peram-kernel` (Rust)** | Expand here. CLI: `cargo run -p peram-kernel -- …` |
+| **World sim** | `crates/peram-core` (Rust) | Evolves toward places/biomes; mirrors FocusPlan |
+| **Node `src/*` + `bin/swarm.js`** | **Legacy** | Dogfood / parity bridge only — **no new product features** |
+| **Data** | T1 SQLite + T2 PQ vault (peram-vault law) | Backup/restore are product paths |
+| **Primary host trajectory** | Native console (Hyprland) | Browser game = optional thin client later |
+
+Full law: [docs/DECISIONS.md](docs/DECISIONS.md) (Rust life-console restart).
+
 ### life-os vs this repo (do not confuse)
 
 | | **`~/life-os`** | **ensembly (this repo)** |

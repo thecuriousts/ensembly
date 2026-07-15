@@ -1,8 +1,9 @@
-# Workspace root — peram-core is shared by browser (WASM) and future desktop hosts.
+# Workspace root — kernel (control) + world (sim). Node src/* is legacy dogfood only.
 [workspace]
-members = ["crates/peram-core"]
+members = ["crates/peram-core", "crates/peram-kernel"]
 resolver = "2"
 
 [workspace.package]
 edition = "2021"
 license = "MIT"
+version = "0.3.0"

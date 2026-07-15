@@ -13,6 +13,7 @@ import {
   runApprovalDecision,
   runPhysicalDecision,
   runGraphExport,
+  runDigitalFlowCommand,
   snapshotPath,
 } from '../src/turn.js';
 import { graphToWatchHtml } from '../src/graph.js';
@@ -97,7 +98,8 @@ Commands:
   claim <id>          Claim a physical pickup (body work in progress)
   complete <id>       Complete a physical pickup (leave open queue)
   release <id>        Release a claimed physical back to open
-  graph               Export serializable game graph (+ mermaid / HTML watch)
+  graph               Export life-derived playable graph (+ mermaid / HTML watch + life-graph.json)
+  digital-flow|df …   HITL-gated digital flow (default bill_pay / Bank dry-run)
   dashboard           Life progress: stats, insights, overview → public/watch/dashboard.*
   flow|pf …           Shared micro-capture via premflow (notes/tasks/pomo/review) — one SoT ~/.premflow
   activity list|append   Durable swarm activity audit (SQLite under data/local/) — not the note inbox
@@ -126,6 +128,10 @@ Examples:
   node bin/swarm.js claim grocery-errand
   node bin/swarm.js complete grocery-errand
   node bin/swarm.js graph --html
+  node bin/swarm.js digital-flow activate          # Bank bill_pay → pending HITL
+  node bin/swarm.js digital-flow approve           # approve then dry-run execute
+  node bin/swarm.js digital-flow deny              # deny (no execute)
+  node bin/swarm.js digital-flow cycle --json      # activate→approve→dry-run in one shot
   node bin/swarm.js activity append --kind activity.claim -m "claimed healthy-self-energy"
   node bin/swarm.js log append -m "post-lunch steer"
   node bin/swarm.js activity list --json --limit 20
@@ -399,7 +405,12 @@ async function main() {
   }
 
   if (args.cmd === 'graph') {
-    const { graph, mermaid, turn } = runGraphExport({ ...common, write: false });
+    const exported = runGraphExport({
+      ...common,
+      write: false,
+      writeGameGraph: true,
+    });
+    const { graph, mermaid, turn, gameGraphPath } = exported;
     if (args.html) {
       const htmlPath = path.join(root, 'public', 'watch', 'index.html');
       fs.mkdirSync(path.dirname(htmlPath), { recursive: true });
@@ -416,13 +427,101 @@ async function main() {
       console.log(`wrote: ${irPath}`);
       console.log(`wrote: ${statusPath}`);
     }
+    if (gameGraphPath) console.log(`wrote: ${gameGraphPath}`);
     if (args.stdout || !args.html) {
       process.stdout.write(`${mermaid}\n`);
       if (!args.stdout) {
         console.error(
-          `GRAPH_OK nodes=${graph.meta.nodeCount} edges=${graph.meta.edgeCount} nextPhysical=${turn.nextPhysical?.id || '-'} nextAuth=${turn.nextAuth?.id || '-'}`,
+          `GRAPH_OK nodes=${graph.meta.nodeCount} edges=${graph.meta.edgeCount} nextPhysical=${turn.nextPhysical?.id || graph.meta.nextPhysicalId || '-'} nextAuth=${turn.nextAuth?.id || graph.meta.nextAuthId || '-'} source=${graph.meta.source || 'life'}`,
         );
       }
+    }
+    return;
+  }
+
+  if (args.cmd === 'digital-flow' || args.cmd === 'df') {
+    const sub = args.positional[0] || 'cycle';
+    const payee =
+      args.positional.find((p, i) => i > 0 && !String(p).startsWith('-')) || 'monthly bill';
+    if (sub === 'help') {
+      console.log(`digital-flow commands:
+  activate [--json]     Bank bill_pay → pending_auth + wait-snapshot row
+  approve [--json]      approve pending flow then dry-run execute
+  deny [--json]         deny (execute hook never runs)
+  execute [--json]      execute approved flow (dry_run default)
+  cycle [--json]        activate → approve → dry-run in one shot
+  status [--json]       show durable digital-flows.json`);
+      return;
+    }
+    if (sub === 'status') {
+      const flowPath = path.join(root, 'private', 'state', 'digital-flows.json');
+      if (!fs.existsSync(flowPath)) {
+        console.log(args.json ? '{}' : 'no digital-flows store yet — run: node bin/swarm.js digital-flow activate');
+        return;
+      }
+      const raw = fs.readFileSync(flowPath, 'utf8');
+      if (args.json) process.stdout.write(raw.endsWith('\n') ? raw : `${raw}\n`);
+      else console.log(raw);
+      return;
+    }
+    let cmd = sub;
+    let decision = 'approve';
+    let autoExecute = false;
+    if (sub === 'approve') {
+      cmd = 'approve';
+      autoExecute = true;
+    } else if (sub === 'deny') {
+      cmd = 'deny';
+    } else if (sub === 'cycle') {
+      cmd = 'cycle';
+      decision = 'approve';
+    }
+    const result = runDigitalFlowCommand(cmd === 'cycle' ? 'cycle' : cmd, {
+      ...common,
+      payeeLabel: typeof payee === 'string' ? payee : 'monthly bill',
+      decision,
+      executionMode: 'dry_run',
+    });
+    // approve path: also dry-run execute so "pay at Bank" completes the IR cycle
+    if (autoExecute && result.flow?.status === 'approved') {
+      const exec = runDigitalFlowCommand('execute', {
+        ...common,
+        flowId: result.flow.id,
+        executionMode: 'dry_run',
+      });
+      result.flow = exec.flow;
+      result.executed = true;
+      result.result = exec.flow?.lastResult || exec.result;
+    }
+    if (args.json) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            ok: true,
+            cmd: sub,
+            flow: {
+              id: result.flow?.id,
+              kind: result.flow?.kind,
+              place: result.flow?.place,
+              status: result.flow?.status,
+              title: result.flow?.title,
+              lastResult: result.flow?.lastResult || result.result || null,
+            },
+            executed: Boolean(result.executed),
+            hookWouldMutate: false,
+            flowPath: result.flowPath || null,
+            snapshotPath: result.snapshotPath || null,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      console.log(
+        `DIGITAL_FLOW ok cmd=${sub} id=${result.flow?.id} place=${result.flow?.place} status=${result.flow?.status} executed=${Boolean(result.executed)}`,
+      );
+      if (result.flow?.lastResult?.message) console.log(`result: ${result.flow.lastResult.message}`);
+      if (result.flowPath) console.log(`store: ${result.flowPath}`);
     }
     return;
   }

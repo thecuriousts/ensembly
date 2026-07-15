@@ -66,7 +66,7 @@
     2026-07-13 · phase <strong>HITL_WAIT</strong>
     · snapshot <strong>idle_waiting</strong>
     · balance <strong>1</strong>
-    · generated 2026-07-13T09:24:11.488Z
+    · generated 2026-07-15T14:44:09.204Z
   </p>
   <p class="links">
     <a href="./index.html">Watch map</a>
@@ -78,7 +78,7 @@
     <h2>Overview</h2>
     <div class="grid">
       <div class="stat"><div class="n">2</div><div class="l">Physical open</div></div>
-      <div class="stat"><div class="n">1</div><div class="l">Pending auth</div></div>
+      <div class="stat"><div class="n">2</div><div class="l">Pending auth</div></div>
       <div class="stat"><div class="n">0</div><div class="l">Claimed</div></div>
       <div class="stat"><div class="n">1</div><div class="l">Completed</div></div>
       <div class="stat"><div class="n">0</div><div class="l">Activity events</div></div>
@@ -105,7 +105,7 @@ node bin/swarm.js deny auth-apply-high-signal</pre>
 
   <div class="panel">
     <h2>Intelligent insights</h2>
-    <ul class="ins"><li class="ins steer"><strong>[steer]</strong> Clear the open authorization gate before more digital thrash.<div class="steer"><code>node bin/swarm.js approve auth-apply-high-signal</code></div><div class="ev">evidence: <code>{&quot;pendingAuth&quot;:1,&quot;nextAuthId&quot;:&quot;auth-apply-high-signal&quot;,&quot;kind&quot;:&quot;job_application_submit&quot;}</code></div></li>
+    <ul class="ins"><li class="ins steer"><strong>[steer]</strong> Clear the open authorization gate before more digital thrash.<div class="steer"><code>node bin/swarm.js approve auth-apply-high-signal</code></div><div class="ev">evidence: <code>{&quot;pendingAuth&quot;:2,&quot;nextAuthId&quot;:&quot;auth-apply-high-signal&quot;,&quot;kind&quot;:&quot;job_application_submit&quot;}</code></div></li>
 <li class="ins steer"><strong>[steer]</strong> Body work is still open — claim the next physical pickup.<div class="steer"><code>node bin/swarm.js claim evening-outdoor</code></div><div class="ev">evidence: <code>{&quot;physicalOpen&quot;:2,&quot;nextPhysicalId&quot;:&quot;evening-outdoor&quot;,&quot;claimEvents&quot;:0}</code></div></li>
 <li class="ins info"><strong>[info]</strong> No durable activity log yet — claim/complete/approve or append to seed the store.<div class="steer"><code>node bin/swarm.js activity append -m &quot;seed&quot; · or claim/complete body work</code></div><div class="ev">evidence: <code>{&quot;activityTotal&quot;:0}</code></div></li></ul>
   </div>
@@ -129,7 +129,7 @@ node bin/swarm.js deny auth-apply-high-signal</pre>
     <p class="meta">Machine-readable export: <code>public/watch/dashboard.json</code></p>
     <pre>{
   &quot;version&quot;: 1,
-  &quot;generatedAt&quot;: &quot;2026-07-13T09:24:11.488Z&quot;,
+  &quot;generatedAt&quot;: &quot;2026-07-15T14:44:09.204Z&quot;,
   &quot;overview&quot;: {
     &quot;date&quot;: &quot;2026-07-13&quot;,
     &quot;phase&quot;: &quot;HITL_WAIT&quot;,
@@ -137,7 +137,7 @@ node bin/swarm.js deny auth-apply-high-signal</pre>
     &quot;physicalOpen&quot;: 2,
     &quot;physicalClaimed&quot;: 0,
     &quot;physicalCompleted&quot;: 1,
-    &quot;pendingAuth&quot;: 1,
+    &quot;pendingAuth&quot;: 2,
     &quot;balanceScore&quot;: 1,
     &quot;historyLen&quot;: 1
   },
@@ -172,9 +172,9 @@ node bin/swarm.js deny auth-apply-high-signal</pre>
     &quot;activityByKind&quot;: {},
     &quot;scheduleBlocks&quot;: 11,
     &quot;areaCounts&quot;: {
-      &quot;Career&quot;: 2,
+      &quot;Career&quot;: 1,
       &quot;Health&quot;: 1,
-      &quot;Finance&quot;: 1,
+      &quot;Finance&quot;: 2,
       &quot;Learning&quot;: 0,
       &quot;Relationships&quot;: 2,
       &quot;Systems&quot;: 1,
@@ -199,7 +199,7 @@ node bin/swarm.js deny auth-apply-high-signal</pre>
       &quot;severity&quot;: &quot;steer&quot;,
       &quot;message&quot;: &quot;Clear the open authorization gate before more digital thrash.&quot;,
       &quot;evidence&quot;: {
-        &quot;pendingAuth&quot;: 1,
+        &quot;pendingAuth&quot;: 2,
         &quot;nextAuthId&quot;: &quot;auth-apply-high-signal&quot;,
         &quot;kind&quot;: &quot;job_application_submit&quot;
       },

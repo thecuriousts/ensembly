@@ -30,8 +30,32 @@ export {
   runApprovalDecision,
   runPhysicalDecision,
   runGraphExport,
+  runDigitalFlowCommand,
 } from './turn.js';
 export { buildGameGraph, graphToMermaid, graphToWatchHtml, layoutGrid } from './graph.js';
+export { buildPlayableGraphFromTurn, listBeacons } from './play.js';
+export {
+  createDigitalFlow,
+  activateDigitalFlow,
+  applyFlowDecision,
+  executeDigitalFlow,
+  runDigitalFlowCycle,
+  flowToApprovalRecord,
+  flowToActionCandidate,
+  flowToPlaceNode,
+  mapFlowStatusToApprovalStatus,
+  DIGITAL_FLOW_KINDS,
+  REACTIVATABLE_FLOW_STATUSES,
+} from './digital-flow.js';
+export {
+  resolveLifeOsRoot,
+  parseProjectFrontmatter,
+  projectCardToCandidate,
+  projectPortfolioToCandidates,
+  partitionPortfolioForShare,
+  loadPortfolioProjection,
+  mergeLifeOsIntoState,
+} from './lifeos/index.js';
 export {
   SOVEREIGNTY_STEPS,
   SOVEREIGNTY_LAYERS,

@@ -5,7 +5,7 @@
 **Contract:** [PRIVACY.md](../PRIVACY.md) · [SWARM-DESIGN.md](../SWARM-DESIGN.md) · [DECISIONS.md](../DECISIONS.md)  
 **Method:** stellar-roadmap · fusion-sage · ai-optimization · higher-order-decision-architect · looper
 
-*Last updated: 2026-07-13*
+*Last updated: 2026-07-15*
 
 ---
 
@@ -78,6 +78,10 @@ flowchart LR
 | Physical pickup queue | A− | Realm tag + turn lists physical | `src/realm.js`, `src/turn.js` |
 | Durable approve/deny | A− | Idle snapshot resume | `src/approvals.js` |
 | Game graph watch | A− | Nodes/edges + mermaid/HTML | `src/graph.js`, `public/watch/` |
+| Life-mirror play graph | A− | Beacons from real next physical/auth; game loads life-graph first | `src/play.js`, `public/game/life-graph.json`, `test/play.test.js` |
+| life-os portfolio projection | A− | Cards → candidates; finance private | `src/lifeos/`, `test/lifeos-portfolio.test.js` |
+| Digital-flow bill_pay / Bank | A− | HITL + dry-run execute; deny no-run | `src/digital-flow.js`, `swarm digital-flow`, `test/digital-flow.test.js` |
+| **Rust kernel restart** | B+ | Control SoT moves to `peram-kernel`; T1 SQLite + sealed backup + vault seal | `crates/peram-kernel`, `cargo test -p peram-kernel`, `peram` CLI |
 | Immersive game world | A− | Env/sprites/props + WASM focus SoT | `public/game/`, `crates/peram-core`, `npm run game` |
 | Eve bridge map | B | Fit doc: channels/HITL/schedules only | [EVE-FIT.md](../EVE-FIT.md), SN-5 |
 | Multiplayer voice room | C | Ascent only | SN-6 |

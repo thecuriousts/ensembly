@@ -21,6 +21,9 @@ data/private/
 .env.*
 !.env.example
 
+# Operator life-derived game graph (CLI export; sample-graph.json is the committed fallback)
+public/game/life-graph.json
+
 # Agent / scratch (local only)
 .agents/
 .claude/

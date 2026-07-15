@@ -48,10 +48,17 @@
       "kind": "job_application_submit",
       "actionId": "apply-high-signal",
       "status": "pending"
+    },
+    {
+      "id": "auth-lifeos-wealth-due-diligence",
+      "title": "Map code/data via private path map; copy sample fixture → gitignored private ledger; run brief (Rust wealth-core pref…",
+      "kind": "finance_transfer",
+      "actionId": "lifeos-wealth-due-diligence",
+      "status": "pending"
     }
   ],
   "counts": {
     "physical": 2,
-    "pending": 1
+    "pending": 2
   }
 }
