@@ -3,7 +3,7 @@
 **Audience:** new readers, agents, and the operator who need a single orientation pass.  
 **Not this doc:** how to play (→ [PLAYBOOK.md](PLAYBOOK.md)), race-car stack decision (→ [GAME-STACK.md](GAME-STACK.md)), WASM/desktop engine detail (→ [ENGINE.md](ENGINE.md)), product why (→ [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md)).
 
-**Last verified against shipped code:** 2026-07-15
+**Last verified against shipped code:** 2026-07-24
 
 ---
 
@@ -39,7 +39,8 @@ Only features with a **dogfood path** (command, URL, or unit-tested pure export)
 | **Realm split** | pure: `src/realm.js` | Physical pickups vs digital actions; HITL enrichment |
 | **Prioritize / balance / loop** | pure: `prioritize.js`, `balance.js`, `loop.js`, `day.js` | Eisenhower + capacity balance + looper phases |
 | **Persona boundary** | load via `ingest.js` | Full persona only under `private/persona/`; public projection under `public/persona/` |
-| **Rust life kernel (SoT trajectory)** | `cargo run -p peram-kernel -- …` · `npm run peram -- …` | `rank_now` FocusPlan, HITL, bill_pay dry-run, T1 SQLite, sealed backup; Node `src/*` is **legacy** |
+| **Rust life kernel (SoT)** | `cargo run -p peram-kernel -- …` · `npm run peram -- …` | `rank_now` FocusPlan, **S+G+CP+P runtime** (`runtime load|status|tick`), HITL/HOOTL MsgBus, bill_pay dry-run, T1 SQLite, sealed backup; Node `src/*` is **legacy** |
+| **Runtime control plane (Issue #1)** | `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json` · `runtime tick` · `runtime approve <id>` | Life-state S + DepGraph G + critical path / PERT+MonteCarlo P; typed MsgBus; HOOTL agents claim digital thrash; AuthGate + PhysicalBeacon wait only for permission |
 
 ### 1.2 Game of Peram (browser host)
 

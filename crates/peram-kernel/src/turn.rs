@@ -19,6 +19,11 @@ pub struct Action {
     pub importance: i32,
     pub tags: Vec<String>,
     pub public: Option<bool>,
+    /// Explicit dependency edges into this action (Issue #1 G).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depends_on: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +49,8 @@ pub struct FocusItem {
     pub kind: String,
     pub reason: String,
 }
+
+// FocusItem is part of FocusPlan public surface (CP-driven reasons).
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FocusPlan {
@@ -334,6 +341,8 @@ mod tests {
                 importance: 4,
                 tags: vec!["physical".into()],
                 public: Some(false),
+                depends_on: None,
+                deadline_at: None,
             },
             Action {
                 id: "apply-high-signal".into(),
@@ -345,6 +354,8 @@ mod tests {
                 importance: 4,
                 tags: vec!["digital".into()],
                 public: Some(true),
+                depends_on: None,
+                deadline_at: None,
             },
         ];
         let snap = upsert_pending_from_actions(

@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "purpose": "Issue #1 dogfood — G + CP + HITL/HOOTL runtime fixture",
+    "note": "depends_on forms the directed graph; finance_transfer is AuthGate; grocery is PhysicalBeacon"
+  },
+  "extra_candidates": [
+    {
+      "id": "triage-inbox",
+      "title": "Triage inbox thrash",
+      "area": "Craft",
+      "kind": "chore",
+      "realm": "digital",
+      "urgency": 3,
+      "importance": 3,
+      "tags": ["digital"],
+      "public": true
+    },
+    {
+      "id": "draft-transfer",
+      "title": "Draft rent transfer",
+      "area": "Finance",
+      "kind": "chore",
+      "realm": "digital",
+      "urgency": 4,
+      "importance": 4,
+      "tags": ["digital", "finance-prep"],
+      "public": false,
+      "depends_on": ["triage-inbox"]
+    },
+    {
+      "id": "pay-rent",
+      "title": "Pay rent (HITL)",
+      "area": "Finance",
+      "kind": "finance_transfer",
+      "realm": "digital",
+      "urgency": 5,
+      "importance": 5,
+      "tags": ["finance", "hitl"],
+      "public": false,
+      "depends_on": ["draft-transfer"]
+    },
+    {
+      "id": "grocery-errand",
+      "title": "Grocery pickup",
+      "area": "Health",
+      "kind": "physical_errand",
+      "realm": "physical",
+      "urgency": 4,
+      "importance": 4,
+      "tags": ["physical"],
+      "public": false,
+      "depends_on": ["pay-rent"]
+    }
+  ]
+}

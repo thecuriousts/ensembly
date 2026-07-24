@@ -216,5 +216,21 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 | Vault bridge to peram-vault law | Reinventing crypto in the game loop |
 | FocusPlan = rank_now(ContextFrame) | Sample-graph theater as daily surface |
 
-**Ship path:** `crates/peram-kernel` · `cargo test -p peram-kernel` · `cargo run -p peram-kernel -- turn`  
+**Ship path:** `crates/peram-kernel` · `cargo test -p peram-kernel` · `cargo run -p peram-kernel -- turn` · `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json`  
 **Near-term confidence:** 75%. **Thrive bet:** 85%.
+
+---
+
+## Issue #1 HITL/HOOTL runtime core (2026-07-24)
+
+**Verdict:** Game surface excluded from the Issue #1 core. Control plane owns **life-state S**, directed **DepGraph G**, **CP + P** (PERT expected + basic Monte Carlo), typed **MsgBus**, declarative **triggers**, and basic **HOOTL agents** that claim only through G/CP. Physical beacons + auth gates remain HITL (“wait only for permission”). Formal law: [`arch-design/formal_problem_definition.AppGenMathPhyLang.md`](../arch-design/formal_problem_definition.AppGenMathPhyLang.md).
+
+| Adopt | Refuse |
+|-------|--------|
+| Runtime SoT for S+G+CP in `peram-kernel` | Unity/game layer as prerequisite for prioritization |
+| Agents claim via CP only | Free-form agent-to-agent chatter as coordination |
+| CLI `runtime *` + durable `life_state` in T1 SQLite | Eisenhower-only prioritization as final SoT |
+| Explainable CP reasons on FocusPlan | Opaque priority scores without graph path |
+
+**Ship path:** `peram runtime load|status|tick|approve|claim|complete` · `fixtures/issue-1-runtime.json` · `cargo test -p peram-kernel`  
+**Remaining (not blocking this slice):** multi-agent conflict resolution at scale, adaptive/RL local policies, continuous outcome telemetry dashboards, Eve bridge for remote HITL.

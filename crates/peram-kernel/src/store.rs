@@ -163,6 +163,30 @@ impl OpsStore {
         Ok(out)
     }
 
+pub fn save_life_state(&self, state: &crate::life_state::LifeState) -> Result<(), StoreError> {
+        let json = serde_json::to_string_pretty(state)?;
+        self.conn.execute(
+            "INSERT INTO kv (key, value, updated_at) VALUES ('life_state', ?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            params![json, state.updated_at.to_rfc3339()],
+        )?;
+        self.audit("life_state.save", &format!("version={}", state.version))?;
+        Ok(())
+    }
+
+    pub fn load_life_state(&self) -> Result<Option<crate::life_state::LifeState>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT value FROM kv WHERE key = 'life_state'")?;
+        let mut rows = stmt.query([])?;
+        if let Some(row) = rows.next()? {
+            let v: String = row.get(0)?;
+            Ok(Some(serde_json::from_str(&v)?))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Export all kv + schema version for backup pack.
     pub fn export_bundle(&self) -> Result<OpsBundle, StoreError> {
         let mut stmt = self.conn.prepare("SELECT key, value, updated_at FROM kv")?;
