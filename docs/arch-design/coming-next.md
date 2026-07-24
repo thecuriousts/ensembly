@@ -82,6 +82,7 @@ flowchart LR
 | life-os portfolio projection | A− | Cards → candidates; finance private | `src/lifeos/`, `test/lifeos-portfolio.test.js` |
 | Digital-flow bill_pay / Bank | A− | HITL + dry-run execute; deny no-run | `src/digital-flow.js`, `swarm digital-flow`, `test/digital-flow.test.js` |
 | **Rust kernel restart** | B+ | Control SoT moves to `peram-kernel`; T1 SQLite + sealed backup + vault seal | `crates/peram-kernel`, `cargo test -p peram-kernel`, `peram` CLI |
+| **Issue #1 HITL/HOOTL runtime** | A− | S+G+CP+P, MsgBus, triggers, HOOTL agents, AuthGate/PhysicalBeacon; game excluded | `runtime load\|status\|tick\|approve\|claim\|complete`, `fixtures/issue-1-runtime.json`, [DECISIONS](../DECISIONS.md#issue-1-hitlhootl-runtime-core-2026-07-24) |
 | Immersive game world | A− | Env/sprites/props + WASM focus SoT | `public/game/`, `crates/peram-core`, `npm run game` |
 | Eve bridge map | B | Fit doc: channels/HITL/schedules only | [EVE-FIT.md](../EVE-FIT.md), SN-5 |
 | Multiplayer voice room | C | Ascent only | SN-6 |
@@ -205,6 +206,23 @@ flowchart TD
 ---
 
 ## 7. Blueprint cards SN-*
+
+### SN-0 · Issue #1 remaining (after runtime core)
+
+**Problem:** Essentials-first S+G+CP+MsgBus+HITL shipped; scale/telemetry/remote still open.
+
+| Remaining | Why it waits |
+|-----------|--------------|
+| Multi-agent conflict at scale | Basic claim-via-CP agents work; contention policies not production |
+| Adaptive / RL local policies | Formal deferred until essentials solid |
+| Continuous Correctness/Effectiveness/Efficiency dashboards | Status counters only today |
+| Eve remote HITL | Bridge trajectory; local MsgBus first |
+
+**Shipped evidence:** [DECISIONS Issue #1](../DECISIONS.md#issue-1-hitlhootl-runtime-core-2026-07-24) · `cargo test -p peram-kernel` · `fixtures/issue-1-runtime.json`
+
+**Verify:** `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json && cargo run -p peram-kernel -- runtime tick`
+
+---
 
 ### SN-1 · Dogfood gate (no new product surface)
 
@@ -409,6 +427,7 @@ gantt
 | 2026-07-13 | Immersive game world + WASM focus SoT; `npm run game` |
 | 2026-07-13 | Eve fit map: channels/HITL/schedules adopt; kernel refuse rewrite ([EVE-FIT.md](../EVE-FIT.md)) |
 | 2026-07-13 | Product charter + AGENTS.md: production-grade life infrastructure; no hobby/prototype theater |
+| 2026-07-24 | Issue #1 HITL/HOOTL runtime core in `peram-kernel` (S+G+CP+P, MsgBus, AuthGate/PhysicalBeacon); formal AppGenMathPhyLang |
 
 ---
 
@@ -427,13 +446,18 @@ mindmap
       loop
       game
     crates
+      peram-kernel
       peram-core
     bin
       swarm
+    fixtures
+    arch-design
     docs
       arch-design
       EVE-FIT
       PRIVACY
+      MAP
+      PLAYBOOK
     public
       game
       watch

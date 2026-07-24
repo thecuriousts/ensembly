@@ -23,7 +23,16 @@ Bridge (Eve optional, trajectory) → channels, remote approval UX, cron — cal
 
 Only features with a **dogfood path** (command, URL, or unit-tested pure export) are listed as live. Roadmap (Eve channels, desktop host, multiplayer) is marked **trajectory**, not current.
 
-### 1.1 Control plane (Node / pure modules under `src/`)
+### 1.1 Control plane
+
+#### Rust life kernel (SoT) — `crates/peram-kernel`
+
+| Capability | Entry | What you get |
+|------------|-------|--------------|
+| **Kernel CLI** | `cargo run -p peram-kernel -- …` · `npm run peram -- …` | `rank_now` FocusPlan, bill_pay dry-run, T1 SQLite, sealed backup; Node `src/*` is **legacy** |
+| **Runtime S+G+CP+P (Issue #1)** | `cargo run -p peram-kernel -- runtime load\|status\|tick\|approve\|deny\|claim\|complete` · fixture `fixtures/issue-1-runtime.json` | Life-state **S** + DepGraph **G** + critical path / PERT+MonteCarlo **P**; typed MsgBus; HOOTL agents claim digital thrash; AuthGate + PhysicalBeacon wait only for permission. Persist to `data/local/peram-ops.sqlite` (gitignored). **Approve/deny id = action id** (e.g. `pay-rent`), not `auth-pay-rent` from `pendingAuth`. `runtime * --json` emits JSON then a trailing `RUNTIME_OK …` line. |
+
+#### Node / pure modules under `src/` (legacy parity)
 
 | Capability | Entry | What you get |
 |------------|-------|--------------|
@@ -39,8 +48,6 @@ Only features with a **dogfood path** (command, URL, or unit-tested pure export)
 | **Realm split** | pure: `src/realm.js` | Physical pickups vs digital actions; HITL enrichment |
 | **Prioritize / balance / loop** | pure: `prioritize.js`, `balance.js`, `loop.js`, `day.js` | Eisenhower + capacity balance + looper phases |
 | **Persona boundary** | load via `ingest.js` | Full persona only under `private/persona/`; public projection under `public/persona/` |
-| **Rust life kernel (SoT)** | `cargo run -p peram-kernel -- …` · `npm run peram -- …` | `rank_now` FocusPlan, **S+G+CP+P runtime** (`runtime load|status|tick`), HITL/HOOTL MsgBus, bill_pay dry-run, T1 SQLite, sealed backup; Node `src/*` is **legacy** |
-| **Runtime control plane (Issue #1)** | `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json` · `runtime tick` · `runtime approve <id>` | Life-state S + DepGraph G + critical path / PERT+MonteCarlo P; typed MsgBus; HOOTL agents claim digital thrash; AuthGate + PhysicalBeacon wait only for permission |
 
 ### 1.2 Game of Peram (browser host)
 
@@ -79,32 +86,35 @@ Hosts are **thin**. They do not re-implement prioritization or privacy. Same ker
 
 | Host | Role | Connects how | Not responsible for |
 |------|------|--------------|---------------------|
-| **CLI** (`bin/swarm.js`) | Operator + agent dogfood: day, turn, approve/deny, claim/complete, graph | Imports pure `src/*` (and filesystem under `private/` / `public/watch/`) | Rendering, WASM world, $SPN paint |
-| **Game (browser)** | Immersive play surface | `scripts/serve-game.mjs` serves `public/game/` **and** `src/` as ESM; host loads session from `/src/game/*` and WASM from `/game/pkg/` | Day plan file I/O, durable wait snapshot (session is in-browser unless you wire fixtures) |
+| **Kernel CLI** (`peram-kernel`) | **Control SoT:** life-state, DepGraph, CP+P, MsgBus, HITL/HOOTL, T1 SQLite | `cargo run -p peram-kernel -- …` · `npm run peram -- …` · DB `data/local/peram-ops.sqlite` | Game paint, Node wait-snapshot |
+| **CLI** (`bin/swarm.js`) | **Legacy** operator + agent parity: day, turn, approve/deny, claim/complete, graph | Imports pure `src/*` (and filesystem under `private/` / `public/watch/`) | Rendering, WASM world, $SPN paint, Issue #1 MsgBus SoT |
+| **Game (browser)** | Immersive play surface (optional client) | `scripts/serve-game.mjs` serves `public/game/` **and** `src/` as ESM; host loads session from `/src/game/*` and WASM from `/game/pkg/` | Day plan file I/O, durable wait snapshot (session is in-browser unless you wire fixtures) |
 | **Watch (static web)** | Glanceable map of next act + graph | CLI **writes** `public/watch/{index.html,graph.json,turn-status.json}`; open in any browser / static server | Live simulation, claim/approve (read-only consumer) |
 | **Eve (trajectory)** | Remote channels + approve buttons + cron | Would call kernel / CLI with **redacted** IR only | Vault, full persona, policy ownership |
 
 ### Connection diagram
 
 ```text
-                    ┌──────────────────────────────────────┐
-                    │  KERNEL (pure, local)                │
-                    │  src/day · turn · privacy · realm    │
-                    │  approvals · graph · loop · game/*   │
-                    └───────────┬──────────────┬───────────┘
-                                │              │
-              import / Node CLI │              │ ESM import over HTTP
-                                │              │ (serve-game maps /src → src/)
-                    ┌───────────▼──┐    ┌──────▼──────────────────────────┐
-                    │ bin/swarm.js │    │ public/game/ (thin host shell)  │
-                    │ day turn …   │    │ main.js · engine.js · paint     │
-                    └──────┬───────┘    │        │                        │
-                           │           │        ▼ load                    │
-                           │ graph     │  public/game/pkg/*.wasm          │
-                           │ --html    │  (build of crates/peram-core)    │
-                           ▼           └──────────────────────────────────┘
-                    public/watch/
-                    index.html · graph.json · turn-status.json
+                    ┌──────────────────────────────────────────┐
+                    │  KERNEL SoT — crates/peram-kernel (Rust) │
+                    │  life-state S · DepGraph G · CP + P      │
+                    │  MsgBus · triggers · HITL/HOOTL · T1 SQL │
+                    └───────────┬──────────────────┬───────────┘
+                                │                  │
+              cargo / npm run peram                │ FocusPlan / draw bind
+                                │                  │
+                    ┌───────────▼──┐    ┌──────────▼──────────────────────┐
+                    │ runtime CLI  │    │ peram-core WASM (world mirror)  │
+                    │ load tick …  │    │ public/game/pkg + thin host     │
+                    └──────────────┘    └─────────────────────────────────┘
+
+                    ┌──────────────────────────────────────────┐
+                    │  LEGACY parity — bin/swarm.js + src/*    │
+                    │  day · turn · wait-snapshot · graph IR   │
+                    └───────────┬──────────────────────────────┘
+                                │ graph --html
+                                ▼
+                    public/watch/  (static consumer)
 ```
 
 ### Package scripts (shipped)
@@ -112,8 +122,10 @@ Hosts are **thin**. They do not re-implement prioritization or privacy. Same ker
 | Script | Purpose |
 |--------|---------|
 | `npm test` | Node pure-logic tests |
-| `npm run test:rust` | `peram-core` crate tests |
-| `npm run swarm:day` / `swarm:turn` / `swarm:graph` | CLI dogfood |
+| `npm run test:kernel` | `peram-kernel` crate tests |
+| `npm run test:rust` | `peram-core` **and** `peram-kernel` crate tests |
+| `npm run peram -- …` | Quiet `cargo run -p peram-kernel -- …` |
+| `npm run swarm:day` / `swarm:turn` / `swarm:graph` | Legacy CLI dogfood |
 | `npm run game` / `game:serve` / `start` | Browser game server (port 4173) |
 | `npm run game:smoke` | Game surface smoke |
 | `npm run build:wasm` | Rebuild Rust → `public/game/pkg` (prebuilt pkg is checked in) |

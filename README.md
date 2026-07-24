@@ -16,23 +16,44 @@ Production life infrastructure — not a toy. Bar: [PRODUCT-CHARTER.md](docs/PRO
 
 ## Drop in
 
+**Prereqs:** Node ≥ **22.5** · Rust toolchain (`cargo`) for the control SoT · WASM prebuilt for the game (rebuild only if you change `peram-core`).
+
+### Control plane (Issue #1 SoT) — `peram-kernel`
+
 ```bash
-# Node ≥ 20  ·  WASM prebuilt (rebuild only if you change Rust)
+cargo test -p peram-kernel
+# or: npm run test:kernel
+
+cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
+cargo run -p peram-kernel -- runtime status
+cargo run -p peram-kernel -- runtime tick
+# HITL: approve uses the *action* id (pay-rent), not auth-pay-rent from pendingAuth
+cargo run -p peram-kernel -- runtime approve pay-rent
+cargo run -p peram-kernel -- runtime claim grocery-errand
+cargo run -p peram-kernel -- runtime complete grocery-errand
+```
+
+Same CLI via npm: `npm run peram -- runtime status` (etc.).  
+Default durable DB: `data/local/peram-ops.sqlite` (gitignored). Law: [arch-design/formal_problem_definition.AppGenMathPhyLang.md](arch-design/formal_problem_definition.AppGenMathPhyLang.md) · decision: [DECISIONS.md](docs/DECISIONS.md#issue-1-hitlhootl-runtime-core-2026-07-24).
+
+### Game / legacy Node parity
+
+```bash
 npm test
 npm run game          # → http://127.0.0.1:4173/game/
 npm run game:smoke
 ```
 
-Open with the **trailing slash**: `/game/`.
-
-Optional: `npm run build:wasm` after editing `crates/peram-core`.
+Open with the **trailing slash**: `/game/`.  
+Optional: `npm run build:wasm` after editing `crates/peram-core`.  
+Node `bin/swarm.js` remains **legacy parity** — not the HITL/HOOTL SoT ([AGENTS.md](AGENTS.md)).
 
 ---
 
 ## How to play & steer (productivity)
 
 **Full operator guide (laptop + remote channels + CLI recipes):**  
-**[docs/PLAYBOOK.md](docs/PLAYBOOK.md)** — play Game of Peram, run turns, claim/complete, **$SPN**, remote/Eve trajectory.
+**[docs/PLAYBOOK.md](docs/PLAYBOOK.md)** — runtime HITL/HOOTL dogfood, Game of Peram, claim/complete, **$SPN**, remote/Eve trajectory.
 
 ### Quick controls (game)
 
@@ -76,18 +97,30 @@ Deep dives: [MAP](docs/MAP.md) · [PLAYBOOK](docs/PLAYBOOK.md) · [GAME-STACK](d
 
 ## Campaign modes (CLI)
 
+### Runtime (SoT — Issue #1)
+
 | Mode | Command | You get |
 |------|---------|---------|
-| **Turn** | `npm run swarm:turn` | **Next** body act + **next** auth gate, full queues |
-| **Status IR** | `node bin/swarm.js turn --json` | Machine-readable `next` / queues (agents) |
+| **Load** | `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json` | Life-state **S** + DepGraph **G** into T1 SQLite |
+| **Status** | `… runtime status` | Regime, CP length, pending Auth/Physical, outcome counters |
+| **Tick** | `… runtime tick` | Triggers + HOOTL agent claim/complete on digital thrash |
+| **Gate** | `… runtime approve <action-id>` / `deny <action-id>` | HITL AuthGate (id = action id, e.g. `pay-rent`) |
+| **Body** | `… runtime claim <id>` / `complete <id>` | PhysicalBeacon after permission |
+| **Turn (CP)** | `cargo run -p peram-kernel -- turn --fixture fixtures/state-sample.json` | FocusPlan coached from critical path when life-state present |
+
+`runtime * --json` prints JSON then a trailing `RUNTIME_OK …` status line — strip the last line before parsing.
+
+### Legacy Node swarm (parity only)
+
+| Mode | Command | You get |
+|------|---------|---------|
+| **Turn** | `npm run swarm:turn` | **Next** body act + **next** auth gate (wait snapshot) |
+| **Status IR** | `node bin/swarm.js turn --json` | Machine-readable `next` / queues |
 | **Day** | `npm run swarm:day` | Plan: projects · actions · schedule · balance · privacy |
 | **Map** | `npm run swarm:graph` | Watch: next-action panel + mermaid / `public/watch/` |
-| **Dashboard** | `npm run swarm:dashboard` | Life progress: stats · insights · overview → `public/watch/dashboard.html` |
-| **Flow** | `node bin/swarm.js flow …` | Shared notes/tasks/pomo via premflow (`~/.premflow`; vault: `Projects/premflow/capture`) |
-| **Gate** | `node bin/swarm.js approve <id>` | Clear a wait snapshot |
-| | `node bin/swarm.js deny <id>` | |
-| **Body** | `node bin/swarm.js claim <id>` | Claim physical pickup |
-| | `node bin/swarm.js complete <id>` | Complete physical (leave open queue) |
+| **Dashboard** | `npm run swarm:dashboard` | Life progress → `public/watch/dashboard.html` |
+| **Flow** | `node bin/swarm.js flow …` | Shared notes/tasks/pomo via premflow |
+| **Gate / Body** | `node bin/swarm.js approve\|deny\|claim\|complete <id>` | Legacy wait-snapshot HITL |
 
 ```bash
 node bin/swarm.js turn --fixture fixtures/state-sample.json --stdout
@@ -129,13 +162,16 @@ Also never push: `private/`, `data/`, secrets. Classifier: `src/privacy.js` (def
 Full orientation (capabilities · hosts · layers · IR): **[docs/MAP.md](docs/MAP.md)**
 
 ```text
-bin/swarm.js           day · turn · approve · deny · graph
-src/                   control plane (pure): day · turn · privacy · realm · graph IR
-src/game/              pure session kit: focus · growth · $SPN · input (SoT for focus)
+crates/peram-kernel/   control SoT (Rust): life-state S · DepGraph G · CP+P · MsgBus · HITL/HOOTL · T1 SQLite
 crates/peram-core/     shared Rust world/layout sim → WASM (mirrors focus; not control plane)
+fixtures/              issue-1-runtime.json · state-sample.json · …
+bin/swarm.js           LEGACY day · turn · approve · deny · graph (parity bridge)
+src/                   LEGACY pure modules (no new product features)
+src/game/              pure session kit: focus · growth · $SPN · input (game focus SoT)
 public/game/           thin browser host shell + paint
-public/game/pkg/       checked-in wasm-pack build of peram-core (not hand-written logic)
+public/game/pkg/       checked-in wasm-pack build of peram-core
 public/watch/          static consumer of graph / turn-status export
+arch-design/           AppGenMathPhyLang formalization · control insights
 docs/                  charter · MAP · engine · Eve · roadmap
 legacy/                old webpack app (not the game)
 ```

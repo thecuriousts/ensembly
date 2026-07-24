@@ -155,11 +155,14 @@ System → greater automation while preserving Human judgment where it matters
 // ──────────────────────────────────────────────────────────────
 // 8. Relationship to Existing Code
 // ──────────────────────────────────────────────────────────────
-BuildOn(peram-core : Rust → WASM)
-Strengthen GraphIR → first-class G + CP
-Day/Turn loops driven by CP
-CLI(approve, deny, claim, …) ↦ MsgBus
+BuildOn(peram-kernel : control SoT)   // Issue #1 S+G+CP+P · MsgBus · HITL/HOOTL
+BuildOn(peram-core : Rust → WASM)     // world sim mirror; not control plane
+Strengthen GraphIR → first-class G + CP   // landed in peram-kernel::graph + critical_path
+Day/Turn loops driven by CP               // FocusPlan coach when life-state present
+CLI(runtime approve|deny|claim|complete) ↦ MsgBus
 Eisenhower prioritization  ≼  G + CP   (replace or augment)
+// Partial vs formal Must: HierPlan/GlobalPlan = turn/rank_now + CP coach (not full hierarchy)
+// Partial: OutcomeMetrics counters in status — continuous dashboards deferred (DECISIONS Remaining)
 
 // ──────────────────────────────────────────────────────────────
 // 9. Success Metrics
@@ -417,15 +420,19 @@ The system evolves toward greater automation while still preserving human judgme
 
 **Eight. Relationship to existing code.**
 
-We build directly upon the existing peram-core, which maps Rust to WebAssembly.
+We build the Issue #1 control core in peram-kernel (Rust CLI + T1 SQLite).
 
-The Graph intermediate representation is strengthened until it becomes a first-class directed dependency graph carrying critical-path computation.
+peram-core remains the world-sim crate that maps Rust to WebAssembly; it mirrors focus and is not the control plane.
 
-Day-level and turn-level planning loops continue to exist but are now driven by the critical-path engine.
+The Graph intermediate representation is strengthened in peram-kernel until it is a first-class directed dependency graph carrying critical-path computation.
 
-Command-line interface actions such as approve, deny, and claim become ordinary messages on the same event bus.
+Day-level and turn-level planning loops continue, now coached by the critical-path engine when life-state is present.
+
+CLI actions `runtime approve`, `deny`, `claim`, and `complete` are ordinary messages on the typed MsgBus.
 
 The present Eisenhower-style prioritization is either replaced by or augmented by the graph-plus-critical-path approach.
+
+Hierarchical day/sequence planning and continuous observability dashboards remain partial relative to the formal Must list; status counters ship now, full HierPlan and telemetry dashboards are deferred.
 
 **Nine. Success metrics.**
 
