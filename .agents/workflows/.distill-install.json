@@ -1,22 +1,18 @@
 {
   "profile": "ensembly",
-  "source_drafts": "/home/sustainableabundance/Work/personal/agent-prompt-tuning-lab/data/distill/20260725-153622/drafts",
+  "source_drafts": "~/Work/personal/agent-prompt-tuning-lab/data/distill/20260725-153622/drafts",
   "installed_at": "2026-07-25T16:36:10.798Z",
+  "trimmed_at": "2026-07-25T17:15:00.000Z",
+  "trim_note": "Removed generic tidy-commit, rename, goal-to-secured-project, and other-repo skill dumps; kept ensembly swarm/HITL workflows and kernel-adjacent gate/import skills.",
   "workflows": [
     "ensembly-swarm-bootstrap",
     "goal-driven-swarm-evolution",
     "goal-driven-hitl-spine-iteration",
-    "orientation-then-dashboard",
-    "goal-to-secured-project"
+    "orientation-then-dashboard"
   ],
   "skills": [
-    "goal-to-todo-seed",
-    "tidy-commit-push",
-    "private-public-distill",
-    "apply-external-patterns",
     "approval-gate-mapping",
-    "circular-import-break",
-    "project-rename-propagation"
+    "circular-import-break"
   ],
   "rules": []
 }
