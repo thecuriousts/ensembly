@@ -1,0 +1,22 @@
+{
+  "profile": "ensembly",
+  "source_drafts": "/home/sustainableabundance/Work/personal/agent-prompt-tuning-lab/data/distill/20260725-153622/drafts",
+  "installed_at": "2026-07-25T16:36:10.798Z",
+  "workflows": [
+    "ensembly-swarm-bootstrap",
+    "goal-driven-swarm-evolution",
+    "goal-driven-hitl-spine-iteration",
+    "orientation-then-dashboard",
+    "goal-to-secured-project"
+  ],
+  "skills": [
+    "goal-to-todo-seed",
+    "tidy-commit-push",
+    "private-public-distill",
+    "apply-external-patterns",
+    "approval-gate-mapping",
+    "circular-import-break",
+    "project-rename-propagation"
+  ],
+  "rules": []
+}
