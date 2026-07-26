@@ -12,9 +12,7 @@ use crate::approvals::{
 use crate::critical_path::{explain_node, next_auth_gate, next_hootl_digital, next_physical_beacon};
 use crate::graph::{DepGraph, GateKind, TaskStatus};
 use crate::life_state::{LifeState, LoopRegime};
-use crate::msg_bus::{
-    AgentReportKind, BusMessage, ManualCmd, MsgBus, TriggerKind,
-};
+use crate::msg_bus::{AgentReportKind, BusMessage, ManualCmd, MsgBus, TriggerKind};
 use crate::trigger::{derive_triggers, TriggerContext};
 use crate::turn::{Action, FocusItem, FocusPlan};
 
@@ -28,14 +26,23 @@ pub enum RuntimeError {
     Approval(#[from] crate::approvals::ApprovalError),
 }
 
+/// Strip optional `auth-` prefix so all surfaces speak action ids (e.g. `pay-rent`).
+pub fn action_id_of(id: &str) -> &str {
+    id.strip_prefix("auth-").unwrap_or(id)
+}
+
 /// One tick outcome — loud, inspectable.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TickReport {
     pub regime: LoopRegime,
     pub cp_explain: String,
+    /// Real count of triggers pushed this tick's emit (not messages drained).
     pub triggers_emitted: usize,
     pub messages_drained: usize,
+    /// Task claimed this tick (HOOTL). Complete is a separate tick action.
     pub hootl_claim: Option<String>,
+    /// Task completed this tick (HOOTL), if any.
+    pub hootl_complete: Option<String>,
     pub next_auth: Option<String>,
     pub next_physical: Option<String>,
     pub next_hootl: Option<String>,
@@ -50,6 +57,10 @@ pub struct Runtime {
     pub agent: AgentWorker,
     prev_fp: String,
     prev_cp_path: Vec<String>,
+    prev_auth: Option<String>,
+    prev_physical: Option<String>,
+    prev_hootl: Option<String>,
+    last_triggers_emitted: usize,
 }
 
 impl Runtime {
@@ -61,10 +72,18 @@ impl Runtime {
             agent: AgentWorker::new("swarm-digital-1"),
             prev_fp: String::new(),
             prev_cp_path: vec![],
+            prev_auth: None,
+            prev_physical: None,
+            prev_hootl: None,
+            last_triggers_emitted: 0,
         }
     }
 
-    pub fn load_actions(&mut self, actions: &[Action], now: chrono::DateTime<Utc>) -> Result<(), RuntimeError> {
+    pub fn load_actions(
+        &mut self,
+        actions: &[Action],
+        now: chrono::DateTime<Utc>,
+    ) -> Result<(), RuntimeError> {
         let graph = DepGraph::from_actions(actions, &Default::default())
             .map_err(|e| RuntimeError::Msg(e.to_string()))?;
         self.state
@@ -105,6 +124,7 @@ impl Runtime {
 
     fn emit_triggers(&mut self, now: chrono::DateTime<Utc>) {
         let Some(cp) = self.state.critical_path.clone() else {
+            self.last_triggers_emitted = 0;
             return;
         };
         let ctx = TriggerContext {
@@ -118,48 +138,92 @@ impl Runtime {
             } else {
                 Some(self.prev_cp_path.as_slice())
             },
+            prev_auth: self.prev_auth.as_deref(),
+            prev_physical: self.prev_physical.as_deref(),
+            prev_hootl: self.prev_hootl.as_deref(),
             now,
             deadline_horizon: Duration::hours(48),
         };
         let triggers = derive_triggers(&self.state.graph, &cp, &ctx);
+        let n = triggers.len();
         for t in triggers {
             self.bus.push(BusMessage::Trigger { trigger: t });
         }
+        self.last_triggers_emitted = n;
         self.prev_fp = self.state.fingerprint.clone();
-        self.prev_cp_path = cp.path;
+        self.prev_cp_path = cp.path.clone();
+        self.prev_auth = next_auth_gate(&self.state.graph, &cp);
+        self.prev_physical = next_physical_beacon(&self.state.graph, &cp);
+        self.prev_hootl = next_hootl_digital(&self.state.graph, &cp);
     }
 
-    /// Drain bus + optional HOOTL agent claim/complete simulation for one open task.
-    pub fn tick(&mut self, auto_agent: bool, now: chrono::DateTime<Utc>) -> Result<TickReport, RuntimeError> {
+    /// Drain bus + optional HOOTL agent step (one claim **or** one complete per tick).
+    pub fn tick(
+        &mut self,
+        auto_agent: bool,
+        now: chrono::DateTime<Utc>,
+    ) -> Result<TickReport, RuntimeError> {
         let mut drained = 0;
+        let mut triggers_this_tick = 0;
         while let Some(msg) = self.bus.pop() {
             drained += 1;
             self.apply_message(msg, now)?;
         }
 
         let mut hootl_claim = None;
+        let mut hootl_complete = None;
         if auto_agent {
             if let Some(cp) = self.state.critical_path.clone() {
-                match self.agent.claim_next(&mut self.state.graph, &cp, now) {
-                    Ok(report) => {
-                        hootl_claim = Some(report.task_id.clone());
-                        self.bus.push(BusMessage::Agent { report });
-                        // Immediate complete for dry-run thrash clearance (loud via report).
-                        if let Some(id) = hootl_claim.clone() {
-                            let done = self.agent.complete(&mut self.state.graph, &id, now)?;
-                            self.bus.push(BusMessage::Agent { report: done });
+                // Prefer complete of owned Claimed HOOTL digital (separate tick from claim).
+                let owned_claimed: Option<String> = self
+                    .state
+                    .graph
+                    .nodes
+                    .values()
+                    .find(|n| {
+                        n.claimed_by.as_deref() == Some(self.agent.id.as_str())
+                            && n.status == TaskStatus::Claimed
+                            && n.realm == crate::graph::TaskRealm::Digital
+                            && n.gate == GateKind::None
+                    })
+                    .map(|n| n.id.clone());
+
+                let step = if let Some(id) = owned_claimed {
+                    match self.agent.complete(&mut self.state.graph, &id, now) {
+                        Ok(report) => {
+                            hootl_complete = Some(report.task_id.clone());
                             self.state.metrics.hootl_completed += 1;
-                            self.state.metrics.record_success(true, true, true);
+                            self.bus.push(BusMessage::Agent { report });
+                            Ok(())
                         }
-                        self.state.recompute(now).map_err(RuntimeError::Msg)?;
-                        self.emit_triggers(now);
-                        // Drain agent reports
-                        while let Some(msg) = self.bus.pop() {
-                            drained += 1;
-                            self.apply_message(msg, now)?;
+                        Err(e) => Err(e),
+                    }
+                } else {
+                    match self.agent.claim_next(&mut self.state.graph, &cp, now) {
+                        Ok(report) => {
+                            hootl_claim = Some(report.task_id.clone());
+                            self.bus.push(BusMessage::Agent { report });
+                            Ok(())
+                        }
+                        Err(AgentError::NoWork) => Ok(()),
+                        // Blocked preds / not ready: quiet NoWork — not agent_failures.
+                        Err(AgentError::NotClaimable(_)) => Ok(()),
+                        Err(e) => Err(e),
+                    }
+                };
+
+                match step {
+                    Ok(()) => {
+                        if hootl_claim.is_some() || hootl_complete.is_some() {
+                            self.state.recompute(now).map_err(RuntimeError::Msg)?;
+                            self.emit_triggers(now);
+                            triggers_this_tick += self.last_triggers_emitted;
+                            while let Some(msg) = self.bus.pop() {
+                                drained += 1;
+                                self.apply_message(msg, now)?;
+                            }
                         }
                     }
-                    Err(AgentError::NoWork) => {}
                     Err(e) => {
                         self.state.metrics.agent_failures += 1;
                         return Err(e.into());
@@ -185,9 +249,10 @@ impl Runtime {
                 .as_ref()
                 .map(|c| c.explain.clone())
                 .unwrap_or_else(|| "no CP".into()),
-            triggers_emitted: drained, // approximate after drain; callers use bus audit
+            triggers_emitted: triggers_this_tick,
             messages_drained: drained,
             hootl_claim,
+            hootl_complete,
             next_auth,
             next_physical,
             next_hootl,
@@ -196,7 +261,11 @@ impl Runtime {
         })
     }
 
-    fn apply_message(&mut self, msg: BusMessage, now: chrono::DateTime<Utc>) -> Result<(), RuntimeError> {
+    fn apply_message(
+        &mut self,
+        msg: BusMessage,
+        now: chrono::DateTime<Utc>,
+    ) -> Result<(), RuntimeError> {
         match msg {
             BusMessage::Manual { cmd, .. } => self.apply_manual(cmd, now),
             BusMessage::Trigger { trigger } => {
@@ -211,10 +280,6 @@ impl Runtime {
             }
             BusMessage::Agent { report } => {
                 match report.kind {
-                    AgentReportKind::Completed => {
-                        self.state.metrics.hootl_completed =
-                            self.state.metrics.hootl_completed.max(1);
-                    }
                     AgentReportKind::Failed => {
                         self.state.metrics.agent_failures += 1;
                     }
@@ -225,7 +290,11 @@ impl Runtime {
         }
     }
 
-    fn apply_manual(&mut self, cmd: ManualCmd, now: chrono::DateTime<Utc>) -> Result<(), RuntimeError> {
+    fn apply_manual(
+        &mut self,
+        cmd: ManualCmd,
+        now: chrono::DateTime<Utc>,
+    ) -> Result<(), RuntimeError> {
         match cmd {
             ManualCmd::LoadGraph | ManualCmd::Recompute => {
                 self.state.recompute(now).map_err(RuntimeError::Msg)?;
@@ -233,57 +302,54 @@ impl Runtime {
                 Ok(())
             }
             ManualCmd::Approve { id } => {
-                // Resolve graph auth node + approvals snapshot.
-                if let Some(n) = self.state.graph.nodes.get_mut(&id) {
+                // Snapshot first — fail closed before graph mutation (logical commit).
+                let action_id = action_id_of(&id).to_string();
+                let snap_next =
+                    apply_decision(&self.snapshot, &action_id, "approve", "operator", now)?;
+                if let Some(n) = self.state.graph.nodes.get_mut(&action_id) {
                     if n.gate == GateKind::Auth {
                         n.status = TaskStatus::Done;
                     }
                 }
-                // pending ids are auth-<action>
-                let auth_id = if id.starts_with("auth-") {
-                    id.clone()
-                } else {
-                    format!("auth-{id}")
-                };
-                self.snapshot = apply_decision(&self.snapshot, &auth_id, "approve", "operator", now)
-                    .or_else(|_| apply_decision(&self.snapshot, &id, "approve", "operator", now))?;
-                self.state.metrics.record_success(true, true, false);
+                self.snapshot = snap_next;
                 self.state.recompute(now).map_err(RuntimeError::Msg)?;
                 self.emit_triggers(now);
                 Ok(())
             }
             ManualCmd::Deny { id } => {
-                let auth_id = if id.starts_with("auth-") {
-                    id.clone()
-                } else {
-                    format!("auth-{id}")
-                };
-                self.snapshot = apply_decision(&self.snapshot, &auth_id, "deny", "operator", now)
-                    .or_else(|_| apply_decision(&self.snapshot, &id, "deny", "operator", now))?;
-                if let Some(n) = self.state.graph.nodes.get_mut(&id) {
-                    n.status = TaskStatus::Blocked;
+                let action_id = action_id_of(&id).to_string();
+                let snap_next =
+                    apply_decision(&self.snapshot, &action_id, "deny", "operator", now)?;
+                if let Some(n) = self.state.graph.nodes.get_mut(&action_id) {
+                    if n.gate == GateKind::Auth {
+                        n.status = TaskStatus::Blocked;
+                    }
                 }
+                self.snapshot = snap_next;
                 self.state.recompute(now).map_err(RuntimeError::Msg)?;
                 self.emit_triggers(now);
                 Ok(())
             }
             ManualCmd::ClaimPhysical { id } => {
-                self.snapshot =
-                    apply_physical_decision(&self.snapshot, &id, "claim", now)?;
-                if let Some(n) = self.state.graph.nodes.get_mut(&id) {
+                let action_id = action_id_of(&id).to_string();
+                let snap_next =
+                    apply_physical_decision(&self.snapshot, &action_id, "claim", now)?;
+                if let Some(n) = self.state.graph.nodes.get_mut(&action_id) {
                     n.status = TaskStatus::Claimed;
                     n.claimed_by = Some("human".into());
                 }
+                self.snapshot = snap_next;
                 self.state.recompute(now).map_err(RuntimeError::Msg)?;
                 Ok(())
             }
             ManualCmd::CompletePhysical { id } => {
-                self.snapshot =
-                    apply_physical_decision(&self.snapshot, &id, "complete", now)?;
-                if let Some(n) = self.state.graph.nodes.get_mut(&id) {
+                let action_id = action_id_of(&id).to_string();
+                let snap_next =
+                    apply_physical_decision(&self.snapshot, &action_id, "complete", now)?;
+                if let Some(n) = self.state.graph.nodes.get_mut(&action_id) {
                     n.status = TaskStatus::Done;
                 }
-                self.state.metrics.record_success(true, true, true);
+                self.snapshot = snap_next;
                 self.state.recompute(now).map_err(RuntimeError::Msg)?;
                 self.emit_triggers(now);
                 Ok(())
@@ -292,6 +358,7 @@ impl Runtime {
     }
 
     /// FocusPlan driven by CP when graph is loaded (augments Eisenhower).
+    /// Approve coaching always uses **action id** (e.g. `pay-rent`), never `auth-*`.
     pub fn focus_plan(&self, base: FocusPlan) -> FocusPlan {
         let Some(cp) = &self.state.critical_path else {
             return base;
@@ -311,9 +378,8 @@ impl Runtime {
         }
         if let Some(id) = next_auth_gate(&self.state.graph, cp) {
             if let Some(n) = self.state.graph.nodes.get(&id) {
-                let auth_id = format!("auth-{id}");
                 plan.primary_auth = Some(FocusItem {
-                    id: auth_id,
+                    id: n.id.clone(), // action id — approve uses this
                     title: n.title.clone(),
                     kind: n.kind.clone().unwrap_or_else(|| "auth".into()),
                     reason: explain_node(cp, &id),
@@ -337,6 +403,7 @@ impl Runtime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::approvals::list_pending;
     use crate::turn::Action;
 
     fn sample_actions() -> Vec<Action> {
@@ -388,20 +455,84 @@ mod tests {
         let now = Utc::now();
         let mut rt = Runtime::new(now);
         rt.load_actions(&sample_actions(), now).unwrap();
-        let report = rt.tick(true, now).unwrap();
-        assert_eq!(report.hootl_claim.as_deref(), Some("triage-inbox"));
+        // Tick 1: claim only
+        let r1 = rt.tick(true, now).unwrap();
+        assert_eq!(r1.hootl_claim.as_deref(), Some("triage-inbox"));
+        assert_eq!(
+            rt.state.graph.nodes["triage-inbox"].status,
+            TaskStatus::Claimed
+        );
+        // Tick 2: complete
+        let r2 = rt.tick(true, now).unwrap();
+        assert_eq!(r2.hootl_complete.as_deref(), Some("triage-inbox"));
         assert_eq!(rt.state.graph.nodes["triage-inbox"].status, TaskStatus::Done);
-        assert_eq!(report.next_auth.as_deref(), Some("pay-rent"));
+        assert_eq!(r2.next_auth.as_deref(), Some("pay-rent"));
         assert_eq!(rt.state.regime, LoopRegime::HitlWait);
 
+        // focus_plan coaches action id, not auth-*
+        let plan = rt.focus_plan(FocusPlan {
+            version: 1,
+            at: now,
+            location_label: None,
+            biome: "test".into(),
+            primary_physical: None,
+            primary_auth: None,
+            primary_digital: None,
+            places: vec![],
+            coach_line: "test".into(),
+            physical_count: 0,
+            pending_count: 0,
+        });
+        assert_eq!(
+            plan.primary_auth.as_ref().map(|f| f.id.as_str()),
+            Some("pay-rent")
+        );
+
+        // approve action id clears graph + snapshot (auth-* key still internal)
         rt.enqueue_manual(
             ManualCmd::Approve {
                 id: "pay-rent".into(),
             },
             now,
         );
-        let r2 = rt.tick(false, now).unwrap();
+        let r3 = rt.tick(false, now).unwrap();
         assert_eq!(rt.state.graph.nodes["pay-rent"].status, TaskStatus::Done);
-        assert_eq!(r2.next_physical.as_deref(), Some("grocery-errand"));
+        assert!(list_pending(&rt.snapshot)
+            .iter()
+            .all(|p| p.id != "auth-pay-rent" || p.status != crate::approvals::ApprovalStatus::Pending));
+        assert_eq!(r3.next_physical.as_deref(), Some("grocery-errand"));
+    }
+
+    #[test]
+    fn approve_strips_auth_prefix() {
+        let now = Utc::now();
+        let mut rt = Runtime::new(now);
+        rt.load_actions(&sample_actions(), now).unwrap();
+        // Clear digital thrash
+        rt.tick(true, now).unwrap();
+        rt.tick(true, now).unwrap();
+        rt.enqueue_manual(
+            ManualCmd::Approve {
+                id: "auth-pay-rent".into(),
+            },
+            now,
+        );
+        rt.tick(false, now).unwrap();
+        assert_eq!(rt.state.graph.nodes["pay-rent"].status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn hitl_surfaces_edge_triggered() {
+        let now = Utc::now();
+        let mut rt = Runtime::new(now);
+        rt.load_actions(&sample_actions(), now).unwrap();
+        let after_load = rt.state.metrics.hitl_surfaces;
+        assert_eq!(after_load, 1, "enter HitlWait once on load");
+        rt.state.recompute(now).unwrap();
+        rt.state.recompute(now).unwrap();
+        assert_eq!(
+            rt.state.metrics.hitl_surfaces, after_load,
+            "recompute must not inflate hitl_surfaces"
+        );
     }
 }

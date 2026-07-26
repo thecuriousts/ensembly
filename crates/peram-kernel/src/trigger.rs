@@ -10,6 +10,10 @@ use crate::msg_bus::{Trigger, TriggerKind};
 pub struct TriggerContext<'a> {
     pub prev_fingerprint: Option<&'a str>,
     pub prev_cp_path: Option<&'a [String]>,
+    /// Edge-gate: only re-emit AuthNeeded when next auth id changes.
+    pub prev_auth: Option<&'a str>,
+    pub prev_physical: Option<&'a str>,
+    pub prev_hootl: Option<&'a str>,
     pub now: DateTime<Utc>,
     /// Surface deadline within this horizon.
     pub deadline_horizon: Duration,
@@ -58,29 +62,36 @@ pub fn derive_triggers(
         }
     }
 
+    // Level → edge: emit Auth/Physical/Hootl only when the next id appears or changes.
     if let Some(id) = crate::critical_path::next_auth_gate(graph, cp) {
-        out.push(Trigger {
-            kind: TriggerKind::AuthNeeded,
-            task_id: Some(id),
-            detail: "authorization gate on or near critical path".into(),
-            at: ctx.now,
-        });
+        if ctx.prev_auth != Some(id.as_str()) {
+            out.push(Trigger {
+                kind: TriggerKind::AuthNeeded,
+                task_id: Some(id),
+                detail: "authorization gate on or near critical path".into(),
+                at: ctx.now,
+            });
+        }
     }
     if let Some(id) = crate::critical_path::next_physical_beacon(graph, cp) {
-        out.push(Trigger {
-            kind: TriggerKind::PhysicalBeacon,
-            task_id: Some(id),
-            detail: "physical beacon requires human presence".into(),
-            at: ctx.now,
-        });
+        if ctx.prev_physical != Some(id.as_str()) {
+            out.push(Trigger {
+                kind: TriggerKind::PhysicalBeacon,
+                task_id: Some(id),
+                detail: "physical beacon requires human presence".into(),
+                at: ctx.now,
+            });
+        }
     }
     if let Some(id) = crate::critical_path::next_hootl_digital(graph, cp) {
-        out.push(Trigger {
-            kind: TriggerKind::HootlWorkAvailable,
-            task_id: Some(id),
-            detail: "HOOTL digital work claimable via CP".into(),
-            at: ctx.now,
-        });
+        if ctx.prev_hootl != Some(id.as_str()) {
+            out.push(Trigger {
+                kind: TriggerKind::HootlWorkAvailable,
+                task_id: Some(id),
+                detail: "HOOTL digital work claimable via CP".into(),
+                at: ctx.now,
+            });
+        }
     }
     out
 }
@@ -139,12 +150,34 @@ mod tests {
             &TriggerContext {
                 prev_fingerprint: None,
                 prev_cp_path: None,
+                prev_auth: None,
+                prev_physical: None,
+                prev_hootl: None,
                 now: Utc::now(),
                 deadline_horizon: Duration::hours(24),
             },
         );
         assert!(triggers.iter().any(|t| t.kind == TriggerKind::AuthNeeded));
         assert!(triggers
+            .iter()
+            .any(|t| t.kind == TriggerKind::HootlWorkAvailable));
+
+        // Same next ids → no re-spam of Auth/Hootl level triggers
+        let again = derive_triggers(
+            &g,
+            &cp,
+            &TriggerContext {
+                prev_fingerprint: Some(&g.fingerprint()),
+                prev_cp_path: Some(cp.path.as_slice()),
+                prev_auth: Some("auth"),
+                prev_physical: None,
+                prev_hootl: Some("dig"),
+                now: Utc::now(),
+                deadline_horizon: Duration::hours(24),
+            },
+        );
+        assert!(!again.iter().any(|t| t.kind == TriggerKind::AuthNeeded));
+        assert!(!again
             .iter()
             .any(|t| t.kind == TriggerKind::HootlWorkAvailable));
     }

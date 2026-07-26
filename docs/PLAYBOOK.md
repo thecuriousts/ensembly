@@ -44,12 +44,16 @@ Companion law: [MAP.md](MAP.md) (capabilities · hosts · layers · IR) · [PROD
 cargo test -p peram-kernel
 cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
 cargo run -p peram-kernel -- runtime status
-cargo run -p peram-kernel -- runtime tick          # HOOTL clears digital thrash on CP
-# When AuthGate surfaces: approve the *action* id (pay-rent), not auth-pay-rent
+# One HOOTL step per tick (claim *or* complete). Repeat until digital thrash on CP is gone.
+cargo run -p peram-kernel -- runtime tick          # claim triage-inbox
+cargo run -p peram-kernel -- runtime tick          # complete triage-inbox
+cargo run -p peram-kernel -- runtime tick          # claim draft-transfer
+cargo run -p peram-kernel -- runtime tick          # complete draft-transfer
+# AuthGate: approve the *action* id (pay-rent); auth- prefix is accepted then stripped
 cargo run -p peram-kernel -- runtime approve pay-rent
 cargo run -p peram-kernel -- runtime claim grocery-errand
 cargo run -p peram-kernel -- runtime complete grocery-errand
-cargo run -p peram-kernel -- runtime status        # regime Hootl when CP cleared
+cargo run -p peram-kernel -- runtime status        # regime Hootl when gates cleared
 ```
 
 Durable store: `data/local/peram-ops.sqlite` (gitignored). `--json` appends a trailing `RUNTIME_OK …` line.

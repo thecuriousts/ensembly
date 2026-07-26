@@ -16,29 +16,14 @@ pub enum LoopRegime {
     HitlWait,
 }
 
-/// Continuous evaluation metrics from Issue #1.
+/// Honest event counters — no multi-axis C/E/E theater.
+/// Continuous dashboards are SN-0 deferred.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct OutcomeMetrics {
-    pub correctness_events: u64,
-    pub effectiveness_events: u64,
-    pub efficiency_events: u64,
     pub hootl_completed: u64,
+    /// Edge-triggered: increments only when regime enters HitlWait (not every recompute).
     pub hitl_surfaces: u64,
     pub agent_failures: u64,
-}
-
-impl OutcomeMetrics {
-    pub fn record_success(&mut self, correctness: bool, effectiveness: bool, efficiency: bool) {
-        if correctness {
-            self.correctness_events += 1;
-        }
-        if effectiveness {
-            self.effectiveness_events += 1;
-        }
-        if efficiency {
-            self.efficiency_events += 1;
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,7 +49,8 @@ impl LifeState {
             fingerprint: String::new(),
             metrics: OutcomeMetrics::default(),
             updated_at: now,
-            mc_samples: 128,
+            // Hot path: PERT σ only. MC is opt-in (load/status or explicit samples).
+            mc_samples: 0,
         }
     }
 
@@ -103,14 +89,16 @@ impl LifeState {
                 crate::graph::TaskStatus::Open | crate::graph::TaskStatus::Claimed
             )
         });
-        self.regime = if needs_hitl {
+        let next_regime = if needs_hitl {
             LoopRegime::HitlWait
         } else {
             LoopRegime::Hootl
         };
-        if needs_hitl {
+        // Edge-trigger hitl_surfaces only on Hootl → HitlWait enter.
+        if self.regime != LoopRegime::HitlWait && next_regime == LoopRegime::HitlWait {
             self.metrics.hitl_surfaces += 1;
         }
+        self.regime = next_regime;
         self.critical_path = Some(cp);
         self.updated_at = now;
         Ok(())

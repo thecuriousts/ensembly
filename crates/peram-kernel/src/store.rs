@@ -174,6 +174,37 @@ pub fn save_life_state(&self, state: &crate::life_state::LifeState) -> Result<()
         Ok(())
     }
 
+    /// Persist life_state + wait_snapshot in one SQLite transaction (HITL dual-write).
+    pub fn save_runtime_pair(
+        &self,
+        state: &crate::life_state::LifeState,
+        snap: &Snapshot,
+    ) -> Result<(), StoreError> {
+        let life_json = serde_json::to_string_pretty(state)?;
+        let snap_json = serde_json::to_string_pretty(snap)?;
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(
+            "INSERT INTO kv (key, value, updated_at) VALUES ('life_state', ?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            params![life_json, state.updated_at.to_rfc3339()],
+        )?;
+        tx.execute(
+            "INSERT INTO kv (key, value, updated_at) VALUES ('wait_snapshot', ?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            params![snap_json, snap.updated_at.to_rfc3339()],
+        )?;
+        tx.execute(
+            "INSERT INTO audit (ts, kind, payload) VALUES (?1, ?2, ?3)",
+            params![
+                Utc::now().to_rfc3339(),
+                "runtime.pair.save",
+                format!("version={}", state.version)
+            ],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn load_life_state(&self) -> Result<Option<crate::life_state::LifeState>, StoreError> {
         let mut stmt = self
             .conn

@@ -313,6 +313,9 @@ pub fn explain_node(report: &CriticalPathReport, id: &str) -> String {
 }
 
 /// First open digital HOOTL (gate=None) node on the critical path — agent claim target.
+///
+/// Law: agents claim **only via CP**. No off-path earliest-start fallback.
+/// If nothing on the path is claimable HOOTL digital, returns `None` (NoWork).
 pub fn next_hootl_digital(graph: &DepGraph, report: &CriticalPathReport) -> Option<String> {
     for id in &report.path {
         if let Some(n) = graph.nodes.get(id) {
@@ -324,29 +327,7 @@ pub fn next_hootl_digital(graph: &DepGraph, report: &CriticalPathReport) -> Opti
             }
         }
     }
-    // Fallback: any open digital HOOTL by earliest start among critical, else any open.
-    let mut candidates: Vec<_> = report
-        .timings
-        .iter()
-        .filter(|t| {
-            graph
-                .nodes
-                .get(&t.id)
-                .map(|n| {
-                    n.realm == crate::graph::TaskRealm::Digital
-                        && n.gate == crate::graph::GateKind::None
-                        && n.status == TaskStatus::Open
-                })
-                .unwrap_or(false)
-        })
-        .collect();
-    candidates.sort_by(|a, b| {
-        a.earliest_start
-            .partial_cmp(&b.earliest_start)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.id.cmp(&b.id))
-    });
-    candidates.first().map(|t| t.id.clone())
+    None
 }
 
 /// First Auth-gated open node that should surface (HITL).
@@ -387,7 +368,6 @@ pub fn next_physical_beacon(graph: &DepGraph, report: &CriticalPathReport) -> Op
 mod tests {
     use super::*;
     use crate::graph::{DepGraph, DurationEstimate, GateKind, TaskNode, TaskRealm, TaskStatus};
-    use std::collections::HashMap;
 
     fn node(id: &str, deps: &[&str], likely: f64, gate: GateKind, realm: TaskRealm) -> TaskNode {
         TaskNode {
@@ -447,7 +427,44 @@ mod tests {
     }
 
     #[test]
-    fn fingerprint_independent_hashmap_order() {
-        let _ = HashMap::<String, u8>::new();
+    fn off_path_digital_is_not_claimed() {
+        // Long chain a→b(Auth) is CP; side digital `noise` has slack and must not be picked.
+        let mut g = DepGraph::new();
+        g.upsert_node(node("a", &[], 10.0, GateKind::None, TaskRealm::Digital));
+        g.upsert_node(node(
+            "b",
+            &["a"],
+            50.0,
+            GateKind::Auth,
+            TaskRealm::Digital,
+        ));
+        g.upsert_node(node("noise", &[], 5.0, GateKind::None, TaskRealm::Digital));
+        let report = compute_critical_path(&g, 0).unwrap();
+        assert!(report.path.contains(&"a".into()));
+        assert!(!report.path.contains(&"noise".into()) || {
+            // If noise somehow lands on path, skip — structure should keep it off.
+            report
+                .timings
+                .iter()
+                .find(|t| t.id == "noise")
+                .map(|t| !t.on_critical_path)
+                .unwrap_or(true)
+        });
+        let noise_timing = report.timings.iter().find(|t| t.id == "noise").unwrap();
+        assert!(
+            !noise_timing.on_critical_path || noise_timing.slack > 1e-6,
+            "noise should have slack / not be sole CP"
+        );
+        // a is on CP and open → claim a, never noise-only fallback
+        assert_eq!(next_hootl_digital(&g, &report).as_deref(), Some("a"));
+        // After a is done, CP moves; noise still must not be claimed if off path
+        g.nodes.get_mut("a").unwrap().status = TaskStatus::Done;
+        let report2 = compute_critical_path(&g, 0).unwrap();
+        // b is Auth on path — no open digital HOOTL on CP
+        assert_eq!(
+            next_hootl_digital(&g, &report2),
+            None,
+            "must not fall back to off-CP noise"
+        );
     }
 }

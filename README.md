@@ -26,8 +26,12 @@ cargo test -p peram-kernel
 
 cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
 cargo run -p peram-kernel -- runtime status
-cargo run -p peram-kernel -- runtime tick
-# HITL: approve uses the *action* id (pay-rent), not auth-pay-rent from pendingAuth
+# One HOOTL step per tick (claim *or* complete). Fixture needs four ticks for two thrash tasks:
+cargo run -p peram-kernel -- runtime tick   # claim triage-inbox
+cargo run -p peram-kernel -- runtime tick   # complete triage-inbox
+cargo run -p peram-kernel -- runtime tick   # claim draft-transfer
+cargo run -p peram-kernel -- runtime tick   # complete draft-transfer
+# HITL: approve uses the *action* id (pay-rent); auth- prefix is stripped if pasted
 cargo run -p peram-kernel -- runtime approve pay-rent
 cargo run -p peram-kernel -- runtime claim grocery-errand
 cargo run -p peram-kernel -- runtime complete grocery-errand
@@ -103,7 +107,7 @@ Deep dives: [MAP](docs/MAP.md) · [PLAYBOOK](docs/PLAYBOOK.md) · [GAME-STACK](d
 |------|---------|---------|
 | **Load** | `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json` | Life-state **S** + DepGraph **G** into T1 SQLite |
 | **Status** | `… runtime status` | Regime, CP length, pending Auth/Physical, outcome counters |
-| **Tick** | `… runtime tick` | Triggers + HOOTL agent claim/complete on digital thrash |
+| **Tick** | `… runtime tick` | Triggers + one HOOTL step (claim **or** complete — not both) on CP digital thrash |
 | **Gate** | `… runtime approve <action-id>` / `deny <action-id>` | HITL AuthGate (id = action id, e.g. `pay-rent`) |
 | **Body** | `… runtime claim <id>` / `complete <id>` | PhysicalBeacon after permission |
 | **Turn (CP)** | `cargo run -p peram-kernel -- turn --fixture fixtures/state-sample.json` | FocusPlan coached from critical path when life-state present |

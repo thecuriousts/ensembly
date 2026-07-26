@@ -507,8 +507,7 @@ fn main() -> Result<()> {
                 RuntimeCmd::Load { fixture, json } => {
                     let actions = load_actions_from_fixture(&fixture)?;
                     rt.load_actions(&actions, now)?;
-                    store.save_life_state(&rt.state)?;
-                    store.save_snapshot(&rt.snapshot)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
                     let cp = rt.state.critical_path.as_ref();
                     let body = serde_json::json!({
                         "ok": true,
@@ -562,67 +561,67 @@ fn main() -> Result<()> {
                             cp.map(|c| c.explain.as_str()).unwrap_or("(none — run runtime load)")
                         );
                         println!(
-                            "metrics: correctness={} effectiveness={} efficiency={} hootl_done={}",
-                            rt.state.metrics.correctness_events,
-                            rt.state.metrics.effectiveness_events,
-                            rt.state.metrics.efficiency_events,
-                            rt.state.metrics.hootl_completed
+                            "metrics: hootl_done={} hitl_surfaces={} agent_failures={}",
+                            rt.state.metrics.hootl_completed,
+                            rt.state.metrics.hitl_surfaces,
+                            rt.state.metrics.agent_failures
                         );
                     }
                 }
                 RuntimeCmd::Tick { agent, json } => {
                     let report = rt.tick(agent, now)?;
-                    store.save_life_state(&rt.state)?;
-                    store.save_snapshot(&rt.snapshot)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
                     if json {
                         println!("{}", serde_json::to_string_pretty(&report)?);
                     } else {
                         println!(
-                            "RUNTIME_TICK regime={:?} drained={} hootl={:?} auth={:?} physical={:?} {}",
+                            "RUNTIME_TICK regime={:?} drained={} claim={:?} complete={:?} auth={:?} physical={:?} {}",
                             report.regime,
                             report.messages_drained,
                             report.hootl_claim,
+                            report.hootl_complete,
                             report.next_auth,
                             report.next_physical,
                             report.cp_explain
                         );
                     }
                     eprintln!(
-                        "RUNTIME_OK tick regime={:?} hootl={} auth={}",
+                        "RUNTIME_OK tick regime={:?} claim={} complete={} auth={}",
                         report.regime,
                         report.hootl_claim.as_deref().unwrap_or("-"),
+                        report.hootl_complete.as_deref().unwrap_or("-"),
                         report.next_auth.as_deref().unwrap_or("-")
                     );
                 }
                 RuntimeCmd::Approve { id, json } => {
-                    rt.enqueue_manual(ManualCmd::Approve { id: id.clone() }, now);
+                    // Normalize: approve uses action id (pay-rent); auth- prefix accepted then stripped.
+                    let action_id = peram_kernel::runtime::action_id_of(&id).to_string();
+                    rt.enqueue_manual(ManualCmd::Approve { id: action_id.clone() }, now);
                     let report = rt.tick(false, now)?;
-                    store.save_life_state(&rt.state)?;
-                    store.save_snapshot(&rt.snapshot)?;
-                    let body = serde_json::json!({ "ok": true, "decision": "approve", "id": id, "tick": report });
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    let body = serde_json::json!({ "ok": true, "decision": "approve", "id": action_id, "tick": report });
                     if json {
                         println!("{}", serde_json::to_string_pretty(&body)?);
                     } else {
-                        println!("RUNTIME_APPROVE id={id} regime={:?}", report.regime);
+                        println!("RUNTIME_APPROVE id={action_id} regime={:?}", report.regime);
                     }
                 }
                 RuntimeCmd::Deny { id, json } => {
-                    rt.enqueue_manual(ManualCmd::Deny { id: id.clone() }, now);
+                    let action_id = peram_kernel::runtime::action_id_of(&id).to_string();
+                    rt.enqueue_manual(ManualCmd::Deny { id: action_id.clone() }, now);
                     let report = rt.tick(false, now)?;
-                    store.save_life_state(&rt.state)?;
-                    store.save_snapshot(&rt.snapshot)?;
-                    let body = serde_json::json!({ "ok": true, "decision": "deny", "id": id, "tick": report });
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    let body = serde_json::json!({ "ok": true, "decision": "deny", "id": action_id, "tick": report });
                     if json {
                         println!("{}", serde_json::to_string_pretty(&body)?);
                     } else {
-                        println!("RUNTIME_DENY id={id}");
+                        println!("RUNTIME_DENY id={action_id}");
                     }
                 }
                 RuntimeCmd::Claim { id, json } => {
                     rt.enqueue_manual(ManualCmd::ClaimPhysical { id: id.clone() }, now);
                     let report = rt.tick(false, now)?;
-                    store.save_life_state(&rt.state)?;
-                    store.save_snapshot(&rt.snapshot)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
                     let body = serde_json::json!({ "ok": true, "decision": "claim", "id": id, "tick": report });
                     if json {
                         println!("{}", serde_json::to_string_pretty(&body)?);
@@ -633,8 +632,7 @@ fn main() -> Result<()> {
                 RuntimeCmd::Complete { id, json } => {
                     rt.enqueue_manual(ManualCmd::CompletePhysical { id: id.clone() }, now);
                     let report = rt.tick(false, now)?;
-                    store.save_life_state(&rt.state)?;
-                    store.save_snapshot(&rt.snapshot)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
                     let body = serde_json::json!({ "ok": true, "decision": "complete", "id": id, "tick": report });
                     if json {
                         println!("{}", serde_json::to_string_pretty(&body)?);

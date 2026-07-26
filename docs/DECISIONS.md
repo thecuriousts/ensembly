@@ -233,6 +233,9 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 | Explainable CP reasons on FocusPlan | Opaque priority scores without graph path |
 
 **Ship path:** `cargo run -p peram-kernel -- runtime load|status|tick|approve|deny|claim|complete` · `npm run peram -- runtime …` · `fixtures/issue-1-runtime.json` · `cargo test -p peram-kernel`  
-**Approve id:** action id (e.g. `pay-rent`), not `auth-pay-rent` from `pendingAuth`.  
+**Approve id:** action id (e.g. `pay-rent`); optional `auth-` prefix is stripped — snapshot may still key `auth-*` internally.  
+**Claim-via-CP:** `next_hootl_digital` returns only open digital HOOTL **on the CP path** (no off-path fallback).  
+**Tick honesty:** one HOOTL agent step per tick — claim **or** complete owned claim, never silent same-tick Done-as-exec.  
+**Metrics:** honest `hootl_completed` / `hitl_surfaces` (edge-enter HitlWait) / `agent_failures` — no multi-axis C/E/E theater. MC samples default **0** (PERT σ always); set `mc_samples` when load needs Monte Carlo.  
 **`--json` caveat:** stdout is JSON then a trailing `RUNTIME_OK …` line.  
 **Remaining (not blocking this slice):** multi-agent conflict resolution at scale, adaptive/RL local policies, continuous outcome telemetry dashboards, Eve bridge for remote HITL.
