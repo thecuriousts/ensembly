@@ -1,6 +1,6 @@
 {
   "profile": "ensembly",
-  "source_drafts": "~/Work/personal/agent-prompt-tuning-lab/data/distill/20260725-153622/drafts",
+  "source_drafts": "data/distill/20260725-153622/drafts",
   "installed_at": "2026-07-25T16:36:10.798Z",
   "trimmed_at": "2026-07-25T17:15:00.000Z",
   "trim_note": "Removed generic tidy-commit, rename, goal-to-secured-project, and other-repo skill dumps; kept ensembly swarm/HITL workflows and kernel-adjacent gate/import skills.",
@@ -14,5 +14,6 @@
     "approval-gate-mapping",
     "circular-import-break"
   ],
-  "rules": []
+  "rules": [],
+  "distill_run": "20260725-153622"
 }
