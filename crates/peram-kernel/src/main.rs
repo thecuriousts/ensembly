@@ -4,8 +4,7 @@ use anyhow::{bail, Context, Result};
 use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
 use peram_kernel::approvals::{
-    apply_decision, apply_physical_decision, list_pending, upsert_pending_from_actions,
-    upsert_physical, Snapshot,
+    list_pending, upsert_pending_from_actions, upsert_physical, Snapshot,
 };
 use peram_kernel::backup::{
     create_backup_pack, read_backup_pack, restore_dry_run, write_backup_pack,
@@ -371,7 +370,7 @@ fn main() -> Result<()> {
             );
         }
         Commands::Approve { id } => {
-            gate_via_runtime_or_snapshot(
+            gate_via_runtime(
                 &db_path,
                 ManualCmd::Approve { id: id.clone() },
                 "approve",
@@ -379,7 +378,7 @@ fn main() -> Result<()> {
             )?;
         }
         Commands::Deny { id } => {
-            gate_via_runtime_or_snapshot(
+            gate_via_runtime(
                 &db_path,
                 ManualCmd::Deny { id: id.clone() },
                 "deny",
@@ -387,7 +386,7 @@ fn main() -> Result<()> {
             )?;
         }
         Commands::Claim { id } => {
-            gate_via_runtime_or_snapshot(
+            gate_via_runtime(
                 &db_path,
                 ManualCmd::ClaimPhysical { id: id.clone() },
                 "claim",
@@ -395,7 +394,7 @@ fn main() -> Result<()> {
             )?;
         }
         Commands::Complete { id } => {
-            gate_via_runtime_or_snapshot(
+            gate_via_runtime(
                 &db_path,
                 ManualCmd::CompletePhysical { id: id.clone() },
                 "complete",
@@ -627,10 +626,9 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// When durable life_state exists, top-level approve/deny/claim/complete must go through
-/// Runtime (G + Snapshot) so CP and pendingAuth stay single-SoT. Snapshot-only path is
-/// legacy for DBs that never ran `runtime load`.
-fn gate_via_runtime_or_snapshot(
+/// Top-level approve/deny/claim/complete always go through Runtime (G + Snapshot).
+/// Requires durable life_state from `peram runtime load` — no snapshot-only legacy path.
+fn gate_via_runtime(
     db_path: &PathBuf,
     cmd: ManualCmd,
     decision: &str,
@@ -638,72 +636,49 @@ fn gate_via_runtime_or_snapshot(
 ) -> Result<()> {
     let store = OpsStore::open(db_path)?;
     let now = Utc::now();
-    if let Some(life) = store.load_life_state()? {
-        let mut rt = Runtime::new(now);
-        rt.state = life;
-        if let Some(snap) = store.load_snapshot()? {
-            rt.snapshot = snap;
-        }
-        let cmd = match cmd {
-            ManualCmd::Approve { id } => ManualCmd::Approve {
-                id: peram_kernel::runtime::action_id_of(&id).to_string(),
-            },
-            ManualCmd::Deny { id } => ManualCmd::Deny {
-                id: peram_kernel::runtime::action_id_of(&id).to_string(),
-            },
-            other => other,
-        };
-        let resolved_id = match &cmd {
-            ManualCmd::Approve { id }
-            | ManualCmd::Deny { id }
-            | ManualCmd::ClaimPhysical { id }
-            | ManualCmd::CompletePhysical { id } => id.clone(),
-            _ => id.to_string(),
-        };
-        rt.enqueue_manual(cmd, now);
-        let report = rt.tick(false, now)?;
-        store.save_runtime_pair(&rt.state, &rt.snapshot)?;
-        println!(
-            "{}",
-            serde_json::json!({
-                "ok": true,
-                "decision": decision,
-                "id": resolved_id,
-                "via": "runtime",
-                "regime": format!("{:?}", report.regime),
-                "pendingRemaining": list_pending(&rt.snapshot).iter().map(|p| &p.id).collect::<Vec<_>>(),
-                "tick": report,
-            })
+    let Some(life) = store.load_life_state()? else {
+        bail!(
+            "no life_state in DB — refuse snapshot-only {decision}. \
+             Run: cargo run -p peram-kernel -- runtime load --fixture <path> \
+             then: peram {decision} {id}  (or peram runtime {decision} {id})"
         );
-        eprintln!("GATE_OK via=runtime decision={decision} id={resolved_id}");
-        return Ok(());
-    }
-
-    // Legacy: no life_state — snapshot only (loud so operator knows dual SoT is off).
-    eprintln!(
-        "GATE_WARN via=snapshot-only — no life_state in DB; graph not updated. Prefer: peram runtime load then runtime {decision}"
-    );
-    let snap = store
-        .load_snapshot()?
-        .unwrap_or_else(|| Snapshot::empty(now));
-    let next = match decision {
-        "approve" => apply_decision(&snap, id, "approve", "operator", now)?,
-        "deny" => apply_decision(&snap, id, "deny", "operator", now)?,
-        "claim" => apply_physical_decision(&snap, id, "claim", now)?,
-        "complete" => apply_physical_decision(&snap, id, "complete", now)?,
-        other => bail!("unknown decision {other}"),
     };
-    store.save_snapshot(&next)?;
+    let mut rt = Runtime::new(now);
+    rt.state = life;
+    if let Some(snap) = store.load_snapshot()? {
+        rt.snapshot = snap;
+    }
+    let cmd = match cmd {
+        ManualCmd::Approve { id } => ManualCmd::Approve {
+            id: peram_kernel::runtime::action_id_of(&id).to_string(),
+        },
+        ManualCmd::Deny { id } => ManualCmd::Deny {
+            id: peram_kernel::runtime::action_id_of(&id).to_string(),
+        },
+        other => other,
+    };
+    let resolved_id = match &cmd {
+        ManualCmd::Approve { id }
+        | ManualCmd::Deny { id }
+        | ManualCmd::ClaimPhysical { id }
+        | ManualCmd::CompletePhysical { id } => id.clone(),
+        _ => id.to_string(),
+    };
+    rt.enqueue_manual(cmd, now);
+    let report = rt.tick(false, now)?;
+    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
     println!(
         "{}",
         serde_json::json!({
             "ok": true,
             "decision": decision,
-            "id": id,
-            "via": "snapshot_only",
-            "status": format!("{:?}", next.status),
-            "pendingRemaining": list_pending(&next).iter().map(|p| &p.id).collect::<Vec<_>>(),
+            "id": resolved_id,
+            "via": "runtime",
+            "regime": format!("{:?}", report.regime),
+            "pendingRemaining": list_pending(&rt.snapshot).iter().map(|p| &p.id).collect::<Vec<_>>(),
+            "tick": report,
         })
     );
+    eprintln!("GATE_OK via=runtime decision={decision} id={resolved_id}");
     Ok(())
 }
