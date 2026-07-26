@@ -55,13 +55,20 @@ pub struct Runtime {
     pub bus: MsgBus,
     pub snapshot: Snapshot,
     pub agent: AgentWorker,
-    /// Process-local edge state for trigger de-dupe (not persisted with life_state).
-    /// Restart → next emit may re-fire GraphChanged/AuthNeeded; fine for CLI dogfood.
-    /// Persist only when building Eve/remote bridge — not Issue #1 scope.
+    /// Process-local edge state for `emit_triggers` de-dupe.
+    ///
+    /// `prev_fp` / `prev_cp_path` / `prev_auth` / `prev_physical` / `prev_hootl` are
+    /// **not** written via `life_state` or `wait_snapshot`. A process reload may
+    /// re-fire edge triggers once. Do not add DB columns/keys for these in Issue #1
+    /// (Eve/remote bridge may revisit later).
     prev_fp: String,
+    /// Prior CP path (process-local; not durable).
     prev_cp_path: Vec<String>,
+    /// Prior auth surface id (process-local; not durable).
     prev_auth: Option<String>,
+    /// Prior physical beacon id (process-local; not durable).
     prev_physical: Option<String>,
+    /// Prior HOOTL digital claim target (process-local; not durable).
     prev_hootl: Option<String>,
     last_triggers_emitted: usize,
 }
@@ -536,6 +543,100 @@ mod tests {
         assert_eq!(
             rt.state.metrics.hitl_surfaces, after_load,
             "recompute must not inflate hitl_surfaces"
+        );
+    }
+
+    /// Dual-SoT honesty: when life_state is present, ManualCmd approve/claim (top-level
+    /// CLI style) must mutate graph + snapshot together via save_runtime_pair.
+    /// Snapshot-only apply_decision would leave graph Open while pending clears — desync.
+    #[test]
+    fn dual_sot_manual_approve_claim_keeps_pair() {
+        use crate::approvals::ApprovalStatus;
+        use crate::store::OpsStore;
+
+        let store = OpsStore::open_in_memory().unwrap();
+        let now = Utc::now();
+        let mut rt = Runtime::new(now);
+        rt.load_actions(&sample_actions(), now).unwrap();
+        store.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
+
+        // Clear HOOTL digital so auth then physical surface (same as dogfood ticks).
+        rt.tick(true, now).unwrap();
+        rt.tick(true, now).unwrap();
+        store.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
+        assert_eq!(rt.state.graph.nodes["triage-inbox"].status, TaskStatus::Done);
+        assert_eq!(rt.state.graph.nodes["pay-rent"].status, TaskStatus::Open);
+
+        // Top-level-style approve path (enqueue + tick + pair save).
+        rt.enqueue_manual(
+            ManualCmd::Approve {
+                id: "pay-rent".into(),
+            },
+            now,
+        );
+        let _ = rt.tick(false, now).unwrap();
+        store.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
+
+        let life = store.load_life_state().unwrap().expect("life_state");
+        let snap = store.load_snapshot().unwrap().expect("snapshot");
+        assert_eq!(
+            life.graph.nodes["pay-rent"].status,
+            TaskStatus::Done,
+            "graph must reflect approve (not Snapshot-only desync)"
+        );
+        assert!(
+            list_pending(&snap).iter().all(|p| {
+                p.id != "auth-pay-rent" || p.status != ApprovalStatus::Pending
+            }),
+            "snapshot pending must clear auth for pay-rent"
+        );
+        assert_eq!(
+            rt.state.graph.nodes["pay-rent"].status,
+            life.graph.nodes["pay-rent"].status
+        );
+
+        // Physical claim/complete also stay paired.
+        rt.enqueue_manual(
+            ManualCmd::ClaimPhysical {
+                id: "grocery-errand".into(),
+            },
+            now,
+        );
+        let _ = rt.tick(false, now).unwrap();
+        store.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
+        assert_eq!(
+            store
+                .load_life_state()
+                .unwrap()
+                .unwrap()
+                .graph
+                .nodes["grocery-errand"]
+                .status,
+            TaskStatus::Claimed
+        );
+
+        rt.enqueue_manual(
+            ManualCmd::CompletePhysical {
+                id: "grocery-errand".into(),
+            },
+            now,
+        );
+        let report = rt.tick(false, now).unwrap();
+        store.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
+        let life2 = store.load_life_state().unwrap().unwrap();
+        let snap2 = store.load_snapshot().unwrap().unwrap();
+        assert_eq!(
+            life2.graph.nodes["grocery-errand"].status,
+            TaskStatus::Done
+        );
+        // Both stores still present and consistent after complete (paired write).
+        assert_eq!(life2.version, rt.state.version);
+        assert_eq!(snap2.updated_at, rt.snapshot.updated_at);
+        // Tick reports an honest regime (Hootl once gates clear, or HitlWait if more remain).
+        assert!(
+            matches!(report.regime, LoopRegime::Hootl | LoopRegime::HitlWait),
+            "tick regime should be honest after complete: {:?}",
+            report.regime
         );
     }
 }

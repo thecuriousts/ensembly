@@ -315,7 +315,7 @@ fn main() -> Result<()> {
                 &[],
                 &snap,
             );
-            // When durable life-state exists, drive FocusPlan from CP.
+            // When durable life-state exists, drive FocusPlan from CP (read-only; no persist).
             if let Ok(Some(life)) = store.load_life_state() {
                 let now = Utc::now();
                 let mut rt = Runtime::new(now);
@@ -672,6 +672,7 @@ fn gate_via_runtime_or_snapshot(
                 "via": "runtime",
                 "regime": format!("{:?}", report.regime),
                 "pendingRemaining": list_pending(&rt.snapshot).iter().map(|p| &p.id).collect::<Vec<_>>(),
+                "tick": report,
             })
         );
         eprintln!("GATE_OK via=runtime decision={decision} id={resolved_id}");
