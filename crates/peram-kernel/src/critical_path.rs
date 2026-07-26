@@ -331,6 +331,9 @@ pub fn next_hootl_digital(graph: &DepGraph, report: &CriticalPathReport) -> Opti
 }
 
 /// First Auth-gated open node that should surface (HITL).
+///
+/// Prefer CP path; **then any open Auth gate** (min id). Intentional asymmetry vs
+/// HOOTL: never hide a permission gate off-path. Do **not** “fix” to CP-only.
 pub fn next_auth_gate(graph: &DepGraph, report: &CriticalPathReport) -> Option<String> {
     for id in &report.path {
         if let Some(n) = graph.nodes.get(id) {
@@ -348,6 +351,9 @@ pub fn next_auth_gate(graph: &DepGraph, report: &CriticalPathReport) -> Option<S
 }
 
 /// First Physical-gated open node (body beacon).
+///
+/// Prefer CP path; **then any open Physical gate** (min id). Same “never hide
+/// human work” policy as [`next_auth_gate`] — opposite of HOOTL claim-via-CP-only.
 pub fn next_physical_beacon(graph: &DepGraph, report: &CriticalPathReport) -> Option<String> {
     for id in &report.path {
         if let Some(n) = graph.nodes.get(id) {

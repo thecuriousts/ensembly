@@ -29,7 +29,7 @@ impl AgentWorker {
         Self { id: id.into() }
     }
 
-    /// Claim next open digital HOOTL task on/near CP. Mutates graph.
+    /// Claim next open digital HOOTL task on CP. Mutates graph.
     pub fn claim_next(
         &self,
         graph: &mut DepGraph,
@@ -39,15 +39,28 @@ impl AgentWorker {
         let Some(task_id) = next_hootl_digital(graph, cp) else {
             return Err(AgentError::NoWork);
         };
-        self.claim(graph, &task_id, now)
+        self.claim(graph, cp, &task_id, now)
     }
 
+    /// Claim a digital HOOTL task **only if it is on the critical path**.
+    /// Law: agents claim via CP only — direct `claim` must not bypass `claim_next`.
     pub fn claim(
         &self,
         graph: &mut DepGraph,
+        cp: &CriticalPathReport,
         task_id: &str,
         now: DateTime<Utc>,
     ) -> Result<AgentReport, AgentError> {
+        let on_cp = cp.path.iter().any(|id| id == task_id)
+            || cp
+                .timings
+                .iter()
+                .any(|t| t.id == task_id && t.on_critical_path);
+        if !on_cp {
+            return Err(AgentError::NotClaimable(format!(
+                "{task_id} not on critical path"
+            )));
+        }
         let node = graph
             .nodes
             .get_mut(task_id)
@@ -157,8 +170,72 @@ mod tests {
         assert_eq!(claim.task_id, "a");
         assert_eq!(g.nodes["a"].status, TaskStatus::Claimed);
         // Auth gate must not be claimable by agent.
-        assert!(agent.claim(&mut g, "b", now).is_err());
+        assert!(agent.claim(&mut g, &cp, "b", now).is_err());
         agent.complete(&mut g, "a", now).unwrap();
         assert_eq!(g.nodes["a"].status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn claim_rejects_off_critical_path() {
+        let mut g = DepGraph::new();
+        g.upsert_node(TaskNode {
+            id: "a".into(),
+            title: "a".into(),
+            realm: TaskRealm::Digital,
+            status: TaskStatus::Open,
+            gate: GateKind::None,
+            duration: DurationEstimate::minutes(50.0),
+            urgency: 3,
+            importance: 3,
+            area: None,
+            kind: None,
+            depends_on: vec![],
+            claimed_by: None,
+            deadline_at: None,
+        });
+        g.upsert_node(TaskNode {
+            id: "noise".into(),
+            title: "noise".into(),
+            realm: TaskRealm::Digital,
+            status: TaskStatus::Open,
+            gate: GateKind::None,
+            duration: DurationEstimate::minutes(5.0),
+            urgency: 1,
+            importance: 1,
+            area: None,
+            kind: None,
+            depends_on: vec![],
+            claimed_by: None,
+            deadline_at: None,
+        });
+        g.upsert_node(TaskNode {
+            id: "b".into(),
+            title: "b".into(),
+            realm: TaskRealm::Digital,
+            status: TaskStatus::Open,
+            gate: GateKind::Auth,
+            duration: DurationEstimate::minutes(20.0),
+            urgency: 5,
+            importance: 5,
+            area: None,
+            kind: None,
+            depends_on: vec!["a".into()],
+            claimed_by: None,
+            deadline_at: None,
+        });
+        let cp = compute_critical_path(&g, 0).unwrap();
+        let agent = AgentWorker::new("swarm-1");
+        let now = Utc::now();
+        // noise is open digital HOOTL but off CP — must refuse
+        let noise_on = cp
+            .timings
+            .iter()
+            .find(|t| t.id == "noise")
+            .map(|t| t.on_critical_path)
+            .unwrap_or(false);
+        if !noise_on {
+            assert!(agent.claim(&mut g, &cp, "noise", now).is_err());
+        }
+        assert!(agent.claim(&mut g, &cp, "a", now).is_ok());
     }
 }

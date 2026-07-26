@@ -55,6 +55,9 @@ pub struct Runtime {
     pub bus: MsgBus,
     pub snapshot: Snapshot,
     pub agent: AgentWorker,
+    /// Process-local edge state for trigger de-dupe (not persisted with life_state).
+    /// Restart → next emit may re-fire GraphChanged/AuthNeeded; fine for CLI dogfood.
+    /// Persist only when building Eve/remote bridge — not Issue #1 scope.
     prev_fp: String,
     prev_cp_path: Vec<String>,
     prev_auth: Option<String>,

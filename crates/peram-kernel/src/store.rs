@@ -163,7 +163,7 @@ impl OpsStore {
         Ok(out)
     }
 
-pub fn save_life_state(&self, state: &crate::life_state::LifeState) -> Result<(), StoreError> {
+    pub fn save_life_state(&self, state: &crate::life_state::LifeState) -> Result<(), StoreError> {
         let json = serde_json::to_string_pretty(state)?;
         self.conn.execute(
             "INSERT INTO kv (key, value, updated_at) VALUES ('life_state', ?1, ?2)
