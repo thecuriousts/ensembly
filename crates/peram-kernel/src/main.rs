@@ -1,16 +1,17 @@
 //! `peram` CLI — dogfood entry for the Rust life kernel.
 
 use anyhow::{bail, Context, Result};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use clap::{Parser, Subcommand};
 use peram_kernel::approvals::{
-    apply_decision, apply_physical_decision, list_pending, upsert_pending_from_actions,
-    upsert_physical, Snapshot,
+    list_pending, upsert_pending_from_actions, upsert_physical, Snapshot,
 };
 use peram_kernel::backup::{
     create_backup_pack, read_backup_pack, restore_dry_run, write_backup_pack,
 };
 use peram_kernel::digital_flow::{run_cycle, DigitalFlow};
+use peram_kernel::msg_bus::ManualCmd;
+use peram_kernel::runtime::Runtime;
 use peram_kernel::store::OpsStore;
 use peram_kernel::turn::{context_at, rank_now, Action};
 use peram_kernel::{kernel_version, private_path_patterns};
@@ -79,6 +80,59 @@ enum Commands {
         pack: PathBuf,
         #[arg(long)]
         unlock: Option<String>,
+    },
+    /// Issue #1 control plane: S+G+CP, MsgBus, HITL/HOOTL tick
+    Runtime {
+        #[command(subcommand)]
+        sub: RuntimeCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum RuntimeCmd {
+    /// Load fixture actions into life-state graph, compute CP, persist
+    Load {
+        #[arg(long)]
+        fixture: PathBuf,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show life-state + critical path (+ optional Monte Carlo already in state)
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Drain MsgBus + optional HOOTL agent claim/complete on CP
+    Tick {
+        /// Run one HOOTL digital claim+complete if work available
+        #[arg(long, default_value_t = true)]
+        agent: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Enqueue approve (auth gate) via MsgBus then tick
+    Approve {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Enqueue deny via MsgBus then tick
+    Deny {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Claim physical beacon via MsgBus
+    Claim {
+        id: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Complete physical beacon via MsgBus
+    Complete {
+        id: String,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -167,6 +221,16 @@ fn load_actions_from_fixture(path: &PathBuf) -> Result<Vec<Action>> {
                     })
                     .unwrap_or_default(),
                 public: item.get("public").and_then(|x| x.as_bool()),
+                depends_on: item.get("depends_on").and_then(|x| x.as_array()).map(|a| {
+                    a.iter()
+                        .filter_map(|t| t.as_str().map(str::to_string))
+                        .collect()
+                }),
+                deadline_at: item
+                    .get("deadline_at")
+                    .and_then(|x| x.as_str())
+                    .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+                    .map(|d| d.with_timezone(&Utc)),
             });
         }
     }
@@ -238,16 +302,34 @@ fn main() -> Result<()> {
                         importance: 4,
                         tags: vec!["physical".into()],
                         public: Some(false),
+                        depends_on: None,
+                        deadline_at: None,
                     },
                 ]
             };
             let snap = ensure_snap(&store, &actions)?;
-            let plan = rank_now(
+            let mut plan = rank_now(
                 &context_at(Utc::now(), location.as_deref()),
                 &actions,
                 &[],
                 &snap,
             );
+            // When durable life-state exists, drive FocusPlan from CP (read-only; no persist).
+            if let Ok(Some(life)) = store.load_life_state() {
+                let now = Utc::now();
+                let mut rt = Runtime::new(now);
+                rt.state = life;
+                rt.snapshot = snap.clone();
+                plan = rt.focus_plan(plan);
+            } else if peram_kernel::DepGraph::from_actions(&actions, &Default::default()).is_ok() {
+                let now = Utc::now();
+                let mut rt = Runtime::new(now);
+                if rt.load_actions(&actions, now).is_ok() {
+                    plan = rt.focus_plan(plan);
+                    // Fail loud — dual SoT must not partially persist.
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                }
+            }
             if json {
                 println!("{}", serde_json::to_string_pretty(&plan)?);
             } else {
@@ -288,55 +370,36 @@ fn main() -> Result<()> {
             );
         }
         Commands::Approve { id } => {
-            let store = OpsStore::open(&db_path)?;
-            let snap = store
-                .load_snapshot()?
-                .unwrap_or_else(|| Snapshot::empty(Utc::now()));
-            let next = apply_decision(&snap, &id, "approve", "operator", Utc::now())?;
-            store.save_snapshot(&next)?;
-            println!(
-                "{}",
-                serde_json::json!({
-                    "ok": true,
-                    "decision": "approve",
-                    "id": id,
-                    "status": format!("{:?}", next.status),
-                    "pendingRemaining": list_pending(&next).iter().map(|p| &p.id).collect::<Vec<_>>(),
-                })
-            );
+            gate_via_runtime(
+                &db_path,
+                ManualCmd::Approve { id: id.clone() },
+                "approve",
+                &id,
+            )?;
         }
         Commands::Deny { id } => {
-            let store = OpsStore::open(&db_path)?;
-            let snap = store
-                .load_snapshot()?
-                .unwrap_or_else(|| Snapshot::empty(Utc::now()));
-            let next = apply_decision(&snap, &id, "deny", "operator", Utc::now())?;
-            store.save_snapshot(&next)?;
-            println!(
-                "{}",
-                serde_json::json!({ "ok": true, "decision": "deny", "id": id })
-            );
+            gate_via_runtime(
+                &db_path,
+                ManualCmd::Deny { id: id.clone() },
+                "deny",
+                &id,
+            )?;
         }
         Commands::Claim { id } => {
-            let store = OpsStore::open(&db_path)?;
-            let snap = store
-                .load_snapshot()?
-                .unwrap_or_else(|| Snapshot::empty(Utc::now()));
-            let next = apply_physical_decision(&snap, &id, "claim", Utc::now())?;
-            store.save_snapshot(&next)?;
-            println!("{}", serde_json::json!({ "ok": true, "decision": "claim", "id": id }));
+            gate_via_runtime(
+                &db_path,
+                ManualCmd::ClaimPhysical { id: id.clone() },
+                "claim",
+                &id,
+            )?;
         }
         Commands::Complete { id } => {
-            let store = OpsStore::open(&db_path)?;
-            let snap = store
-                .load_snapshot()?
-                .unwrap_or_else(|| Snapshot::empty(Utc::now()));
-            let next = apply_physical_decision(&snap, &id, "complete", Utc::now())?;
-            store.save_snapshot(&next)?;
-            println!(
-                "{}",
-                serde_json::json!({ "ok": true, "decision": "complete", "id": id })
-            );
+            gate_via_runtime(
+                &db_path,
+                ManualCmd::CompletePhysical { id: id.clone() },
+                "complete",
+                &id,
+            )?;
         }
         Commands::DigitalFlow { sub } => match sub {
             DfCmd::Cycle { payee, json } => {
@@ -409,6 +472,213 @@ fn main() -> Result<()> {
                 std::process::exit(2);
             }
         }
+        Commands::Runtime { sub } => {
+            let store = OpsStore::open(&db_path)?;
+            let now = Utc::now();
+            let mut rt = Runtime::new(now);
+            if let Some(life) = store.load_life_state()? {
+                rt.state = life;
+            }
+            if let Some(snap) = store.load_snapshot()? {
+                rt.snapshot = snap;
+            }
+
+            match sub {
+                RuntimeCmd::Load { fixture, json } => {
+                    let actions = load_actions_from_fixture(&fixture)?;
+                    rt.load_actions(&actions, now)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    let cp = rt.state.critical_path.as_ref();
+                    let body = serde_json::json!({
+                        "ok": true,
+                        "cmd": "runtime.load",
+                        "version": rt.state.version,
+                        "regime": format!("{:?}", rt.state.regime),
+                        "nodes": rt.state.graph.nodes.len(),
+                        "edges": rt.state.graph.edges.len(),
+                        "cp": cp.map(|c| &c.path),
+                        "explain": cp.map(|c| &c.explain),
+                        "monteCarlo": cp.and_then(|c| c.monte_carlo.as_ref()),
+                        "db": store.path(),
+                    });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!(
+                            "RUNTIME_LOAD ok nodes={} edges={} regime={:?} {}",
+                            rt.state.graph.nodes.len(),
+                            rt.state.graph.edges.len(),
+                            rt.state.regime,
+                            cp.map(|c| c.explain.as_str()).unwrap_or("-")
+                        );
+                    }
+                    eprintln!(
+                        "RUNTIME_OK load nodes={} cp_len={}",
+                        rt.state.graph.nodes.len(),
+                        cp.map(|c| c.path.len()).unwrap_or(0)
+                    );
+                }
+                RuntimeCmd::Status { json } => {
+                    let cp = rt.state.critical_path.as_ref();
+                    let body = serde_json::json!({
+                        "ok": true,
+                        "cmd": "runtime.status",
+                        "version": rt.state.version,
+                        "regime": format!("{:?}", rt.state.regime).to_ascii_lowercase(),
+                        "fingerprint": rt.state.fingerprint,
+                        "metrics": rt.state.metrics,
+                        "cp": cp,
+                        "pendingAuth": list_pending(&rt.snapshot).iter().map(|p| &p.id).collect::<Vec<_>>(),
+                        "db": store.path(),
+                    });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!("# LifeState v{}", rt.state.version);
+                        println!("regime: {:?}", rt.state.regime);
+                        println!(
+                            "CP: {}",
+                            cp.map(|c| c.explain.as_str()).unwrap_or("(none — run runtime load)")
+                        );
+                        println!(
+                            "metrics: hootl_done={} hitl_surfaces={} agent_failures={}",
+                            rt.state.metrics.hootl_completed,
+                            rt.state.metrics.hitl_surfaces,
+                            rt.state.metrics.agent_failures
+                        );
+                    }
+                }
+                RuntimeCmd::Tick { agent, json } => {
+                    let report = rt.tick(agent, now)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&report)?);
+                    } else {
+                        println!(
+                            "RUNTIME_TICK regime={:?} drained={} claim={:?} complete={:?} auth={:?} physical={:?} {}",
+                            report.regime,
+                            report.messages_drained,
+                            report.hootl_claim,
+                            report.hootl_complete,
+                            report.next_auth,
+                            report.next_physical,
+                            report.cp_explain
+                        );
+                    }
+                    eprintln!(
+                        "RUNTIME_OK tick regime={:?} claim={} complete={} auth={}",
+                        report.regime,
+                        report.hootl_claim.as_deref().unwrap_or("-"),
+                        report.hootl_complete.as_deref().unwrap_or("-"),
+                        report.next_auth.as_deref().unwrap_or("-")
+                    );
+                }
+                RuntimeCmd::Approve { id, json } => {
+                    // Normalize: approve uses action id (pay-rent); auth- prefix accepted then stripped.
+                    let action_id = peram_kernel::runtime::action_id_of(&id).to_string();
+                    rt.enqueue_manual(ManualCmd::Approve { id: action_id.clone() }, now);
+                    let report = rt.tick(false, now)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    let body = serde_json::json!({ "ok": true, "decision": "approve", "id": action_id, "tick": report });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!("RUNTIME_APPROVE id={action_id} regime={:?}", report.regime);
+                    }
+                }
+                RuntimeCmd::Deny { id, json } => {
+                    let action_id = peram_kernel::runtime::action_id_of(&id).to_string();
+                    rt.enqueue_manual(ManualCmd::Deny { id: action_id.clone() }, now);
+                    let report = rt.tick(false, now)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    let body = serde_json::json!({ "ok": true, "decision": "deny", "id": action_id, "tick": report });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!("RUNTIME_DENY id={action_id}");
+                    }
+                }
+                RuntimeCmd::Claim { id, json } => {
+                    rt.enqueue_manual(ManualCmd::ClaimPhysical { id: id.clone() }, now);
+                    let report = rt.tick(false, now)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    let body = serde_json::json!({ "ok": true, "decision": "claim", "id": id, "tick": report });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!("RUNTIME_CLAIM id={id}");
+                    }
+                }
+                RuntimeCmd::Complete { id, json } => {
+                    rt.enqueue_manual(ManualCmd::CompletePhysical { id: id.clone() }, now);
+                    let report = rt.tick(false, now)?;
+                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    let body = serde_json::json!({ "ok": true, "decision": "complete", "id": id, "tick": report });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!("RUNTIME_COMPLETE id={id} regime={:?}", report.regime);
+                    }
+                }
+            }
+        }
     }
+    Ok(())
+}
+
+/// Top-level approve/deny/claim/complete always go through Runtime (G + Snapshot).
+/// Requires durable life_state from `peram runtime load` — no snapshot-only legacy path.
+fn gate_via_runtime(
+    db_path: &PathBuf,
+    cmd: ManualCmd,
+    decision: &str,
+    id: &str,
+) -> Result<()> {
+    let store = OpsStore::open(db_path)?;
+    let now = Utc::now();
+    let Some(life) = store.load_life_state()? else {
+        bail!(
+            "no life_state in DB — refuse snapshot-only {decision}. \
+             Run: cargo run -p peram-kernel -- runtime load --fixture <path> \
+             then: peram {decision} {id}  (or peram runtime {decision} {id})"
+        );
+    };
+    let mut rt = Runtime::new(now);
+    rt.state = life;
+    if let Some(snap) = store.load_snapshot()? {
+        rt.snapshot = snap;
+    }
+    let cmd = match cmd {
+        ManualCmd::Approve { id } => ManualCmd::Approve {
+            id: peram_kernel::runtime::action_id_of(&id).to_string(),
+        },
+        ManualCmd::Deny { id } => ManualCmd::Deny {
+            id: peram_kernel::runtime::action_id_of(&id).to_string(),
+        },
+        other => other,
+    };
+    let resolved_id = match &cmd {
+        ManualCmd::Approve { id }
+        | ManualCmd::Deny { id }
+        | ManualCmd::ClaimPhysical { id }
+        | ManualCmd::CompletePhysical { id } => id.clone(),
+        _ => id.to_string(),
+    };
+    rt.enqueue_manual(cmd, now);
+    let report = rt.tick(false, now)?;
+    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+    println!(
+        "{}",
+        serde_json::json!({
+            "ok": true,
+            "decision": decision,
+            "id": resolved_id,
+            "via": "runtime",
+            "regime": format!("{:?}", report.regime),
+            "pendingRemaining": list_pending(&rt.snapshot).iter().map(|p| &p.id).collect::<Vec<_>>(),
+            "tick": report,
+        })
+    );
+    eprintln!("GATE_OK via=runtime decision={decision} id={resolved_id}");
     Ok(())
 }

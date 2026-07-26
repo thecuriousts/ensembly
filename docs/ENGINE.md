@@ -30,6 +30,7 @@ We do **not** ship a 14B neural world model here — we ship a **shareable deter
 │  peram-kernel (Rust)  ← control SoT         │
 │  privacy · realm · approvals · rank_now     │
 │  digital_flow · T1 SQLite · backup · vault  │
+│  Issue #1: S · G · CP+P · MsgBus · HITL     │
 └─────────────────┬───────────────────────────┘
                   │
 ┌─────────────────▼───────────────────────────┐
@@ -64,10 +65,19 @@ JS canvas painter (`world-render.js`) only interprets this — no game rules.
 ## Commands
 
 ```bash
+# Control SoT (Issue #1 dogfood)
+cargo test -p peram-kernel
+cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
+cargo run -p peram-kernel -- runtime status
+# or: npm run peram -- runtime status
+
+# World / game
 npm run build:wasm    # → public/game/pkg
 cargo test -p peram-core
 npm run game          # thin shell + WASM world
 ```
+
+Operator path: [PLAYBOOK.md](PLAYBOOK.md) · orientation: [MAP.md](MAP.md).
 
 ## JS bloat policy
 

@@ -3,14 +3,22 @@
 //! Node `src/*` is legacy dogfood. New product logic lands here.
 //!
 //! Layers: privacy · realm · approvals · digital_flow · turn/rank_now ·
+//! life-state S · DepGraph G · CP+P · MsgBus · Runtime/Agents (Issue #1) ·
 //! T1 SQLite store · sealed backup · T2 vault seal bridge.
 
+pub mod agent;
 pub mod approvals;
 pub mod backup;
+pub mod critical_path;
 pub mod digital_flow;
+pub mod graph;
+pub mod life_state;
+pub mod msg_bus;
 pub mod privacy;
 pub mod realm;
+pub mod runtime;
 pub mod store;
+pub mod trigger;
 pub mod turn;
 pub mod vault;
 
@@ -22,17 +30,25 @@ pub use backup::{
     create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
     BackupPack, RestoreDryRunReport,
 };
+pub use critical_path::{compute_critical_path, explain_node, CriticalPathReport};
 pub use digital_flow::{
     activate, decide, execute_dry_run, flow_to_approval_record, map_flow_status_to_approval,
     run_cycle, DigitalFlow, FlowStatus,
 };
+pub use graph::{DepGraph, GateKind, TaskNode, TaskRealm, TaskStatus};
+pub use life_state::{LifeState, LoopRegime, OutcomeMetrics};
+pub use msg_bus::{BusMessage, ManualCmd, MsgBus};
 pub use privacy::{classify_item, private_path_patterns, Classifiable, Classification, Visibility};
 pub use realm::{classify_realm, Realm};
+pub use runtime::{Runtime, TickReport};
 pub use store::{OpsBundle, OpsStore};
-pub use turn::{context_at, rank_now, select_next_auth, select_next_physical, Action, ContextFrame, FocusPlan, ScheduleSlot};
+pub use turn::{
+    context_at, rank_now, select_next_auth, select_next_physical, Action, ContextFrame, FocusItem,
+    FocusPlan, ScheduleSlot,
+};
 pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
 
 /// Kernel banner for CLI / hosts.
 pub fn kernel_version() -> &'static str {
-    "peram-kernel 0.3.0 rust-life-control t1-sqlite t2-seal"
+    "peram-kernel 0.4.0 rust-life-control s+g+cp msgbus hitl-hootl t1-sqlite t2-seal"
 }

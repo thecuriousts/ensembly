@@ -60,7 +60,7 @@ If a change would be fine “for a hobby” but would embarrass a product you be
 
 ## 2. Production bar (every PR / agent session)
 
-1. **Dogfood path** — There is a real command or URL the operator can run today (`npm test`, `npm run game`, `swarm turn`, etc.).
+1. **Dogfood path** — There is a real command or URL the operator can run today (`cargo run -p peram-kernel -- runtime …`, `cargo test -p peram-kernel`, `npm test`, `npm run game`, legacy `swarm turn`, etc.).
 2. **Tests on the shipped path** — Pure logic unit-tested; smoke for launch surfaces; no “tests for code that isn’t wired.”
 3. **Failure is loud and recoverable** — Status lines, errors, undo where it matters; no silent wrong focus/state.
 4. **Privacy default-deny** — Classifier + gitignore + docs stay green; redaction at every cloud/channel boundary.

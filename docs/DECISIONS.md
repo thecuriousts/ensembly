@@ -216,5 +216,28 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 | Vault bridge to peram-vault law | Reinventing crypto in the game loop |
 | FocusPlan = rank_now(ContextFrame) | Sample-graph theater as daily surface |
 
-**Ship path:** `crates/peram-kernel` · `cargo test -p peram-kernel` · `cargo run -p peram-kernel -- turn`  
+**Ship path:** `crates/peram-kernel` · `cargo test -p peram-kernel` · `cargo run -p peram-kernel -- turn` · `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json`  
 **Near-term confidence:** 75%. **Thrive bet:** 85%.
+
+---
+
+## Issue #1 HITL/HOOTL runtime core (2026-07-24)
+
+**Verdict:** Game surface excluded from the Issue #1 core. Control plane owns **life-state S**, directed **DepGraph G**, **CP + P** (PERT expected + basic Monte Carlo), typed **MsgBus**, declarative **triggers**, and basic **HOOTL agents** that claim only through G/CP. Physical beacons + auth gates remain HITL (“wait only for permission”). Formal law: [`arch-design/formal_problem_definition.AppGenMathPhyLang.md`](../arch-design/formal_problem_definition.AppGenMathPhyLang.md).
+
+| Adopt | Refuse |
+|-------|--------|
+| Runtime SoT for S+G+CP in `peram-kernel` | Unity/game layer as prerequisite for prioritization |
+| Agents claim via CP only | Free-form agent-to-agent chatter as coordination |
+| CLI `runtime *` + durable `life_state` in T1 SQLite | Eisenhower-only prioritization as final SoT |
+| Explainable CP reasons on FocusPlan | Opaque priority scores without graph path |
+
+**Ship path:** `cargo run -p peram-kernel -- runtime load|status|tick|approve|deny|claim|complete` · `npm run peram -- runtime …` · `fixtures/issue-1-runtime.json` · `cargo test -p peram-kernel`  
+**Approve id:** action id (e.g. `pay-rent`); optional `auth-` prefix is stripped — snapshot may still key `auth-*` internally.  
+**Top-level gates:** `peram approve|deny|claim|complete` require durable `life_state` (after `runtime load`) and always go through Runtime + `save_runtime_pair`. No snapshot-only legacy path — refuse loud if life_state missing.  
+**Claim-via-CP:** `next_hootl_digital` returns only open digital HOOTL **on the CP path** (no off-path fallback). Direct `AgentWorker::claim` also requires CP path membership.  
+**Auth/Physical off-CP surface (intentional asymmetry):** `next_auth_gate` / `next_physical_beacon` are **CP-first**, then fall back to earliest open Auth/Physical by id so HITL wait-state never hides a real gate. HOOTL agents remain Claim-via-CP only; Auth/Physical may surface off-CP. Do not make Auth/Physical CP-only without a product law change.  
+**Tick honesty:** one HOOTL agent step per tick — claim **or** complete owned claim, never silent same-tick Done-as-exec.  
+**Metrics:** honest `hootl_completed` / `hitl_surfaces` (edge-enter HitlWait) / `agent_failures` — no multi-axis C/E/E theater. MC samples default **0** (PERT σ always); set `mc_samples` when load needs Monte Carlo.  
+**`--json` caveat:** stdout is JSON then a trailing `RUNTIME_OK …` line.  
+**Remaining (not blocking this slice):** multi-agent conflict resolution at scale, adaptive/RL local policies, continuous outcome telemetry dashboards, Eve bridge for remote HITL.
