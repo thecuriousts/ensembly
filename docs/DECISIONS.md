@@ -234,7 +234,8 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 **Ship path:** `cargo run -p peram-kernel -- runtime load|status|tick|approve|deny|claim|complete` · `npm run peram -- runtime …` · `fixtures/issue-1-runtime.json` · `cargo test -p peram-kernel`  
 **Approve id:** action id (e.g. `pay-rent`); optional `auth-` prefix is stripped — snapshot may still key `auth-*` internally.  
-**Claim-via-CP:** `next_hootl_digital` returns only open digital HOOTL **on the CP path** (no off-path fallback).  
+**Claim-via-CP:** `next_hootl_digital` returns only open digital HOOTL **on the CP path** (no off-path fallback). Direct `AgentWorker::claim` also requires CP path membership.  
+**Auth/Physical off-CP surface (intentional asymmetry):** `next_auth_gate` / `next_physical_beacon` are **CP-first**, then fall back to earliest open Auth/Physical by id so HITL wait-state never hides a real gate. HOOTL agents remain Claim-via-CP only; Auth/Physical may surface off-CP. Do not make Auth/Physical CP-only without a product law change.  
 **Tick honesty:** one HOOTL agent step per tick — claim **or** complete owned claim, never silent same-tick Done-as-exec.  
 **Metrics:** honest `hootl_completed` / `hitl_surfaces` (edge-enter HitlWait) / `agent_failures` — no multi-axis C/E/E theater. MC samples default **0** (PERT σ always); set `mc_samples` when load needs Monte Carlo.  
 **`--json` caveat:** stdout is JSON then a trailing `RUNTIME_OK …` line.  
