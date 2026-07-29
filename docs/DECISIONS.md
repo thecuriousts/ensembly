@@ -282,4 +282,4 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 **Ship order:** P2a trait + deterministic → P3a recall → P4a MCP export (register into Grok) → **P2b Grok MCP + P2c/P3b Grok ACP** → P2d secondary adapters (opencode, pi, Ollama feature) → P5 peer-to-peer decision.
 
-**Grok-first rationale (2026-07-29):** Grok Model Context Protocol and Agent Client Protocol ecosystem on the operator machine is expanding faster than local Ollama throughput; dogfood and adapter work targets Grok first while keeping deterministic fallback and no hard dependencies.
+**Grok-first rationale (2026-07-29):** Official xAI docs — MCP via [`grok mcp add`](https://docs.x.ai/build/features/mcp-servers) / `.grok/config.toml`; ACP via [`grok agent stdio`](https://docs.x.ai/build/cli/headless-scripting#acp); headless inference via `grok -p --output-format json`. Export `peram-mcp`; dogfood Grok before Ollama. Never commit `XAI_API_KEY` or `~/.grok/mcp_credentials.json`.

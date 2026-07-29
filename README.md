@@ -169,6 +169,7 @@ Full orientation (capabilities · hosts · layers · IR): **[docs/MAP.md](docs/M
 ```text
 crates/peram-kernel/   control SoT (Rust): life-state S · DepGraph G · CP+P · MsgBus · HITL/HOOTL · T1 SQLite
 crates/peram-memory/   episodic learning (aux): CRDT trajectory · skills · goals · coherence reflect
+crates/peram-agents/   protocol satellite: InferenceProvider · peram-mcp · Grok CLI helpers
 crates/peram-core/     shared Rust world/layout sim → WASM (mirrors focus; not control plane)
 fixtures/              issue-1-runtime.json · state-sample.json · …
 bin/swarm.js           LEGACY day · turn · approve · deny · graph (parity bridge)

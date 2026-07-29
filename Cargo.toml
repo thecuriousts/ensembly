@@ -1,6 +1,11 @@
 # Workspace root — kernel (control) + world (sim). Node src/* is legacy dogfood only.
 [workspace]
-members = ["crates/peram-core", "crates/peram-kernel", "crates/peram-memory"]
+members = [
+    "crates/peram-core",
+    "crates/peram-kernel",
+    "crates/peram-memory",
+    "crates/peram-agents",
+]
 resolver = "2"
 
 [workspace.package]

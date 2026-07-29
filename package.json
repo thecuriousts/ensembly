@@ -1,7 +1,7 @@
 {
   "name": "ensembly",
   "version": "0.2.0",
-  "description": "Game of Peram — life swarm that clears digital thrash so you claim body-world work, clear auth gates, and grow",
+  "description": "Game of Peram \u2014 life swarm that clears digital thrash so you claim body-world work, clear auth gates, and grow",
   "type": "module",
   "private": true,
   "engines": {
@@ -28,7 +28,8 @@
     "test:kernel": "cargo test -p peram-kernel",
     "test:memory": "cargo test -p peram-memory",
     "peram": "cargo run -q -p peram-kernel --",
-    "start": "node scripts/serve-game.mjs"
+    "start": "node scripts/serve-game.mjs",
+    "test:agents": "cargo test -p peram-agents"
   },
   "repository": {
     "type": "git",

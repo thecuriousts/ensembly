@@ -41,8 +41,10 @@
 
 | Term | Full text | What it means here |
 |------|-----------|---------------------|
-| **LLM** | Large Language Model | Any model reachable through an inference provider adapter (local Ollama, Grok via Model Context Protocol, opencode session, pi, …). **Not a crate dependency** — adapters are optional and swappable. |
-| **pi** | pi (agent runtime) | External agent/toolchain on the operator machine; planned as another delegation or inference adapter when wired, same trait boundary as opencode. |
+| **LLM** | Large Language Model | Any model via an InferenceProvider adapter. Fast path on this machine: Grok CLI `grok -p` ([docs](https://docs.x.ai/build/cli/headless-scripting)). Not a crate dependency. |
+| **pi** | pi (agent runtime) | External agent/toolchain; secondary DelegationBackend adapter when wired. |
+| **Grok ACP** | Grok Agent Client Protocol | Official: `grok agent stdio` — JSON-RPC NDJSON ([docs](https://docs.x.ai/build/cli/headless-scripting#acp)). |
+| **Grok MCP** | Grok Model Context Protocol | Official: `grok mcp add` / `.grok/config.toml` ([docs](https://docs.x.ai/build/features/mcp-servers)). Tools namespaced `server__tool`. |
 | **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Cursor, opencode, Eve). Planned as read-only `memory_*` / `kernel_status` tools first. |
 | **ACP** | Agent Client Protocol | Agent-to-agent session protocol (used by `opencode acp`); planned path for delegating HOOTL digital work. |
 | **JSON-RPC** | JSON Remote Procedure Call | Request/response envelope used by MCP and ACP. |

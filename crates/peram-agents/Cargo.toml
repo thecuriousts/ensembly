@@ -1,0 +1,22 @@
+[package]
+name = "peram-agents"
+version = "0.1.0"
+edition = "2021"
+description = "Game of Peram agent satellites — InferenceProvider, sync MCP server, Grok ACP registration helpers (aux; kernel stays control SoT)"
+license = "MIT"
+
+[[bin]]
+name = "peram-mcp"
+path = "src/bin/peram_mcp.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+clap = { version = "4", features = ["derive", "env"] }
+anyhow = "1"
+peram-memory = { path = "../peram-memory" }
+
+[dev-dependencies]
+tempfile = "3"
