@@ -78,6 +78,34 @@ impl EpisodicMemory {
         })
     }
 
+    /// Open an existing memory file. Fails closed when the path is missing —
+    /// used by read-only MCP so a wrong cwd cannot invent an empty "healthy"
+    /// document that hides the real kernel trajectory.
+    pub fn open_existing(
+        path: impl Into<PathBuf>,
+        default_agent_id: &str,
+    ) -> Result<Self, MemoryError> {
+        let path = path.into();
+        let persistence = FilePersistence::new(&path);
+        let doc = match persistence.load()? {
+            Some(doc) => doc,
+            None => {
+                return Err(MemoryError::Io(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!(
+                        "memory file missing at {} — set PERAM_MEMORY to an absolute path and run runtime load/tick first",
+                        path.display()
+                    ),
+                )));
+            }
+        };
+        let _ = default_agent_id; // identity comes from the on-disk document
+        Ok(Self {
+            doc,
+            persistence: Some(persistence),
+        })
+    }
+
     pub fn doc(&self) -> &CrdtDocument {
         &self.doc
     }

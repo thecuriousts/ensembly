@@ -260,5 +260,26 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 **Ship path:** `cargo test -p peram-memory` · `cargo run -p peram-kernel -- runtime load|tick|…` (records) · `cargo run -p peram-kernel -- runtime reflect [--json]` · flags `--memory <path>` / `--no-memory`  
 **Merge law:** entry-level CRDT merge is idempotent and commutative; re-merging held state is a true no-op (stable hash). Concurrent CLI writers reconcile via `sync_and_save` (load-merge-persist, atomic tmp+rename).  
-**Reflection contract:** skipped loudly below 5 trajectory entries; LLM judging may later augment the deterministic Jaccard scorer **behind a trait with deterministic fallback** — the deterministic path stays the test oracle.  
-**Remaining (trajectory, not live):** LLM judge trait (Ollama), ACP/MCP tool surface for agents to read memory, P2P replica sync, memory-informed coach lines (read-only, gated).
+**Reflection contract:** skipped loudly below 5 trajectory entries; inference providers may augment coherence scoring and summaries **behind `InferenceProvider` trait** — deterministic Jaccard stays the default and the test oracle; unavailable or slow backends warn and fall back, never block reflect.  
+**Remaining (trajectory, not live):** live `grok -p` enrich (P2b), full Grok ACP client loop (P2c/P3b), secondary adapters (opencode, pi, Ollama feature), peer-to-peer replica sync, memory-informed coach lines (read-only, gated). Trait + deterministic + read-only `peram-mcp` ship in SN-8 P2a/P4a.
+
+---
+
+## Multi-provider inference and delegation (2026-07-29)
+
+**Verdict:** After episodic memory landed (SN-7), the next slices must treat **toolchains as abundant and swappable** — not standardize on Ollama. Local Ollama is slow on the operator machine; it must never be a hard dependency, default path, or CI requirement.
+
+| Adopt | Refuse |
+|-------|--------|
+| `InferenceProvider` trait in `peram-agents`; **deterministic Jaccard** as default + test oracle | Ollama/`reqwest` in default `peram-memory` / `peram-agents` build |
+| Optional adapter crates or feature flags per backend (`judge-ollama`, `judge-grok-mcp`, …) | One-vendor inference lock-in |
+| Runtime selection: `PERAM_INFERENCE=deterministic\|ollama\|grok-mcp\|opencode-acp\|…` | Silent hang when a daemon is down |
+| Unavailable/slow provider → stderr warn + deterministic fallback | Reflect or tick failure because a model host is offline |
+| `DelegationBackend` trait for Human-Out-Of-The-Loop hands; **Grok Agent Client Protocol as first** adapter; opencode secondary | opencode as only delegation path |
+| Grok Model Context Protocol / opencode Model Context Protocol as **clients** calling external hosts | Embedding cloud keys in repo |
+| `peram-mcp` exposes Model Context Protocol server (`memory_*`, `swarm_banner`; `kernel_status` deferred); consumes external Model Context Protocol/Agent Client Protocol as providers | Shadow Model Context Protocol servers without operator approval |
+| Tests: deterministic only; adapter tests behind `#[ignore]` or feature | CI requiring Ollama, Grok, or opencode running |
+
+**Ship order:** P2a trait + deterministic → P3a recall → P4a MCP export (register into Grok) → **P2b Grok MCP + P2c/P3b Grok ACP** → P2d secondary adapters (opencode, pi, Ollama feature) → P5 peer-to-peer decision.
+
+**Grok-first rationale (2026-07-29):** Official xAI docs — MCP via [`grok mcp add`](https://docs.x.ai/build/features/mcp-servers) / `.grok/config.toml`; ACP via [`grok agent stdio`](https://docs.x.ai/build/cli/headless-scripting#acp); headless inference via `grok -p --output-format json`. Export `peram-mcp`; dogfood Grok before Ollama. Never commit `XAI_API_KEY` or `~/.grok/mcp_credentials.json`.

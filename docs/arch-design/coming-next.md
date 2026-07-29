@@ -5,7 +5,7 @@
 **Contract:** [PRIVACY.md](../PRIVACY.md) · [SWARM-DESIGN.md](../SWARM-DESIGN.md) · [DECISIONS.md](../DECISIONS.md)  
 **Method:** stellar-roadmap · fusion-sage · ai-optimization · higher-order-decision-architect · looper
 
-*Last updated: 2026-07-15*
+*Last updated: 2026-07-29*
 
 ---
 
@@ -396,22 +396,82 @@ flowchart LR
 
 ---
 
-### SN-8 · Agent hands + judges (memory P2–P4 trajectory)
+### SN-8 · Inference providers, recall, delegation, tool surface (revised 2026-07-29)
 
-**Problem:** Memory learns but agents still act without recalling it; reflection scoring is plain Jaccard; helper agents can't reach memory through a governed tool surface.
+**Problem:** Memory learns but agents act without recall; reflection is Jaccard-only; Grok/Cursor cannot consume memory without a governed MCP export. **Primary bet: official xAI CLI** — [ACP `grok agent stdio`](https://docs.x.ai/build/cli/headless-scripting#acp), [MCP via `grok mcp add`](https://docs.x.ai/build/features/mcp-servers), headless `grok -p --output-format json` for inference. Ollama optional/slow. Deterministic always works offline.
 
-| Phase | Work | Gate |
-|-------|------|------|
-| P2 LLM judge | Ollama-backed scorer **behind a trait**, deterministic Jaccard fallback stays test oracle | Offline-capable; no cloud key in repo |
-| P3 recall in workers | `AgentWorker` reads recent trajectory before claim (read-only context) | Recall never overrides CP claim law |
-| P4 tool surface | MCP server exposing `memory_*` + `kernel_status` tools for Cursor/opencode/Eve | Read-only tools first; policy-gated exec reuses IntelliArch `policy.rs` pattern; redaction before any remote boundary |
+**Official wire (do not invent):**
 
-**Done when:** Each phase ships with crate tests + dogfood command and its own DECISIONS entry; P4 tool list reviewed against PRIVACY.md.
+| Surface | Command / config | Role for ensembly |
+|---------|------------------|-------------------|
+| Headless prompt | `grok --no-auto-update -p "…" --output-format json` | Fast InferenceProvider enrich |
+| ACP agent | `grok --no-auto-update agent stdio` | DelegationBackend / IDE host |
+| MCP register | `grok mcp add --scope project peram -- ./target/debug/peram-mcp` | Export memory tools into Grok |
+| Project config | `.grok/config.toml` `[mcp_servers.peram]` | Operator generates via `grok mcp add` (gitignored; no secrets) |
 
-**Verify (per phase):** P2 `PERAM_JUDGE=ollama cargo run -p peram-kernel -- runtime reflect` · P4 `cargo run -p peram-kernel -- mcp-serve` (new bin).
+```mermaid
+flowchart TB
+  subgraph eagle["peram-kernel Eagle"]
+    rt[runtime tick / reflect]
+    worker[AgentWorker + recall hint]
+  end
+  subgraph mem["peram-memory aux"]
+    doc[(CRDT trajectory)]
+    det[Deterministic Jaccard]
+  end
+  subgraph sat["peram-agents satellite"]
+    mcp[peram-mcp stdio]
+    inf[InferenceProvider]
+    del[DelegationBackend]
+  end
+  subgraph grokHost["Grok CLI on operator machine"]
+    grokMcp["grok mcp add peram"]
+    grokAcp["grok agent stdio"]
+    grokP["grok -p json"]
+  end
+  rt --> doc
+  rt --> det
+  worker --> doc
+  mcp --> doc
+  grokMcp --> mcp
+  grokP -.-> inf
+  grokAcp -.-> del
+  inf -.->|fallback| det
+```
+
+#### Phase table
+
+| Phase | Work | Status |
+|-------|------|--------|
+| **P2a** | `InferenceProvider` + deterministic; `PERAM_INFERENCE` | shipping this slice |
+| **P3a** | AgentWorker claim detail gets `recall_hint` | shipping this slice |
+| **P4a** | `peram-mcp` read-only tools + Grok register docs | shipping this slice |
+| **P2b** | Wire `grok -p` headless as enrich adapter | stub + argv helpers now; live spawn next |
+| **P2c / P3b** | Wire `grok agent stdio` ACP client (init→auth→session/new→prompt) | stubs + official params helpers |
+| **P2d** | opencode / Ollama / pi secondary | deferred |
+| **P5** | P2P | design-gated |
+
+#### Env
+
+```text
+PERAM_INFERENCE=deterministic|grok-mcp|grok-acp|opencode-acp|ollama
+PERAM_DELEGATE=none|grok-acp|opencode-acp
+PERAM_MEMORY=data/local/peram-memory.json
+```
+
+Unavailable provider → stderr `INFERENCE_WARN` + deterministic. Control ops never depend on Grok being up.
+
+#### Verify
+
+```bash
+cargo test --workspace
+cargo run -p peram-kernel -- runtime reflect
+cargo run -p peram-agents --bin peram-mcp   # then: grok mcp add --scope project peram -- …
+```
+
+**Guardrail:** Prefer official docs over grok-build internal reverse-RPC details. Project MCP via `.grok/config.toml`; never commit API keys (`XAI_API_KEY` stays env).
 
 ---
-
 ## 8. Scope lock
 
 | Locked in | Deferred |

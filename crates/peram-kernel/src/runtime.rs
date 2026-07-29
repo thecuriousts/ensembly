@@ -224,7 +224,12 @@ impl Runtime {
                     }
                 } else {
                     match self.agent.claim_next(&mut self.state.graph, &cp, now) {
-                        Ok(report) => {
+                        Ok(mut report) => {
+                            // P3a: read-only recall into detail — never changes claim law.
+                            if let Some(sink) = &self.memory {
+                                let hint = sink.recall_hint(24, 5);
+                                report.detail = format!("{} · {}", report.detail, hint);
+                            }
                             hootl_claim = Some(report.task_id.clone());
                             self.bus.push(BusMessage::Agent { report });
                             Ok(())

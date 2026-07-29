@@ -125,10 +125,52 @@ impl MemorySink {
         );
     }
 
-    /// Explicit reflection pass over the durable trajectory (CLI-driven;
-    /// never implicit in a control tick). None when the window is too small.
+    /// Explicit reflection pass. Uses `PERAM_INFERENCE` when set: deterministic
+    /// always runs first; optional providers may enrich the summary, or warn
+    /// and fall back (never fails the control path).
     pub fn reflect(&mut self) -> Option<Reflection> {
-        peram_memory::reflect(self.memory.doc_mut(), &CoherenceConfig::default())
+        let mut reflection =
+            peram_memory::reflect(self.memory.doc_mut(), &CoherenceConfig::default())?;
+        let backend = peram_agents::InferenceBackend::from_env();
+        let provider = peram_agents::resolve_provider(backend);
+        match provider.enrich_summary(self.memory.doc(), &reflection) {
+            Ok(Some(summary)) => {
+                // Keep durable Reflection entry in sync with what CLI/JSON returns.
+                self.memory
+                    .doc_mut()
+                    .patch_latest_reflection_summary(&summary);
+                reflection.summary = summary;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                eprintln!(
+                    "INFERENCE_WARN provider={} — {e}",
+                    provider.name()
+                );
+            }
+        }
+        Some(reflection)
+    }
+
+    /// Compact recent-trajectory hint for AgentWorker claim detail (read-only).
+    /// Never influences claim eligibility — recall only, not control.
+    pub fn recall_hint(&self, hours: i64, limit: usize) -> String {
+        let recent = self.memory.doc().get_recent_trajectory(hours);
+        let slice: Vec<_> = recent.iter().rev().take(limit).collect();
+        if slice.is_empty() {
+            return "recall: (empty trajectory)".into();
+        }
+        let parts: Vec<String> = slice
+            .iter()
+            .map(|e| {
+                format!(
+                    "{:?}@{}",
+                    e.entry_type,
+                    e.timestamp.format("%H:%M:%S")
+                )
+            })
+            .collect();
+        format!("recall: {}", parts.join(" · "))
     }
 
     /// Reconcile with whatever is on disk, then persist atomically.
@@ -316,5 +358,16 @@ mod tests {
 
         let entries = rt.memory.as_ref().unwrap().memory.doc().trajectory.len();
         assert_eq!(entries, 0, "failed apply must not reach memory");
+    }
+
+    #[test]
+    fn recall_hint_lists_recent_types() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("m.json");
+        let mut sink = MemorySink::open(&path).unwrap();
+        sink.record_load(1, 0, "Hootl", Utc::now());
+        let hint = sink.recall_hint(24, 3);
+        assert!(hint.contains("recall:"));
+        assert!(hint.contains("Observation"), "got {hint}");
     }
 }
