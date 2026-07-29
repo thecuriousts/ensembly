@@ -6,7 +6,7 @@ Digital thrash is the trash mob. You keep the boss fights: **body-world pickups*
 
 Production life infrastructure — not a toy. Bar: [PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) · [AGENTS.md](AGENTS.md)
 
-**New here?** Start with **[docs/MAP.md](docs/MAP.md)** — live capabilities, CLI vs game vs watch, `src` / `public/game` / Rust WASM ownership, and what **IR** means in this repo.
+**New here?** Start with **[docs/MAP.md](docs/MAP.md)** — live capabilities, CLI vs game vs watch, `src` / `public/game` / Rust WASM ownership, and what **IR** means in this repo. Acronyms expanded: **[docs/GLOSSARY.md](docs/GLOSSARY.md)**.
 
 **life-os vs this repo:** `~/life-os` is the clustered Projects/Areas **vault** (portfolio memory). **ensembly** is the **digital clone** that removes digital friction so you pair for physical + HITL. See [LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md).
 
@@ -111,8 +111,9 @@ Deep dives: [MAP](docs/MAP.md) · [PLAYBOOK](docs/PLAYBOOK.md) · [GAME-STACK](d
 | **Gate** | `… runtime approve <action-id>` / `deny <action-id>` | HITL AuthGate (id = action id, e.g. `pay-rent`) |
 | **Body** | `… runtime claim <id>` / `complete <id>` | PhysicalBeacon after permission |
 | **Turn (CP)** | `cargo run -p peram-kernel -- turn --fixture fixtures/state-sample.json` | FocusPlan coached from critical path when life-state present |
+| **Reflect** | `… runtime reflect` | Coherence + skill synthesis + goal proposals over the durable episodic trajectory (`data/local/peram-memory.json`, recorded by load/tick/gates). Aux learning layer — memory never decides |
 
-`runtime * --json` prints JSON then a trailing `RUNTIME_OK …` status line — strip the last line before parsing.
+`runtime * --json` prints JSON then a trailing `RUNTIME_OK …` status line — strip the last line before parsing. Memory flags: `--memory <path>` (explicit; open failure is fatal) · `--no-memory`.
 
 ### Legacy Node swarm (parity only)
 
@@ -167,6 +168,7 @@ Full orientation (capabilities · hosts · layers · IR): **[docs/MAP.md](docs/M
 
 ```text
 crates/peram-kernel/   control SoT (Rust): life-state S · DepGraph G · CP+P · MsgBus · HITL/HOOTL · T1 SQLite
+crates/peram-memory/   episodic learning (aux): CRDT trajectory · skills · goals · coherence reflect
 crates/peram-core/     shared Rust world/layout sim → WASM (mirrors focus; not control plane)
 fixtures/              issue-1-runtime.json · state-sample.json · …
 bin/swarm.js           LEGACY day · turn · approve · deny · graph (parity bridge)

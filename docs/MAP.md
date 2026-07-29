@@ -3,7 +3,7 @@
 **Audience:** new readers, agents, and the operator who need a single orientation pass.  
 **Not this doc:** how to play (→ [PLAYBOOK.md](PLAYBOOK.md)), race-car stack decision (→ [GAME-STACK.md](GAME-STACK.md)), WASM/desktop engine detail (→ [ENGINE.md](ENGINE.md)), product why (→ [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md)).
 
-**Last verified against shipped code:** 2026-07-24
+**Last verified against shipped code:** 2026-07-29
 
 ---
 
@@ -30,7 +30,8 @@ Only features with a **dogfood path** (command, URL, or unit-tested pure export)
 | Capability | Entry | What you get |
 |------------|-------|--------------|
 | **Kernel CLI** | `cargo run -p peram-kernel -- …` · `npm run peram -- …` | `rank_now` FocusPlan, bill_pay dry-run, T1 SQLite, sealed backup; Node `src/*` is **legacy** |
-| **Runtime S+G+CP+P (Issue #1)** | `cargo run -p peram-kernel -- runtime load\|status\|tick\|approve\|deny\|claim\|complete` · fixture `fixtures/issue-1-runtime.json` | Life-state **S** + DepGraph **G** + critical path / PERT+MonteCarlo **P**; typed MsgBus; HOOTL agents claim digital thrash; AuthGate + PhysicalBeacon wait only for permission. Persist to `data/local/peram-ops.sqlite` (gitignored). **Approve/deny id = action id** (e.g. `pay-rent`), not `auth-pay-rent` from `pendingAuth`. `runtime * --json` emits JSON then a trailing `RUNTIME_OK …` line. |
+| **Runtime S+G+CP+P (Issue #1)** | `cargo run -p peram-kernel -- runtime load\|status\|tick\|approve\|deny\|claim\|complete` · fixture `fixtures/issue-1-runtime.json` | Life-state **S** + dependency graph **G** + critical path / PERT+Monte Carlo **P**; typed message bus; Human-Out-Of-The-Loop agents claim digital thrash; authorization gate + physical beacon wait only for permission. Persist to `data/local/peram-ops.sqlite` (gitignored). **Approve/deny id = action id** (e.g. `pay-rent`), not `auth-pay-rent` from `pendingAuth`. `runtime * --json` emits JSON then a trailing `RUNTIME_OK …` line. |
+| **Episodic memory (peram-memory)** | `cargo run -p peram-kernel -- runtime reflect [--json]` · `--memory <path>` / `--no-memory` | Runtime records applied bus messages, ticks, loads into a durable Conflict-free Replicated Data Type trajectory at `data/local/peram-memory.json` (gitignored). `reflect` = coherence + skill synthesis + goal proposals (skips loudly below 5 entries). **Auxiliary learning layer — kernel stays control Source of Truth; memory never decides.** Decision: [DECISIONS.md](DECISIONS.md#episodic-memory-layer--peram-memory-fused-from-intelliarch-2026-07-29) · terms: [GLOSSARY.md](GLOSSARY.md) |
 
 #### Node / pure modules under `src/` (legacy parity)
 
@@ -145,6 +146,7 @@ This is the common confusion zone: **`public/game` is not “the game logic.”*
 | **`public/game/`** | Thin **browser host**: HTML/CSS, `main.js` boot, `engine.js` WASM loader, Canvas/WebGPU paint (`world-render.js`, `render.js`), `sample-graph.json` fixture | Policy, privacy classifier, day loop, durable approvals |
 | **`public/game/pkg/`** | **Build output** of `crates/peram-core` (wasm-pack): `peram_core.js` + `peram_core_bg.wasm` + types — checked in so `npm run game` works without a Rust toolchain | Source of truth for rules (source is Rust); not the control plane |
 | **`crates/peram-core`** | Deterministic **world/layout sim**: courtyard, entities, props, bind graph nodes, tick, draw buffer ABI, pack/layout math | Day/turn/privacy, HITL decisions, focus *authority* (mirrors only) |
+| **`crates/peram-memory`** | Episodic learning: CRDT trajectory/skills/goals/context, merge, atomic persistence, coherence engine (reflect, skill synthesis, goal proposals) | Control decisions, gates, CP, priorities — kernel consults it never; hosts may read |
 | **`public/watch/`** | Static artifacts produced by graph export for glance UI | Live kernel, interactive claim/approve |
 | **`bin/swarm.js`** | CLI wiring: argv, fixtures, read/write paths, stdout | Pure scoring logic (delegates to `src/`) |
 | **`private/`** | Operator state, full persona, plans, wait snapshot — **gitignored / never push** | Public product surface |

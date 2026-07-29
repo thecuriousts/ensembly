@@ -12,6 +12,7 @@ use crate::approvals::{
 use crate::critical_path::{explain_node, next_auth_gate, next_hootl_digital, next_physical_beacon};
 use crate::graph::{DepGraph, GateKind, TaskStatus};
 use crate::life_state::{LifeState, LoopRegime};
+use crate::memory_sink::{memory_content_of, MemorySink};
 use crate::msg_bus::{AgentReportKind, BusMessage, ManualCmd, MsgBus, TriggerKind};
 use crate::trigger::{derive_triggers, TriggerContext};
 use crate::turn::{Action, FocusItem, FocusPlan};
@@ -55,6 +56,10 @@ pub struct Runtime {
     pub bus: MsgBus,
     pub snapshot: Snapshot,
     pub agent: AgentWorker,
+    /// Optional episodic memory sink (peram-memory). Records applied bus
+    /// messages, tick reports, and graph loads. Aux audit/learning layer —
+    /// never consulted for control decisions. Hosts attach via CLI flags.
+    pub memory: Option<MemorySink>,
     /// Process-local edge state for `emit_triggers` de-dupe.
     ///
     /// `prev_fp` / `prev_cp_path` / `prev_auth` / `prev_physical` / `prev_hootl` are
@@ -80,6 +85,7 @@ impl Runtime {
             bus: MsgBus::new(64),
             snapshot: Snapshot::empty(now),
             agent: AgentWorker::new("swarm-digital-1"),
+            memory: None,
             prev_fp: String::new(),
             prev_cp_path: vec![],
             prev_auth: None,
@@ -125,6 +131,14 @@ impl Runtime {
             .collect();
         self.snapshot = upsert_physical(&physical, Some(self.snapshot.clone()), now);
         self.emit_triggers(now);
+        if let Some(sink) = &mut self.memory {
+            sink.record_load(
+                self.state.graph.nodes.len(),
+                self.state.graph.edges.len(),
+                &format!("{:?}", self.state.regime),
+                now,
+            );
+        }
         Ok(())
     }
 
@@ -253,7 +267,7 @@ impl Runtime {
             .as_ref()
             .and_then(|c| next_hootl_digital(&self.state.graph, c));
 
-        Ok(TickReport {
+        let report = TickReport {
             regime: self.state.regime,
             cp_explain: cp
                 .as_ref()
@@ -268,7 +282,11 @@ impl Runtime {
             next_hootl,
             metrics: self.state.metrics.clone(),
             bus_dropped_triggers: self.bus.dropped_triggers,
-        })
+        };
+        if let Some(sink) = &mut self.memory {
+            sink.record_tick(&report);
+        }
+        Ok(report)
     }
 
     fn apply_message(
@@ -276,7 +294,11 @@ impl Runtime {
         msg: BusMessage,
         now: chrono::DateTime<Utc>,
     ) -> Result<(), RuntimeError> {
-        match msg {
+        // Build the trajectory note before the move; append only when the
+        // apply actually succeeded — memory records what happened, never
+        // what was attempted.
+        let note = memory_content_of(&msg);
+        let result = match msg {
             BusMessage::Manual { cmd, .. } => self.apply_manual(cmd, now),
             BusMessage::Trigger { trigger } => {
                 // Triggers are declarative signals; AuthNeeded/Physical stay until human acts.
@@ -297,7 +319,13 @@ impl Runtime {
                 }
                 Ok(())
             }
+        };
+        if result.is_ok() {
+            if let Some(sink) = &mut self.memory {
+                sink.record_applied(note);
+            }
         }
+        result
     }
 
     fn apply_manual(
