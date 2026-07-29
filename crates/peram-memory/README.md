@@ -57,6 +57,7 @@ Global flags: `--memory <path>` (explicit path; open failure is fatal) · `--no-
 - **Merge law:** re-merging state you already hold is a true no-op (stable hash). Concurrent command-line writers converge via `sync_and_save`; no write is lost.
 - **Aux failure semantics:** a memory save failure warns on stderr and never fails a committed control operation. An explicit `--memory` path that fails to open *is* fatal — you asked for it.
 - **Privacy:** the default path lives under `data/local/` (gitignored, Tier-1 boundary). Memory contains real action ids/titles; redaction is required before any remote/export surface (roadmap P4).
+- **Inference (roadmap P2):** `reflect` uses deterministic Jaccard by default. Optional `InferenceProvider` adapters (Ollama, Grok Model Context Protocol, opencode Agent Client Protocol, pi, …) are runtime-selected — never a hard dependency. See SN-8 in [coming-next.md](../../docs/arch-design/coming-next.md).
 
 ## Tests
 

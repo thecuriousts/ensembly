@@ -5,7 +5,7 @@
 **Contract:** [PRIVACY.md](../PRIVACY.md) · [SWARM-DESIGN.md](../SWARM-DESIGN.md) · [DECISIONS.md](../DECISIONS.md)  
 **Method:** stellar-roadmap · fusion-sage · ai-optimization · higher-order-decision-architect · looper
 
-*Last updated: 2026-07-15*
+*Last updated: 2026-07-29*
 
 ---
 
@@ -396,19 +396,94 @@ flowchart LR
 
 ---
 
-### SN-8 · Agent hands + judges (memory P2–P4 trajectory)
+### SN-8 · Inference providers, recall, delegation, tool surface (revised 2026-07-29)
 
-**Problem:** Memory learns but agents still act without recalling it; reflection scoring is plain Jaccard; helper agents can't reach memory through a governed tool surface.
+**Problem:** Memory learns but (1) reflection scoring is plain Jaccard, (2) agents act without recalling trajectory, (3) helper toolchains (Grok Model Context Protocol, opencode Agent Client Protocol/Model Context Protocol, pi, Ollama, …) cannot plug in without a vendor lock-in. **Ollama is not the plan's center** — it is one optional adapter; deterministic path must work with zero network and zero daemons.
 
-| Phase | Work | Gate |
-|-------|------|------|
-| P2 LLM judge | Ollama-backed scorer **behind a trait**, deterministic Jaccard fallback stays test oracle | Offline-capable; no cloud key in repo |
-| P3 recall in workers | `AgentWorker` reads recent trajectory before claim (read-only context) | Recall never overrides CP claim law |
-| P4 tool surface | MCP server exposing `memory_*` + `kernel_status` tools for Cursor/opencode/Eve | Read-only tools first; policy-gated exec reuses IntelliArch `policy.rs` pattern; redaction before any remote boundary |
+```mermaid
+flowchart TB
+  subgraph kernel["peram-kernel (control SoT)"]
+    rt[runtime tick / reflect]
+    worker[AgentWorker]
+  end
+  subgraph memory["peram-memory (aux)"]
+    doc[(CRDT trajectory)]
+    det[Deterministic Jaccard — default + test oracle]
+  end
+  subgraph providers["InferenceProvider adapters — optional, swappable"]
+    ollama[Ollama HTTP]
+    grok[Grok MCP client]
+    oc_acp[opencode ACP client]
+    oc_mcp[opencode MCP client]
+    pi[pi / future]
+  end
+  subgraph hands["DelegationBackend adapters — optional"]
+    oc_del[opencode ACP delegate]
+    grok_del[Grok MCP delegate]
+  end
+  subgraph surface["Tool surface"]
+    mcp_out[peram MCP server — memory_* kernel_status]
+    mcp_in[MCP/ACP clients — call external hosts]
+  end
+  rt --> doc
+  rt --> det
+  rt -.->|PERAM_INFERENCE| providers
+  providers --> det
+  worker --> doc
+  worker -.->|PERAM_DELEGATE| hands
+  mcp_out --> doc
+  mcp_in --> providers
+  mcp_in --> hands
+```
 
-**Done when:** Each phase ships with crate tests + dogfood command and its own DECISIONS entry; P4 tool list reviewed against PRIVACY.md.
+#### Phase table
 
-**Verify (per phase):** P2 `PERAM_JUDGE=ollama cargo run -p peram-kernel -- runtime reflect` · P4 `cargo run -p peram-kernel -- mcp-serve` (new bin).
+| Phase | Work | Hard deps | Gate |
+|-------|------|-----------|------|
+| **P2a** | `InferenceProvider` trait; wire into `reflect`; deterministic only | none | `cargo test -p peram-memory` — no network |
+| **P2b** | Adapter skeleton + **one** operator-chosen backend (likely Grok MCP or opencode ACP — not Ollama-by-default) | feature flag / separate crate | `#[ignore]` integration test; fallback proven |
+| **P2c** | Additional adapters: Ollama HTTP, opencode MCP, pi | each optional | same fallback law |
+| **P3a** | `AgentWorker` recall: read recent trajectory before claim (read-only context in agent report detail) | none | recall never overrides critical-path claim law |
+| **P3b** | `DelegationBackend` trait; opencode Agent Client Protocol first adapter (port IntelliArch `acp_client` + permission policy) | opencode on PATH for dogfood only | Human-Out-Of-The-Loop digital only; policy allowlist |
+| **P4a** | Model Context Protocol **server** bin: read-only `memory_*`, `kernel_status` | none | redaction review vs PRIVACY.md |
+| **P4b** | Model Context Protocol / Agent Client Protocol **client** registry: external toolchains as providers | operator-configured hosts | Runlayer-managed servers preferred; no shadow MCP |
+| **P5** | Peer-to-peer replica sync (transport TBD) | product decision | CRDT merge already ready |
+
+#### Selection and fallback law
+
+```text
+PERAM_INFERENCE=deterministic          # default — always works
+PERAM_INFERENCE=grok-mcp               # Grok MCP host (fast path on operator machine)
+PERAM_INFERENCE=opencode-acp           # opencode acp session
+PERAM_INFERENCE=ollama                 # local HTTP — optional, not required for build
+PERAM_DELEGATE=opencode-acp            # HOOTL hands — first adapter
+```
+
+If the chosen provider is missing, slow, or errors: **warn on stderr, fall back to deterministic, finish reflect/tick.** Control ops never depend on a model host.
+
+#### Done when
+
+Each phase: crate tests (deterministic path) + dogfood command + DECISIONS row if law changes. Adapter phases additionally: one `#[ignore]` dogfood doc in crate README.
+
+#### Verify
+
+| Phase | Command |
+|-------|---------|
+| P2a | `cargo run -p peram-kernel -- runtime reflect` (deterministic only) |
+| P2b | `PERAM_INFERENCE=grok-mcp cargo run -p peram-kernel -- runtime reflect` *(or opencode-acp — operator picks)* |
+| P3a | `cargo test -p peram-kernel agent_recall` |
+| P3b | `PERAM_DELEGATE=opencode-acp cargo run -p peram-kernel -- runtime tick --agent` |
+| P4a | `cargo run -p peram-kernel -- mcp-serve` + Cursor/opencode lists tools |
+
+**IntelliArch port map (reference, not all at once):**
+
+| IntelliArch module | ensembly target | Notes |
+|--------------------|-----------------|-------|
+| `coherence_engine` deterministic parts | done in `peram-memory/coherence.rs` | — |
+| `ollama.rs` | `peram-judge-ollama` or feature | optional only |
+| `rpc.rs`, `mcp_*`, `acp_client.rs` | `peram-agents` or `peram-kernel` bins | trait-first; Grok/opencode/pi as adapters |
+| `policy.rs` | reuse for P4 exec gate | allowlist unchanged |
+| `warden.rs` cycle | P3b delegation dogfood | not a new SoT |
 
 ---
 

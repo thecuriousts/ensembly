@@ -33,13 +33,16 @@
 | **Skill synthesis** | — | When the same 3-action pattern repeats past threshold, it is crystallized into a named, reusable `Skill`. |
 | **Reflect** | Reflection pass | Explicit `runtime reflect`: scores coherence, runs skill synthesis, proposes goals. Never implicit inside a control tick. |
 | **Aux** | Auxiliary | The memory layer's legal status: it records and learns; it never decides gates, critical path, or priorities. |
-| **Judge** | Judge trait (roadmap P2) | Pluggable scorer for coherence/reflection: deterministic Jaccard by default, local large language model (Ollama) optional, fallback always deterministic. |
+| **Judge** | Inference provider (roadmap P2) | Pluggable backend for coherence scoring and reflection summaries. **Default:** deterministic Jaccard (zero network). **Optional adapters:** Ollama HTTP, Grok Model Context Protocol, opencode Agent Client Protocol / Model Context Protocol, pi, others — selected at runtime, never a hard dependency. Unavailable provider warns and falls back to deterministic. |
+| **InferenceProvider** | Inference provider trait | Rust trait in `peram-memory`: score coherence, summarize reflection. Test oracle is always the deterministic implementation. |
+| **DelegationBackend** | Delegation backend trait | Rust trait for Human-Out-Of-The-Loop digital hands: spawn session, send prompt, collect result. opencode Agent Client Protocol is the first adapter, not the only one. |
 
 ## Agents and protocols (roadmap P3–P5)
 
 | Term | Full text | What it means here |
 |------|-----------|---------------------|
-| **LLM** | Large Language Model | Local model via Ollama (e.g. `qwen2.5:7b`); no cloud keys in this repo. |
+| **LLM** | Large Language Model | Any model reachable through an inference provider adapter (local Ollama, Grok via Model Context Protocol, opencode session, pi, …). **Not a crate dependency** — adapters are optional and swappable. |
+| **pi** | pi (agent runtime) | External agent/toolchain on the operator machine; planned as another delegation or inference adapter when wired, same trait boundary as opencode. |
 | **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Cursor, opencode, Eve). Planned as read-only `memory_*` / `kernel_status` tools first. |
 | **ACP** | Agent Client Protocol | Agent-to-agent session protocol (used by `opencode acp`); planned path for delegating HOOTL digital work. |
 | **JSON-RPC** | JSON Remote Procedure Call | Request/response envelope used by MCP and ACP. |
