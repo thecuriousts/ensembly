@@ -20,13 +20,13 @@ Official Grok (xAI) docs:
 # Build the server
 cargo build -p peram-agents --bin peram-mcp
 
-# Project scope (writes .grok/config.toml — gitignore if secrets; commit if shared)
+# Project scope (writes .grok/config.toml — gitignored; use absolute PERAM_MEMORY)
 grok mcp add --scope project peram -- ./target/debug/peram-mcp
 
-# Or paste into .grok/config.toml:
+# Or paste into .grok/config.toml with an absolute memory path:
 # [mcp_servers.peram]
 # command = "./target/debug/peram-mcp"
-# env = { PERAM_MEMORY = "data/local/peram-memory.json" }
+# env = { PERAM_MEMORY = "/ABS/PATH/to/ensembly/data/local/peram-memory.json" }
 
 grok mcp list --json
 grok mcp doctor peram

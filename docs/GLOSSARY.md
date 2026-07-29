@@ -34,7 +34,7 @@
 | **Reflect** | Reflection pass | Explicit `runtime reflect`: scores coherence, runs skill synthesis, proposes goals. Never implicit inside a control tick. |
 | **Aux** | Auxiliary | The memory layer's legal status: it records and learns; it never decides gates, critical path, or priorities. |
 | **Judge** | Inference provider (roadmap P2) | Pluggable backend for coherence scoring and reflection summaries. **Default:** deterministic Jaccard (zero network). **Optional adapters:** Ollama HTTP, Grok Model Context Protocol, opencode Agent Client Protocol / Model Context Protocol, pi, others — selected at runtime, never a hard dependency. Unavailable provider warns and falls back to deterministic. |
-| **InferenceProvider** | Inference provider trait | Rust trait in `peram-memory`: score coherence, summarize reflection. Test oracle is always the deterministic implementation. |
+| **InferenceProvider** | Inference provider trait | Rust trait in `peram-agents`: score coherence, summarize reflection. Test oracle is always the deterministic implementation. |
 | **DelegationBackend** | Delegation backend trait | Rust trait for Human-Out-Of-The-Loop digital hands. **First adapter:** Grok Agent Client Protocol. Secondary: opencode Agent Client Protocol, pi. |
 
 ## Agents and protocols (roadmap P3–P5)
@@ -45,7 +45,7 @@
 | **pi** | pi (agent runtime) | External agent/toolchain; secondary DelegationBackend adapter when wired. |
 | **Grok ACP** | Grok Agent Client Protocol | Official: `grok agent stdio` — JSON-RPC NDJSON ([docs](https://docs.x.ai/build/cli/headless-scripting#acp)). |
 | **Grok MCP** | Grok Model Context Protocol | Official: `grok mcp add` / `.grok/config.toml` ([docs](https://docs.x.ai/build/features/mcp-servers)). Tools namespaced `server__tool`. |
-| **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Cursor, opencode, Eve). Planned as read-only `memory_*` / `kernel_status` tools first. |
+| **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Grok, Cursor, opencode, Eve). Live: read-only `peram-mcp` `memory_*` + `swarm_banner`. `kernel_status` deferred. |
 | **ACP** | Agent Client Protocol | Agent-to-agent session protocol (used by `opencode acp`); planned path for delegating HOOTL digital work. |
 | **JSON-RPC** | JSON Remote Procedure Call | Request/response envelope used by MCP and ACP. |
 | **NDJSON** | Newline-Delimited JSON | One JSON value per line; the stdio framing for our protocol plumbing. |

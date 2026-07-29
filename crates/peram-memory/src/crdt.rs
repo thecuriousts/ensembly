@@ -213,6 +213,32 @@ impl CrdtDocument {
         }
     }
 
+    /// Patch `summary` on the newest Reflection trajectory entry (by timestamp).
+    /// Used after optional InferenceProvider enrich so durable memory matches
+    /// what the CLI printed. Returns false when no Reflection entry exists.
+    pub fn patch_latest_reflection_summary(&mut self, summary: &str) -> bool {
+        let Some(id) = self
+            .trajectory
+            .values()
+            .filter(|e| e.entry_type == TrajectoryType::Reflection)
+            .max_by_key(|e| e.timestamp)
+            .map(|e| e.id.clone())
+        else {
+            return false;
+        };
+        let Some(entry) = self.trajectory.get_mut(&id) else {
+            return false;
+        };
+        match entry.content.as_object_mut() {
+            Some(obj) => {
+                obj.insert("summary".into(), serde_json::json!(summary));
+                self.increment_version();
+                true
+            }
+            None => false,
+        }
+    }
+
     pub fn append_trajectory(&mut self, mut entry: TrajectoryEntry) -> String {
         self.increment_version();
         let seq = self.vector_clock.get(&self.agent_id).copied().unwrap_or(0);

@@ -48,11 +48,13 @@ pub fn project_mcp_toml_snippet(command: &str, args: &[&str]) -> String {
         .map(|a| format!("\"{a}\""))
         .collect::<Vec<_>>()
         .join(", ");
+    // Prefer an absolute PERAM_MEMORY when registering — relative paths create
+    // an empty file if Grok's cwd ≠ repo root (MCP now fails closed instead).
     format!(
         r#"[mcp_servers.peram]
 command = "{command}"
 args = [{args_lit}]
-env = {{ PERAM_MEMORY = "data/local/peram-memory.json" }}
+env = {{ PERAM_MEMORY = "data/local/peram-memory.json" }}  # use absolute path in practice
 startup_timeout_sec = 30
 tool_timeout_sec = 120
 "#

@@ -407,7 +407,7 @@ flowchart LR
 | Headless prompt | `grok --no-auto-update -p "…" --output-format json` | Fast InferenceProvider enrich |
 | ACP agent | `grok --no-auto-update agent stdio` | DelegationBackend / IDE host |
 | MCP register | `grok mcp add --scope project peram -- ./target/debug/peram-mcp` | Export memory tools into Grok |
-| Project config | `.grok/config.toml` `[mcp_servers.peram]` | Ships with repo (no secrets) |
+| Project config | `.grok/config.toml` `[mcp_servers.peram]` | Operator generates via `grok mcp add` (gitignored; no secrets) |
 
 ```mermaid
 flowchart TB

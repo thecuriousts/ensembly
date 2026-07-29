@@ -135,6 +135,10 @@ impl MemorySink {
         let provider = peram_agents::resolve_provider(backend);
         match provider.enrich_summary(self.memory.doc(), &reflection) {
             Ok(Some(summary)) => {
+                // Keep durable Reflection entry in sync with what CLI/JSON returns.
+                self.memory
+                    .doc_mut()
+                    .patch_latest_reflection_summary(&summary);
                 reflection.summary = summary;
             }
             Ok(None) => {}

@@ -1,5 +1,5 @@
 //! Read-only Model Context Protocol server for episodic memory.
-//! Primary consumer: Grok (via ACP `_meta["x.ai/mcp/servers"]` or Cursor MCP config).
+//! Primary consumer: Grok (via `grok mcp add` / `.grok/config.toml` or Cursor MCP config).
 //! Mutating tools are out of scope for P4a — record path stays kernel CLI.
 
 use peram_memory::{coherence_report, propose_goals, EpisodicMemory, TrajectoryType};
@@ -65,6 +65,28 @@ fn invalid_params(msg: &str) -> Value {
     rpc_error(-32602, &format!("invalid params: {msg}"))
 }
 
+/// Accept JSON integers or floats (hosts often send `5.0`).
+fn json_i64(v: Option<&Value>, default: i64) -> i64 {
+    let Some(v) = v else {
+        return default;
+    };
+    v.as_i64()
+        .or_else(|| v.as_u64().map(|n| n as i64))
+        .or_else(|| v.as_f64().map(|n| n as i64))
+        .unwrap_or(default)
+}
+
+fn json_usize(v: Option<&Value>, default: usize) -> usize {
+    let Some(v) = v else {
+        return default;
+    };
+    v.as_u64()
+        .map(|n| n as usize)
+        .or_else(|| v.as_i64().filter(|&n| n >= 0).map(|n| n as usize))
+        .or_else(|| v.as_f64().filter(|&n| n >= 0.0).map(|n| n as usize))
+        .unwrap_or(default)
+}
+
 pub struct McpServeConfig {
     pub memory_path: PathBuf,
     pub agent_id: String,
@@ -116,10 +138,11 @@ pub fn serve(config: McpServeConfig) -> anyhow::Result<()> {
 }
 
 fn open_mem(path: &PathBuf, agent_id: &str) -> Result<EpisodicMemory, Value> {
-    EpisodicMemory::open(path, agent_id).map_err(|e| {
+    // Fail closed: never create an empty doc for read-only MCP (wrong cwd footgun).
+    EpisodicMemory::open_existing(path, agent_id).map_err(|e| {
         rpc_error(
             -32000,
-            &format!("open memory {path:?}: {e} — run runtime load/tick first"),
+            &format!("open memory {path:?}: {e}"),
         )
     })
 }
@@ -137,12 +160,12 @@ fn call_tool(
             "memory": peram_memory::memory_version(),
             "memoryPath": memory_path,
             "agentId": agent_id,
-            "note": "Control SoT remains peram-kernel; this server is read-only aux.",
+            "note": "Control SoT remains peram-kernel; this server is read-only aux. Prefer absolute PERAM_MEMORY.",
             "grok": {
                 "acp": "grok agent stdio",
                 "headless": "grok -p \"…\" --output-format json --no-auto-update",
-                "registerMcp": crate::grok::register_mcp_shell_hint("peram-mcp"),
-                "projectToml": crate::grok::project_mcp_toml_snippet("peram-mcp", &[]),
+                "registerMcp": crate::grok::register_mcp_shell_hint("./target/debug/peram-mcp"),
+                "projectToml": crate::grok::project_mcp_toml_snippet("./target/debug/peram-mcp", &[]),
                 "docs": [
                     "https://docs.x.ai/build/cli/headless-scripting#acp",
                     "https://docs.x.ai/build/features/mcp-servers"
@@ -189,8 +212,8 @@ fn call_tool(
             })))
         }
         "memory_recent_trajectory" => {
-            let hours = args.get("hours").and_then(Value::as_i64).unwrap_or(24);
-            let limit = args.get("limit").and_then(Value::as_u64).unwrap_or(40) as usize;
+            let hours = json_i64(args.get("hours"), 24).max(0);
+            let limit = json_usize(args.get("limit"), 40);
             let mem = open_mem(memory_path, agent_id)?;
             let entries: Vec<_> = mem
                 .doc()
@@ -221,5 +244,76 @@ fn call_tool(
             })))
         }
         other => Err(rpc_error(-32601, &format!("unknown tool: {other}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use peram_memory::TrajectoryType;
+
+    #[test]
+    fn json_numeric_accepts_floats() {
+        assert_eq!(json_i64(Some(&json!(24.0)), 0), 24);
+        assert_eq!(json_usize(Some(&json!(5.0)), 40), 5);
+        assert_eq!(json_usize(Some(&json!(7)), 40), 7);
+        assert_eq!(json_i64(None, 24), 24);
+    }
+
+    #[test]
+    fn open_existing_fails_when_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nope.json");
+        match EpisodicMemory::open_existing(&path, "peram-swarm") {
+            Ok(_) => panic!("expected missing file error"),
+            Err(err) => {
+                let msg = err.to_string();
+                assert!(
+                    msg.contains("missing") || msg.contains("NotFound") || msg.contains("No such"),
+                    "{msg}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn recent_trajectory_respects_float_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mem.json");
+        {
+            let mut mem = EpisodicMemory::open(&path, "peram-swarm").unwrap();
+            for i in 0..10 {
+                mem.append(
+                    TrajectoryType::Observation,
+                    json!({"i": i}),
+                    0.5,
+                );
+            }
+            mem.save().unwrap();
+        }
+        let result = call_tool(
+            "memory_recent_trajectory",
+            &json!({ "hours": 24.0, "limit": 5.0 }),
+            &path,
+            "peram-swarm",
+        )
+        .expect("tool ok");
+        let text = result["content"][0]["text"].as_str().unwrap();
+        let body: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(body["count"], 5, "float limit must not fall back to default 40");
+    }
+
+    #[test]
+    fn missing_memory_errors_loudly() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("absent.json");
+        let err = call_tool("memory_get_report", &json!({}), &path, "peram-swarm").unwrap_err();
+        assert_eq!(err["code"], -32000);
+        assert!(
+            err["message"].as_str().unwrap_or("").contains("missing")
+                || err["message"].as_str().unwrap_or("").contains("NotFound"),
+            "{}",
+            err
+        );
     }
 }

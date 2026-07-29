@@ -30,6 +30,9 @@ public/game/life-graph.json
 .scratch/
 tmp/
 
+# Grok CLI project config (operator-generated via `grok mcp add`; never commit keys)
+.grok/
+
 # Rust / WASM build artifacts (shipped browser pkg lives under public/game/pkg/)
 target/
 crates/**/target/
