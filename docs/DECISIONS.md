@@ -241,3 +241,24 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 **Metrics:** honest `hootl_completed` / `hitl_surfaces` (edge-enter HitlWait) / `agent_failures` — no multi-axis C/E/E theater. MC samples default **0** (PERT σ always); set `mc_samples` when load needs Monte Carlo.  
 **`--json` caveat:** stdout is JSON then a trailing `RUNTIME_OK …` line.  
 **Remaining (not blocking this slice):** multi-agent conflict resolution at scale, adaptive/RL local policies, continuous outcome telemetry dashboards, Eve bridge for remote HITL.
+
+---
+
+## Episodic memory layer — peram-memory fused from IntelliArch (2026-07-29)
+
+**Verdict:** The IntelliArch prototype's local-first CRDT memory + coherence engine is adopted as a new crate `crates/peram-memory`, bridged into the kernel via `memory_sink`. The kernel runtime **records** what happened (applied bus messages, tick reports, graph loads) into a durable, mergeable episodic document; explicit `runtime reflect` runs coherence scoring, skill synthesis, and goal proposals over that trajectory. Origin: IntelliArch `tries/` (agent_memory + coherence_engine), ported synchronous to kernel discipline.
+
+| Adopt | Refuse |
+|-------|--------|
+| Memory as **aux, never SoT**: kernel S/G/CP + approvals stay the only control truth | Memory influencing gates, priorities, or CP |
+| Record **applied** messages only (append after success) | Logging attempts/intents as facts |
+| Durable engine state (pattern counts, coherence history **inside** the CRDT doc) | Process-local learning lost per CLI run |
+| Explicit `runtime reflect` (operator/cron driven) | Implicit reflection inside control ticks |
+| Memory save failure → loud stderr warn, control op unaffected | Aux failure failing a committed control op |
+| Explicit `--memory <path>` open failure → fatal (operator asked) | Silent degrade on explicit intent |
+| `data/local/peram-memory.json` (gitignored, T1 privacy boundary) | Memory under `public/` or commit-eligible paths |
+
+**Ship path:** `cargo test -p peram-memory` · `cargo run -p peram-kernel -- runtime load|tick|…` (records) · `cargo run -p peram-kernel -- runtime reflect [--json]` · flags `--memory <path>` / `--no-memory`  
+**Merge law:** entry-level CRDT merge is idempotent and commutative; re-merging held state is a true no-op (stable hash). Concurrent CLI writers reconcile via `sync_and_save` (load-merge-persist, atomic tmp+rename).  
+**Reflection contract:** skipped loudly below 5 trajectory entries; LLM judging may later augment the deterministic Jaccard scorer **behind a trait with deterministic fallback** — the deterministic path stays the test oracle.  
+**Remaining (trajectory, not live):** LLM judge trait (Ollama), ACP/MCP tool surface for agents to read memory, P2P replica sync, memory-informed coach lines (read-only, gated).

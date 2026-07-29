@@ -13,6 +13,7 @@ pub mod critical_path;
 pub mod digital_flow;
 pub mod graph;
 pub mod life_state;
+pub mod memory_sink;
 pub mod msg_bus;
 pub mod privacy;
 pub mod realm;
@@ -37,6 +38,7 @@ pub use digital_flow::{
 };
 pub use graph::{DepGraph, GateKind, TaskNode, TaskRealm, TaskStatus};
 pub use life_state::{LifeState, LoopRegime, OutcomeMetrics};
+pub use memory_sink::{MemorySink, DEFAULT_AGENT_ID, DEFAULT_MEMORY_PATH};
 pub use msg_bus::{BusMessage, ManualCmd, MsgBus};
 pub use privacy::{classify_item, private_path_patterns, Classifiable, Classification, Visibility};
 pub use realm::{classify_realm, Realm};
@@ -50,5 +52,5 @@ pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
 
 /// Kernel banner for CLI / hosts.
 pub fn kernel_version() -> &'static str {
-    "peram-kernel 0.4.0 rust-life-control s+g+cp msgbus hitl-hootl t1-sqlite t2-seal"
+    "peram-kernel 0.5.0 rust-life-control s+g+cp msgbus hitl-hootl t1-sqlite t2-seal episodic-memory"
 }
