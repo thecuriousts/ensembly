@@ -10,6 +10,7 @@ use peram_kernel::backup::{
     create_backup_pack, read_backup_pack, restore_dry_run, write_backup_pack,
 };
 use peram_kernel::digital_flow::{run_cycle, DigitalFlow};
+use peram_kernel::memory_sink::{MemorySink, DEFAULT_MEMORY_PATH};
 use peram_kernel::msg_bus::ManualCmd;
 use peram_kernel::runtime::Runtime;
 use peram_kernel::store::OpsStore;
@@ -23,6 +24,14 @@ struct Cli {
     /// Ops SQLite path (T1). Default: data/local/peram-ops.sqlite under cwd/repo.
     #[arg(long, global = true)]
     db: Option<PathBuf>,
+
+    /// Episodic memory path (peram-memory). Default: data/local/peram-memory.json.
+    #[arg(long, global = true)]
+    memory: Option<PathBuf>,
+
+    /// Disable episodic memory recording for this invocation.
+    #[arg(long, global = true, default_value_t = false)]
+    no_memory: bool,
 
     #[command(subcommand)]
     cmd: Commands,
@@ -134,6 +143,11 @@ enum RuntimeCmd {
         #[arg(long)]
         json: bool,
     },
+    /// Reflection pass over episodic memory: coherence, skill synthesis, goal proposals
+    Reflect {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -163,6 +177,47 @@ fn default_db() -> PathBuf {
         }
     }
     PathBuf::from("data/local/peram-ops.sqlite")
+}
+
+/// Memory flags lifted out of Cli before `match cli.cmd` moves the subcommand.
+struct MemoryFlags {
+    memory: Option<PathBuf>,
+    no_memory: bool,
+}
+
+/// Attach episodic memory to a runtime. Explicit `--memory <path>` open
+/// failure is fatal (operator asked for it); default-path failure warns on
+/// stderr and continues — memory is aux, never a control dependency.
+fn attach_memory(rt: &mut Runtime, flags: &MemoryFlags) {
+    if flags.no_memory {
+        return;
+    }
+    let explicit = flags.memory.is_some();
+    let path = flags
+        .memory
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_MEMORY_PATH));
+    match MemorySink::open(&path) {
+        Ok(sink) => rt.memory = Some(sink),
+        Err(e) => {
+            if explicit {
+                eprintln!("MEMORY_FAIL open {path:?}: {e}");
+                std::process::exit(2);
+            }
+            eprintln!("MEMORY_WARN open {path:?} failed: {e} — continuing without memory");
+        }
+    }
+}
+
+/// Persist memory after a mutating command. The control op already committed
+/// to T1; a memory failure warns loudly but does not rewrite that truth.
+fn save_memory(rt: &mut Runtime) {
+    let Some(sink) = rt.memory.as_mut() else {
+        return;
+    };
+    if let Err(e) = sink.sync_and_save() {
+        eprintln!("MEMORY_WARN save failed: {e} — trajectory not persisted");
+    }
 }
 
 fn unlock_material(cli: &Option<String>) -> Result<Vec<u8>> {
@@ -274,6 +329,10 @@ fn ensure_snap(store: &OpsStore, actions: &[Action]) -> Result<Snapshot> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let db_path = cli.db.clone().unwrap_or_else(default_db);
+    let memory_flags = MemoryFlags {
+        memory: cli.memory.clone(),
+        no_memory: cli.no_memory,
+    };
 
     match cli.cmd {
         Commands::Version => {
@@ -372,6 +431,7 @@ fn main() -> Result<()> {
         Commands::Approve { id } => {
             gate_via_runtime(
                 &db_path,
+                &memory_flags,
                 ManualCmd::Approve { id: id.clone() },
                 "approve",
                 &id,
@@ -380,6 +440,7 @@ fn main() -> Result<()> {
         Commands::Deny { id } => {
             gate_via_runtime(
                 &db_path,
+                &memory_flags,
                 ManualCmd::Deny { id: id.clone() },
                 "deny",
                 &id,
@@ -388,6 +449,7 @@ fn main() -> Result<()> {
         Commands::Claim { id } => {
             gate_via_runtime(
                 &db_path,
+                &memory_flags,
                 ManualCmd::ClaimPhysical { id: id.clone() },
                 "claim",
                 &id,
@@ -396,6 +458,7 @@ fn main() -> Result<()> {
         Commands::Complete { id } => {
             gate_via_runtime(
                 &db_path,
+                &memory_flags,
                 ManualCmd::CompletePhysical { id: id.clone() },
                 "complete",
                 &id,
@@ -482,12 +545,14 @@ fn main() -> Result<()> {
             if let Some(snap) = store.load_snapshot()? {
                 rt.snapshot = snap;
             }
+            attach_memory(&mut rt, &memory_flags);
 
             match sub {
                 RuntimeCmd::Load { fixture, json } => {
                     let actions = load_actions_from_fixture(&fixture)?;
                     rt.load_actions(&actions, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    save_memory(&mut rt);
                     let cp = rt.state.critical_path.as_ref();
                     let body = serde_json::json!({
                         "ok": true,
@@ -551,6 +616,7 @@ fn main() -> Result<()> {
                 RuntimeCmd::Tick { agent, json } => {
                     let report = rt.tick(agent, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    save_memory(&mut rt);
                     if json {
                         println!("{}", serde_json::to_string_pretty(&report)?);
                     } else {
@@ -579,6 +645,7 @@ fn main() -> Result<()> {
                     rt.enqueue_manual(ManualCmd::Approve { id: action_id.clone() }, now);
                     let report = rt.tick(false, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    save_memory(&mut rt);
                     let body = serde_json::json!({ "ok": true, "decision": "approve", "id": action_id, "tick": report });
                     if json {
                         println!("{}", serde_json::to_string_pretty(&body)?);
@@ -591,6 +658,7 @@ fn main() -> Result<()> {
                     rt.enqueue_manual(ManualCmd::Deny { id: action_id.clone() }, now);
                     let report = rt.tick(false, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    save_memory(&mut rt);
                     let body = serde_json::json!({ "ok": true, "decision": "deny", "id": action_id, "tick": report });
                     if json {
                         println!("{}", serde_json::to_string_pretty(&body)?);
@@ -602,6 +670,7 @@ fn main() -> Result<()> {
                     rt.enqueue_manual(ManualCmd::ClaimPhysical { id: id.clone() }, now);
                     let report = rt.tick(false, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    save_memory(&mut rt);
                     let body = serde_json::json!({ "ok": true, "decision": "claim", "id": id, "tick": report });
                     if json {
                         println!("{}", serde_json::to_string_pretty(&body)?);
@@ -613,11 +682,47 @@ fn main() -> Result<()> {
                     rt.enqueue_manual(ManualCmd::CompletePhysical { id: id.clone() }, now);
                     let report = rt.tick(false, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+                    save_memory(&mut rt);
                     let body = serde_json::json!({ "ok": true, "decision": "complete", "id": id, "tick": report });
                     if json {
                         println!("{}", serde_json::to_string_pretty(&body)?);
                     } else {
                         println!("RUNTIME_COMPLETE id={id} regime={:?}", report.regime);
+                    }
+                }
+                RuntimeCmd::Reflect { json } => {
+                    let Some(sink) = rt.memory.as_mut() else {
+                        bail!("reflect needs episodic memory — remove --no-memory (default path: {DEFAULT_MEMORY_PATH})");
+                    };
+                    let entries = sink.memory.doc().trajectory.len();
+                    match sink.reflect() {
+                        None => {
+                            let msg = format!(
+                                "not enough trajectory to reflect (have {entries}, need >= 5) — run runtime load/tick first"
+                            );
+                            if json {
+                                println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "ok": false, "reason": msg }))?);
+                            } else {
+                                println!("REFLECT_SKIP {msg}");
+                            }
+                        }
+                        Some(r) => {
+                            save_memory(&mut rt);
+                            if json {
+                                println!("{}", serde_json::to_string_pretty(&r)?);
+                            } else {
+                                println!("REFLECT coherence={:.1}% entries={} skills={} new_skills={:?}", r.coherence * 100.0, r.trajectory_length, r.known_skills, r.new_skills);
+                                for p in &r.goal_proposals {
+                                    println!("  proposal [{}] {} (priority {:.1})", p.goal_type, p.description, p.priority);
+                                }
+                            }
+                            eprintln!(
+                                "REFLECT_OK coherence={:.2} skills={} proposals={}",
+                                r.coherence,
+                                r.known_skills,
+                                r.goal_proposals.len()
+                            );
+                        }
                     }
                 }
             }
@@ -630,6 +735,7 @@ fn main() -> Result<()> {
 /// Requires durable life_state from `peram runtime load` — no snapshot-only legacy path.
 fn gate_via_runtime(
     db_path: &PathBuf,
+    memory_flags: &MemoryFlags,
     cmd: ManualCmd,
     decision: &str,
     id: &str,
@@ -648,6 +754,7 @@ fn gate_via_runtime(
     if let Some(snap) = store.load_snapshot()? {
         rt.snapshot = snap;
     }
+    attach_memory(&mut rt, memory_flags);
     let cmd = match cmd {
         ManualCmd::Approve { id } => ManualCmd::Approve {
             id: peram_kernel::runtime::action_id_of(&id).to_string(),
@@ -667,6 +774,7 @@ fn gate_via_runtime(
     rt.enqueue_manual(cmd, now);
     let report = rt.tick(false, now)?;
     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+    save_memory(&mut rt);
     println!(
         "{}",
         serde_json::json!({

@@ -1,8 +1,8 @@
 [package]
 name = "peram-kernel"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
-description = "Game of Peram life kernel — S+G+CP, MsgBus, HITL/HOOTL runtime, privacy, turn, durable store"
+description = "Game of Peram life kernel — S+G+CP, MsgBus, HITL/HOOTL runtime, privacy, turn, durable store, episodic memory bridge"
 license = "MIT"
 
 [[bin]]
@@ -22,6 +22,7 @@ hex = "0.4"
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 regex = "1"
+peram-memory = { path = "../peram-memory" }
 
 [dev-dependencies]
 tempfile = "3"
