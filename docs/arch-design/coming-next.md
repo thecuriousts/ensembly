@@ -370,6 +370,48 @@ flowchart TB
 
 ---
 
+### SN-7 · Episodic memory (peram-memory) — LANDED 2026-07-29
+
+**Problem:** The swarm forgot everything between CLI runs — no trajectory, no learned patterns, no reflection. IntelliArch prototype had the missing brain stem.
+
+```mermaid
+flowchart LR
+  bus[MsgBus applied msgs] --> sink[memory_sink]
+  ticks[TickReports] --> sink
+  sink --> doc[(CRDT doc data/local/peram-memory.json)]
+  doc --> reflect[runtime reflect]
+  reflect --> skills[skills + proposals]
+```
+
+| File | Work |
+|------|------|
+| `crates/peram-memory` | CRDT trajectory/skills/goals + coherence engine (sync, durable pattern counts) |
+| `crates/peram-kernel/src/memory_sink.rs` | Bridge: record applied-only; `runtime reflect` CLI; `--memory/--no-memory` |
+
+**Done when (done):** `cargo test -p peram-memory` (9) · kernel tests green (44) · dogfood load/tick/reflect → durable trajectory · DECISIONS entry landed.
+
+**Verify:** `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json && cargo run -p peram-kernel -- runtime tick && cargo run -p peram-kernel -- runtime reflect`
+
+**Law:** memory is aux, never SoT — records what happened, never decides gates/CP.
+
+---
+
+### SN-8 · Agent hands + judges (memory P2–P4 trajectory)
+
+**Problem:** Memory learns but agents still act without recalling it; reflection scoring is plain Jaccard; helper agents can't reach memory through a governed tool surface.
+
+| Phase | Work | Gate |
+|-------|------|------|
+| P2 LLM judge | Ollama-backed scorer **behind a trait**, deterministic Jaccard fallback stays test oracle | Offline-capable; no cloud key in repo |
+| P3 recall in workers | `AgentWorker` reads recent trajectory before claim (read-only context) | Recall never overrides CP claim law |
+| P4 tool surface | MCP server exposing `memory_*` + `kernel_status` tools for Cursor/opencode/Eve | Read-only tools first; policy-gated exec reuses IntelliArch `policy.rs` pattern; redaction before any remote boundary |
+
+**Done when:** Each phase ships with crate tests + dogfood command and its own DECISIONS entry; P4 tool list reviewed against PRIVACY.md.
+
+**Verify (per phase):** P2 `PERAM_JUDGE=ollama cargo run -p peram-kernel -- runtime reflect` · P4 `cargo run -p peram-kernel -- mcp-serve` (new bin).
+
+---
+
 ## 8. Scope lock
 
 | Locked in | Deferred |
