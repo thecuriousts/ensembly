@@ -398,7 +398,17 @@ flowchart LR
 
 ### SN-8 · Inference providers, recall, delegation, tool surface (revised 2026-07-29)
 
-**Problem:** Memory learns but (1) reflection scoring is plain Jaccard, (2) agents act without recalling trajectory, (3) helper toolchains (Grok Model Context Protocol, opencode Agent Client Protocol/Model Context Protocol, pi, Ollama, …) cannot plug in without a vendor lock-in. **Ollama is not the plan's center** — it is one optional adapter; deterministic path must work with zero network and zero daemons.
+**Problem:** Memory learns but (1) reflection scoring is plain Jaccard, (2) agents act without recalling trajectory, (3) external toolchains cannot plug in without vendor lock-in. **Primary integration bet: Grok Model Context Protocol + Agent Client Protocol** — that ecosystem and its integrations are growing fastest on this machine. Ollama is optional/slow; opencode/pi remain secondary adapters. Deterministic path must always work with zero network.
+
+**Integration shape (Grok-first mesh):**
+
+```text
+peram MCP server (out)  ←→  Grok / Cursor / Eve consume memory_* + kernel_status
+peram MCP client (in)   ←→  Grok MCP host for inference (reflect summaries, scoring hints)
+peram ACP client (in)   ←→  Grok ACP for Human-Out-Of-The-Loop delegation sessions
+```
+
+Register `peram` tools into Grok the same way IntelliArch registered into opencode — but Grok is the **first** dogfood host, not the only one.
 
 ```mermaid
 flowchart TB
@@ -410,16 +420,17 @@ flowchart TB
     doc[(CRDT trajectory)]
     det[Deterministic Jaccard — default + test oracle]
   end
-  subgraph providers["InferenceProvider adapters — optional, swappable"]
+  subgraph providers["InferenceProvider adapters — Grok first, then others"]
+    grok_mcp[Grok MCP client ★]
+    grok_acp[Grok ACP client ★]
+    oc_mcp[opencode MCP]
+    oc_acp[opencode ACP]
     ollama[Ollama HTTP]
-    grok[Grok MCP client]
-    oc_acp[opencode ACP client]
-    oc_mcp[opencode MCP client]
     pi[pi / future]
   end
-  subgraph hands["DelegationBackend adapters — optional"]
+  subgraph hands["DelegationBackend — Grok ACP first"]
+    grok_del[Grok ACP delegate ★]
     oc_del[opencode ACP delegate]
-    grok_del[Grok MCP delegate]
   end
   subgraph surface["Tool surface"]
     mcp_out[peram MCP server — memory_* kernel_status]
@@ -441,22 +452,25 @@ flowchart TB
 | Phase | Work | Hard deps | Gate |
 |-------|------|-----------|------|
 | **P2a** | `InferenceProvider` trait; wire into `reflect`; deterministic only | none | `cargo test -p peram-memory` — no network |
-| **P2b** | Adapter skeleton + **one** operator-chosen backend (likely Grok MCP or opencode ACP — not Ollama-by-default) | feature flag / separate crate | `#[ignore]` integration test; fallback proven |
-| **P2c** | Additional adapters: Ollama HTTP, opencode MCP, pi | each optional | same fallback law |
-| **P3a** | `AgentWorker` recall: read recent trajectory before claim (read-only context in agent report detail) | none | recall never overrides critical-path claim law |
-| **P3b** | `DelegationBackend` trait; opencode Agent Client Protocol first adapter (port IntelliArch `acp_client` + permission policy) | opencode on PATH for dogfood only | Human-Out-Of-The-Loop digital only; policy allowlist |
-| **P4a** | Model Context Protocol **server** bin: read-only `memory_*`, `kernel_status` | none | redaction review vs PRIVACY.md |
-| **P4b** | Model Context Protocol / Agent Client Protocol **client** registry: external toolchains as providers | operator-configured hosts | Runlayer-managed servers preferred; no shadow MCP |
+| **P2b** | **Grok Model Context Protocol adapter** — inference via Grok MCP (reflect summary, coherence hints) | Grok MCP for dogfood only | `#[ignore]` test; fallback to deterministic proven |
+| **P2c** | **Grok Agent Client Protocol adapter** — session prompts for inference/delegation | Grok ACP for dogfood only | permission + timeout budgets; fallback law |
+| **P2d** | Secondary adapters: opencode MCP/ACP, pi, Ollama HTTP | each optional feature | same fallback law |
+| **P3a** | `AgentWorker` recall: read recent trajectory before claim (read-only context) | none | recall never overrides critical-path claim law |
+| **P3b** | `DelegationBackend` trait; **Grok Agent Client Protocol first**; opencode ACP second | Grok ACP for dogfood | Human-Out-Of-The-Loop digital only; policy allowlist |
+| **P4a** | Model Context Protocol **server**: `memory_*`, `kernel_status` — register into Grok | none | redaction vs PRIVACY.md |
+| **P4b** | MCP/ACP **client** registry; Grok hosts first in config | operator hosts | Runlayer-managed preferred; no shadow MCP |
 | **P5** | Peer-to-peer replica sync (transport TBD) | product decision | CRDT merge already ready |
 
 #### Selection and fallback law
 
 ```text
-PERAM_INFERENCE=deterministic          # default — always works
-PERAM_INFERENCE=grok-mcp               # Grok MCP host (fast path on operator machine)
-PERAM_INFERENCE=opencode-acp           # opencode acp session
-PERAM_INFERENCE=ollama                 # local HTTP — optional, not required for build
-PERAM_DELEGATE=opencode-acp            # HOOTL hands — first adapter
+PERAM_INFERENCE=deterministic          # default — always works, CI oracle
+PERAM_INFERENCE=grok-mcp               # ★ first dogfood adapter (reflect via Grok MCP)
+PERAM_INFERENCE=grok-acp               # Grok ACP session for inference
+PERAM_INFERENCE=opencode-acp           # secondary
+PERAM_INFERENCE=ollama                 # optional, slow — feature flag only
+PERAM_DELEGATE=grok-acp                # ★ first HOOTL hands adapter
+PERAM_DELEGATE=opencode-acp            # secondary
 ```
 
 If the chosen provider is missing, slow, or errors: **warn on stderr, fall back to deterministic, finish reflect/tick.** Control ops never depend on a model host.
@@ -470,10 +484,11 @@ Each phase: crate tests (deterministic path) + dogfood command + DECISIONS row i
 | Phase | Command |
 |-------|---------|
 | P2a | `cargo run -p peram-kernel -- runtime reflect` (deterministic only) |
-| P2b | `PERAM_INFERENCE=grok-mcp cargo run -p peram-kernel -- runtime reflect` *(or opencode-acp — operator picks)* |
+| P2b | `PERAM_INFERENCE=grok-mcp cargo run -p peram-kernel -- runtime reflect` |
+| P2c | `PERAM_INFERENCE=grok-acp cargo run -p peram-kernel -- runtime reflect` |
 | P3a | `cargo test -p peram-kernel agent_recall` |
-| P3b | `PERAM_DELEGATE=opencode-acp cargo run -p peram-kernel -- runtime tick --agent` |
-| P4a | `cargo run -p peram-kernel -- mcp-serve` + Cursor/opencode lists tools |
+| P3b | `PERAM_DELEGATE=grok-acp cargo run -p peram-kernel -- runtime tick --agent` |
+| P4a | `cargo run -p peram-kernel -- mcp-serve` + register in Grok MCP config |
 
 **IntelliArch port map (reference, not all at once):**
 
@@ -481,9 +496,10 @@ Each phase: crate tests (deterministic path) + dogfood command + DECISIONS row i
 |--------------------|-----------------|-------|
 | `coherence_engine` deterministic parts | done in `peram-memory/coherence.rs` | — |
 | `ollama.rs` | `peram-judge-ollama` or feature | optional only |
-| `rpc.rs`, `mcp_*`, `acp_client.rs` | `peram-agents` or `peram-kernel` bins | trait-first; Grok/opencode/pi as adapters |
-| `policy.rs` | reuse for P4 exec gate | allowlist unchanged |
-| `warden.rs` cycle | P3b delegation dogfood | not a new SoT |
+| `rpc.rs`, `mcp_*`, `acp_client.rs` | `crates/peram-agents` (new) | **Grok MCP + Grok ACP adapters first**; port NDJSON JSON-RPC from IntelliArch |
+| `policy.rs` | `peram-agents` or `peram-kernel` | allowlist unchanged |
+| `warden.rs` cycle | P3b delegation dogfood via Grok ACP | not a new SoT |
+| `ollama.rs` | `peram-agents` feature `ollama` | last priority — slow on operator machine |
 
 ---
 

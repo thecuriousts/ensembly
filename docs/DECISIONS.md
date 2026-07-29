@@ -280,4 +280,6 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 | `peram` exposes Model Context Protocol server (`memory_*`, `kernel_status`); consumes external Model Context Protocol/Agent Client Protocol as providers | Shadow Model Context Protocol servers without operator approval |
 | Tests: deterministic only; adapter tests behind `#[ignore]` or feature | CI requiring Ollama, Grok, or opencode running |
 
-**Ship order:** P2a trait + deterministic (no network) → P3a recall (pure memory read) → P4a read-only MCP export → P2b/P3b adapters (operator picks fastest: likely Grok MCP or opencode ACP, not Ollama-by-default) → P5 peer-to-peer decision.
+**Ship order:** P2a trait + deterministic → P3a recall → P4a MCP export (register into Grok) → **P2b Grok MCP + P2c/P3b Grok ACP** → P2d secondary adapters (opencode, pi, Ollama feature) → P5 peer-to-peer decision.
+
+**Grok-first rationale (2026-07-29):** Grok Model Context Protocol and Agent Client Protocol ecosystem on the operator machine is expanding faster than local Ollama throughput; dogfood and adapter work targets Grok first while keeping deterministic fallback and no hard dependencies.

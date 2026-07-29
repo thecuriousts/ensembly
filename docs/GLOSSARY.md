@@ -35,7 +35,7 @@
 | **Aux** | Auxiliary | The memory layer's legal status: it records and learns; it never decides gates, critical path, or priorities. |
 | **Judge** | Inference provider (roadmap P2) | Pluggable backend for coherence scoring and reflection summaries. **Default:** deterministic Jaccard (zero network). **Optional adapters:** Ollama HTTP, Grok Model Context Protocol, opencode Agent Client Protocol / Model Context Protocol, pi, others — selected at runtime, never a hard dependency. Unavailable provider warns and falls back to deterministic. |
 | **InferenceProvider** | Inference provider trait | Rust trait in `peram-memory`: score coherence, summarize reflection. Test oracle is always the deterministic implementation. |
-| **DelegationBackend** | Delegation backend trait | Rust trait for Human-Out-Of-The-Loop digital hands: spawn session, send prompt, collect result. opencode Agent Client Protocol is the first adapter, not the only one. |
+| **DelegationBackend** | Delegation backend trait | Rust trait for Human-Out-Of-The-Loop digital hands. **First adapter:** Grok Agent Client Protocol. Secondary: opencode Agent Client Protocol, pi. |
 
 ## Agents and protocols (roadmap P3–P5)
 
