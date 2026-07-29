@@ -6,7 +6,7 @@ Digital thrash is the trash mob. You keep the boss fights: **body-world pickups*
 
 Production life infrastructure — not a toy. Bar: [PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) · [AGENTS.md](AGENTS.md)
 
-**New here?** Start with **[docs/MAP.md](docs/MAP.md)** — live capabilities, CLI vs game vs watch, `src` / `public/game` / Rust WASM ownership, and what **IR** means in this repo.
+**New here?** Start with **[docs/MAP.md](docs/MAP.md)** — live capabilities, CLI vs game vs watch, `src` / `public/game` / Rust WASM ownership, and what **IR** means in this repo. Acronyms expanded: **[docs/GLOSSARY.md](docs/GLOSSARY.md)**.
 
 **life-os vs this repo:** `~/life-os` is the clustered Projects/Areas **vault** (portfolio memory). **ensembly** is the **digital clone** that removes digital friction so you pair for physical + HITL. See [LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md).
 
