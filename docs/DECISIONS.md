@@ -244,6 +244,22 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 ---
 
+## UncertaintyDive — process under epistemic emptiness (2026-07-30)
+
+**Verdict:** Name and ship the operator’s “uncertainty ocean” belief as an inspectable control-plane process: **Prior → Probe → Simulate (CP+P) → Score → ActOrAsk**. v1 is pure + CLI (`runtime dive`); it does not mutate gates. Trauma = refuse auto Auth/Physical, Claim-via-CP, probe budget, one HOOTL step/tick (existing).
+
+| Adopt | Refuse |
+|-------|--------|
+| `plan_dive` on G + CP → `DiveReport` IR | LLM as SoT for dive |
+| Auth = black hole → ActOrAsk HITL only | Auto-approve Auth |
+| Sparse/Empty digital on CP → Probe candidate | Unbounded probes |
+| Simulate via existing PERT σ / optional MC | Parallel dive that bypasses MsgBus |
+
+**Ship:** `crates/peram-kernel/src/uncertainty_dive.rs` · `runtime dive [--json] [--probe-budget N]` · quest note `docs/thinking/uncertainty-ocean-quest.md`  
+**Near-term:** close DOE loop (probe tick updates duration span); optional memory as Prior enrichment (never gates).
+
+---
+
 ## Episodic memory layer — peram-memory fused from IntelliArch (2026-07-29)
 
 **Verdict:** The IntelliArch prototype's local-first CRDT memory + coherence engine is adopted as a new crate `crates/peram-memory`, bridged into the kernel via `memory_sink`. The kernel runtime **records** what happened (applied bus messages, tick reports, graph loads) into a durable, mergeable episodic document; explicit `runtime reflect` runs coherence scoring, skill synthesis, and goal proposals over that trajectory. Origin: IntelliArch `tries/` (agent_memory + coherence_engine), ported synchronous to kernel discipline.
