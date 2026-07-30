@@ -40,7 +40,7 @@ cargo run -p peram-kernel -- runtime complete grocery-errand
 Same CLI via npm: `npm run peram -- runtime status` (etc.).  
 Default durable DB: `data/local/peram-ops.sqlite` (gitignored). Law: [arch-design/formal_problem_definition.AppGenMathPhyLang.md](arch-design/formal_problem_definition.AppGenMathPhyLang.md) · decision: [DECISIONS.md](docs/DECISIONS.md#issue-1-hitlhootl-runtime-core-2026-07-24).
 
-### Game / legacy Node parity
+### Game / Operator CLI (Node)
 
 ```bash
 npm test
@@ -50,7 +50,7 @@ npm run game:smoke
 
 Open with the **trailing slash**: `/game/`.  
 Optional: `npm run build:wasm` after editing `crates/peram-core`.  
-Node `bin/swarm.js` remains **legacy parity** — not the HITL/HOOTL SoT ([AGENTS.md](AGENTS.md)).
+`bin/swarm.js` is the **Operator CLI** (day/turn/graph). HITL/HOOTL runtime SoT remains `peram-kernel` ([AGENTS.md](AGENTS.md)).
 
 ---
 
@@ -115,7 +115,7 @@ Deep dives: [MAP](docs/MAP.md) · [PLAYBOOK](docs/PLAYBOOK.md) · [GAME-STACK](d
 
 `runtime * --json` prints JSON then a trailing `RUNTIME_OK …` status line — strip the last line before parsing. Memory flags: `--memory <path>` (explicit; open failure is fatal) · `--no-memory`.
 
-### Legacy Node swarm (parity only)
+### Operator CLI (Node — day / turn / graph / watch)
 
 | Mode | Command | You get |
 |------|---------|---------|
@@ -125,7 +125,7 @@ Deep dives: [MAP](docs/MAP.md) · [PLAYBOOK](docs/PLAYBOOK.md) · [GAME-STACK](d
 | **Map** | `npm run swarm:graph` | Watch: next-action panel + mermaid / `public/watch/` |
 | **Dashboard** | `npm run swarm:dashboard` | Life progress → `public/watch/dashboard.html` |
 | **Flow** | `node bin/swarm.js flow …` | Shared notes/tasks/pomo via premflow |
-| **Gate / Body** | `node bin/swarm.js approve\|deny\|claim\|complete <id>` | Legacy wait-snapshot HITL |
+| **Gate / Body** | `node bin/swarm.js approve\|deny\|claim\|complete <id>` | Wait-snapshot HITL (Operator CLI) |
 
 ```bash
 node bin/swarm.js turn --fixture fixtures/state-sample.json --stdout
@@ -172,15 +172,14 @@ crates/peram-memory/   episodic learning (aux): CRDT trajectory · skills · goa
 crates/peram-agents/   protocol satellite: InferenceProvider · peram-mcp · Grok CLI helpers
 crates/peram-core/     shared Rust world/layout sim → WASM (mirrors focus; not control plane)
 fixtures/              issue-1-runtime.json · state-sample.json · …
-bin/swarm.js           LEGACY day · turn · approve · deny · graph (parity bridge)
-src/                   LEGACY pure modules (no new product features)
+bin/swarm.js           Operator CLI: day · turn · approve · deny · graph · watch export
+src/                   pure modules for Operator CLI + game session
 src/game/              pure session kit: focus · growth · $SPN · input (game focus SoT)
 public/game/           thin browser host shell + paint
 public/game/pkg/       checked-in wasm-pack build of peram-core
 public/watch/          static consumer of graph / turn-status export
 arch-design/           AppGenMathPhyLang formalization · control insights
 docs/                  charter · MAP · engine · Eve · roadmap
-legacy/                old webpack app (not the game)
 ```
 
 ---

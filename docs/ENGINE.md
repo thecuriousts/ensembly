@@ -18,7 +18,7 @@ We do **not** ship a 14B neural world model here — we ship a **shareable deter
 ┌─────────────────────────────────────────────┐
 │  Host shell (thin)                          │
 │  primary trajectory: native peram-console   │
-│  browser: public/game/*.js  (legacy demo)   │
+│  browser: public/game/*.js  (thin host)     │
 └─────────────────┬───────────────────────────┘
                   │ draw_buffer / FocusPlan bind
 ┌─────────────────▼───────────────────────────┐
@@ -34,8 +34,9 @@ We do **not** ship a 14B neural world model here — we ship a **shareable deter
 └─────────────────┬───────────────────────────┘
                   │
 ┌─────────────────▼───────────────────────────┐
-│  Node src/*  = LEGACY dogfood (bugfix only) │
-│  Do not expand product features here        │
+│  Operator CLI — bin/swarm.js + src/*        │
+│  day · turn · graph · game session          │
+│  control-plane features expand in kernel    │
 └─────────────────────────────────────────────┘
 ```
 

@@ -2,7 +2,7 @@
 
 Control Source of Truth for the Game of Peram: life-state **S**, dependency graph **G**, critical path with PERT/Monte Carlo **P**, typed message bus, Human-In-The-Loop gates and Human-Out-Of-The-Loop agent runtime, Tier-1 SQLite durability, sealed backups, and the episodic-memory bridge. Terms expanded: [docs/GLOSSARY.md](../../docs/GLOSSARY.md).
 
-Node `src/*` is legacy parity — new product logic lands here.
+Node `src/*` + `bin/swarm.js` are the **Operator CLI + game session**. New *control-plane* logic lands in this crate.
 
 ## Build and test
 

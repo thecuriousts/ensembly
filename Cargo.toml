@@ -1,4 +1,4 @@
-# Workspace root — kernel (control) + world (sim). Node src/* is legacy dogfood only.
+# Workspace root — kernel (control) + world (sim) + Operator CLI (Node `src/*`).
 [workspace]
 members = [
     "crates/peram-core",

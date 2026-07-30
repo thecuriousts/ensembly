@@ -28,15 +28,15 @@ Companion law: [MAP.md](MAP.md) (capabilities · hosts · layers · IR) · [PROD
 |---------|------|----------------|
 | **Runtime HITL/HOOTL (SoT)** | Issue #1 control plane: S+G+CP, MsgBus, AuthGate / PhysicalBeacon | `cargo run -p peram-kernel -- runtime …` · `npm run peram -- runtime …` · fixture `fixtures/issue-1-runtime.json` |
 | **Game of Peram** | Feel the day, claim beacons, clear gates, watch **$SPN** | `npm run game` → `http://127.0.0.1:4173/game/` |
-| **Operator turn (legacy CLI)** | Fast “what now?” via Node wait-snapshot parity | `npm run swarm:turn` or `node bin/swarm.js turn --stdout` |
-| **Status IR (JSON)** | Agents / scripts / future phone bots (legacy) | `node bin/swarm.js turn --json` |
+| **Operator turn (CLI)** | Fast “what now?” via wait-snapshot | `npm run swarm:turn` or `node bin/swarm.js turn --stdout` |
+| **Status IR (JSON)** | Agents / scripts / future phone bots | `node bin/swarm.js turn --json` |
 | **Watch map** | See next act + diagram without game loop | `npm run swarm:graph` → open `public/watch/index.html` |
 | **Life dashboard** | Stats, insights, overview of progress | `npm run swarm:dashboard` → open `public/watch/dashboard.html` |
 | **Shared notes/tasks/pomo** | One inbox with premflow + vault (`~/.premflow`) | `node bin/swarm.js flow …` · `npm run flow:link` · [PREMFLOW-FIT.md](PREMFLOW-FIT.md) |
 | **Day plan** | Morning structure: projects, schedule, balance | `npm run swarm:day` |
 | **Remote channels** (Eve trajectory) | Slack/web/phone: digest + approve/deny away from desk | See [§5 Remote](#5-remote--channels-not-just-the-laptop) · [EVE-FIT.md](EVE-FIT.md) |
 
-**Kernel truth (SoT):** `peram-kernel` life-state + DepGraph + CP. Node swarm is **legacy parity**. Hosts stay thin.
+**Kernel truth (SoT):** `peram-kernel` life-state + DepGraph + CP. Operator CLI (`bin/swarm.js`) covers day/turn/graph/watch. Hosts stay thin.
 
 ### 1.1 Issue #1 laptop recipe (HITL / HOOTL)
 

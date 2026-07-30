@@ -29,12 +29,12 @@ Only features with a **dogfood path** (command, URL, or unit-tested pure export)
 
 | Capability | Entry | What you get |
 |------------|-------|--------------|
-| **Kernel CLI** | `cargo run -p peram-kernel -- …` · `npm run peram -- …` | `rank_now` FocusPlan, bill_pay dry-run, T1 SQLite, sealed backup; Node `src/*` is **legacy** |
+| **Kernel CLI** | `cargo run -p peram-kernel -- …` · `npm run peram -- …` | `rank_now` FocusPlan, bill_pay dry-run, T1 SQLite, sealed backup; Operator CLI lives in `bin/swarm.js` + `src/*` |
 | **Runtime S+G+CP+P (Issue #1)** | `cargo run -p peram-kernel -- runtime load\|status\|tick\|approve\|deny\|claim\|complete` · fixture `fixtures/issue-1-runtime.json` | Life-state **S** + dependency graph **G** + critical path / PERT+Monte Carlo **P**; typed message bus; Human-Out-Of-The-Loop agents claim digital thrash; authorization gate + physical beacon wait only for permission. Persist to `data/local/peram-ops.sqlite` (gitignored). **Approve/deny id = action id** (e.g. `pay-rent`), not `auth-pay-rent` from `pendingAuth`. `runtime * --json` emits JSON then a trailing `RUNTIME_OK …` line. |
 | **Episodic memory (peram-memory)** | `cargo run -p peram-kernel -- runtime reflect [--json]` · `--memory <path>` / `--no-memory` | Runtime records applied bus messages, ticks, loads into a durable Conflict-free Replicated Data Type trajectory at `data/local/peram-memory.json` (gitignored). `reflect` = coherence + skill synthesis + goal proposals (skips loudly below 5 entries). **Auxiliary learning layer — kernel stays control Source of Truth; memory never decides.** Decision: [DECISIONS.md](DECISIONS.md#episodic-memory-layer--peram-memory-fused-from-intelliarch-2026-07-29) · terms: [GLOSSARY.md](GLOSSARY.md) |
 | **Agent MCP export (peram-agents)** | `cargo run -p peram-agents --bin peram-mcp` · `grok mcp add --scope project peram -- …` | Read-only memory tools for Grok/Cursor. Official wire: [ACP](https://docs.x.ai/build/cli/headless-scripting#acp) · [MCP](https://docs.x.ai/build/features/mcp-servers). `PERAM_INFERENCE` stubs fall back to deterministic. |
 
-#### Node / pure modules under `src/` (legacy parity)
+#### Node / pure modules under `src/` (Operator CLI + game session)
 
 | Capability | Entry | What you get |
 |------------|-------|--------------|
@@ -69,7 +69,7 @@ Only features with a **dogfood path** (command, URL, or unit-tested pure export)
 | **Watch map** | `npm run swarm:graph` then open `public/watch/index.html` | Static next-action panel + mermaid/graph view; **consumer** of graph + turn-status export |
 | **Life dashboard** | `npm run swarm:dashboard` → `public/watch/dashboard.html` | Overview · stats · rule-based insights · next body/auth · activity timeline (Dashboard IR v1) |
 
-There is **no** separate multi-page web app. `public/watch/` is generated/served static artifacts from the CLI graph path. `legacy/` is the old webpack SPA — **not the product**.
+There is **no** separate multi-page web app. `public/watch/` is generated/served static artifacts from the CLI graph path.
 
 ### 1.4 Explicitly not live (trajectory)
 
@@ -89,7 +89,7 @@ Hosts are **thin**. They do not re-implement prioritization or privacy. Same ker
 | Host | Role | Connects how | Not responsible for |
 |------|------|--------------|---------------------|
 | **Kernel CLI** (`peram-kernel`) | **Control SoT:** life-state, DepGraph, CP+P, MsgBus, HITL/HOOTL, T1 SQLite | `cargo run -p peram-kernel -- …` · `npm run peram -- …` · DB `data/local/peram-ops.sqlite` | Game paint, Node wait-snapshot |
-| **CLI** (`bin/swarm.js`) | **Legacy** operator + agent parity: day, turn, approve/deny, claim/complete, graph | Imports pure `src/*` (and filesystem under `private/` / `public/watch/`) | Rendering, WASM world, $SPN paint, Issue #1 MsgBus SoT |
+| **CLI** (`bin/swarm.js`) | **Operator CLI:** day, turn, approve/deny, claim/complete, graph | Imports pure `src/*` (and filesystem under `private/` / `public/watch/`) | Rendering, WASM world, $SPN paint, Issue #1 MsgBus SoT |
 | **Game (browser)** | Immersive play surface (optional client) | `scripts/serve-game.mjs` serves `public/game/` **and** `src/` as ESM; host loads session from `/src/game/*` and WASM from `/game/pkg/` | Day plan file I/O, durable wait snapshot (session is in-browser unless you wire fixtures) |
 | **Watch (static web)** | Glanceable map of next act + graph | CLI **writes** `public/watch/{index.html,graph.json,turn-status.json}`; open in any browser / static server | Live simulation, claim/approve (read-only consumer) |
 | **Eve (trajectory)** | Remote channels + approve buttons + cron | Would call kernel / CLI with **redacted** IR only | Vault, full persona, policy ownership |
@@ -111,7 +111,7 @@ Hosts are **thin**. They do not re-implement prioritization or privacy. Same ker
                     └──────────────┘    └─────────────────────────────────┘
 
                     ┌──────────────────────────────────────────┐
-                    │  LEGACY parity — bin/swarm.js + src/*    │
+                    │  Operator CLI — bin/swarm.js + src/*     │
                     │  day · turn · wait-snapshot · graph IR   │
                     └───────────┬──────────────────────────────┘
                                 │ graph --html
@@ -127,7 +127,7 @@ Hosts are **thin**. They do not re-implement prioritization or privacy. Same ker
 | `npm run test:kernel` | `peram-kernel` crate tests |
 | `npm run test:rust` | `peram-core` **and** `peram-kernel` crate tests |
 | `npm run peram -- …` | Quiet `cargo run -p peram-kernel -- …` |
-| `npm run swarm:day` / `swarm:turn` / `swarm:graph` | Legacy CLI dogfood |
+| `npm run swarm:day` / `swarm:turn` / `swarm:graph` | Operator CLI |
 | `npm run game` / `game:serve` / `start` | Browser game server (port 4173) |
 | `npm run game:smoke` | Game surface smoke |
 | `npm run build:wasm` | Rebuild Rust → `public/game/pkg` (prebuilt pkg is checked in) |
@@ -152,7 +152,6 @@ This is the common confusion zone: **`public/game` is not “the game logic.”*
 | **`public/watch/`** | Static artifacts produced by graph export for glance UI | Live kernel, interactive claim/approve |
 | **`bin/swarm.js`** | CLI wiring: argv, fixtures, read/write paths, stdout | Pure scoring logic (delegates to `src/`) |
 | **`private/`** | Operator state, full persona, plans, wait snapshot — **gitignored / never push** | Public product surface |
-| **`legacy/`** | Historical webpack React app | Anything current — do not extend as product |
 
 ### 3.2 Focus and “who is right?”
 

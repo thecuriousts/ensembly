@@ -2,7 +2,7 @@
 
 ## Executive verdict
 
-Ship a **greenfield Node ESM swarm control plane** with pure prioritization/balance/privacy units and a looper-shaped day loop; isolate legacy UI under `legacy/`; keep full persona local-only.
+Ship a **greenfield Node ESM swarm control plane** with pure prioritization/balance/privacy units and a looper-shaped day loop; keep full persona local-only. (Historical webpack SPA removed 2026-07-30 — was never the product.)
 
 ## Critical area
 
@@ -180,7 +180,7 @@ Full law: [PREMFLOW-FIT.md](PREMFLOW-FIT.md). Ship: `src/premflow/*`, `node bin/
 
 ## Rust life-console restart (2026-07-15)
 
-**Verdict:** Node ESM control plane is **legacy dogfood** (bugfix-only). **Iron-peak** moves to **Rust `peram-kernel`**: typed day/turn/privacy/HITL/digital-flow + **tiered durable data** + native console trajectory. Browser/WASM remains optional thin host; sample-graph is never product truth.
+**Verdict:** **Iron-peak control** lives in **Rust `peram-kernel`**: typed day/turn/privacy/HITL/digital-flow + **tiered durable data** + native console trajectory. Node **Operator CLI** (`bin/swarm.js` + `src/*`) remains the live day/turn/graph/game-session host. Browser/WASM is an optional thin client; sample-graph is never product truth.
 
 ### Data plane (T0–T4)
 
@@ -234,7 +234,7 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 **Ship path:** `cargo run -p peram-kernel -- runtime load|status|tick|approve|deny|claim|complete` · `npm run peram -- runtime …` · `fixtures/issue-1-runtime.json` · `cargo test -p peram-kernel`  
 **Approve id:** action id (e.g. `pay-rent`); optional `auth-` prefix is stripped — snapshot may still key `auth-*` internally.  
-**Top-level gates:** `peram approve|deny|claim|complete` require durable `life_state` (after `runtime load`) and always go through Runtime + `save_runtime_pair`. No snapshot-only legacy path — refuse loud if life_state missing.  
+**Top-level gates:** `peram approve|deny|claim|complete` require durable `life_state` (after `runtime load`) and always go through Runtime + `save_runtime_pair`. No snapshot-only fallback — refuse loud if life_state missing.  
 **Claim-via-CP:** `next_hootl_digital` returns only open digital HOOTL **on the CP path** (no off-path fallback). Direct `AgentWorker::claim` also requires CP path membership.  
 **Auth/Physical off-CP surface (intentional asymmetry):** `next_auth_gate` / `next_physical_beacon` are **CP-first**, then fall back to earliest open Auth/Physical by id so HITL wait-state never hides a real gate. HOOTL agents remain Claim-via-CP only; Auth/Physical may surface off-CP. Do not make Auth/Physical CP-only without a product law change.  
 **Tick honesty:** one HOOTL agent step per tick — claim **or** complete owned claim, never silent same-tick Done-as-exec.  
