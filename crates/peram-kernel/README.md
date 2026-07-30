@@ -23,6 +23,7 @@ cargo run -p peram-kernel -- runtime approve pay-rent          # HITL gate (acti
 cargo run -p peram-kernel -- runtime claim grocery-errand      # physical beacon
 cargo run -p peram-kernel -- runtime complete grocery-errand
 cargo run -p peram-kernel -- runtime reflect                   # coherence over episodic memory
+cargo run -p peram-kernel -- runtime dive --json               # UncertaintyDive inspect (Prior→Probe→Simulate→Score→ActOrAsk)
 ```
 
 Notes:
@@ -31,6 +32,7 @@ Notes:
 - Approve/deny take the **action id** (`pay-rent`); an `auth-` prefix is accepted and stripped.
 - Tick honesty: one agent step per tick — claim **or** complete, never both.
 - Top-level gates (`peram approve …`) refuse loudly without a durable life-state; run `runtime load` first.
+- `runtime dive` does **not** mutate state — it surfaces epistemic emptiness + trauma guards. Quest: [docs/thinking/uncertainty-ocean-quest.md](../../docs/thinking/uncertainty-ocean-quest.md).
 
 ## Episodic memory bridge (`memory_sink`)
 

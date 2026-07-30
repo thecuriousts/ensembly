@@ -1,6 +1,6 @@
 [package]
 name = "peram-kernel"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 description = "Game of Peram life kernel — S+G+CP, MsgBus, HITL/HOOTL runtime, privacy, turn, durable store, episodic memory bridge"
 license = "MIT"

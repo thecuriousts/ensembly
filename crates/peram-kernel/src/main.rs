@@ -148,6 +148,13 @@ enum RuntimeCmd {
         #[arg(long)]
         json: bool,
     },
+    /// UncertaintyDive — Prior→Probe→Simulate→Score→ActOrAsk (inspect only; no mutate)
+    Dive {
+        #[arg(long, default_value_t = peram_kernel::DEFAULT_PROBE_BUDGET)]
+        probe_budget: u32,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -724,6 +731,59 @@ fn main() -> Result<()> {
                             );
                         }
                     }
+                }
+                RuntimeCmd::Dive { probe_budget, json } => {
+                    use peram_kernel::critical_path::compute_critical_path;
+                    use peram_kernel::plan_dive;
+                    if rt.state.graph.nodes.is_empty() {
+                        bail!("runtime dive needs a loaded graph — run `runtime load --fixture …` first");
+                    }
+                    let cp = match rt.state.critical_path.clone() {
+                        Some(c) => c,
+                        None => compute_critical_path(&rt.state.graph, 0)
+                            .map_err(|e| anyhow::anyhow!(e))?,
+                    };
+                    let dive = plan_dive(&rt.state.graph, &cp, probe_budget);
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&dive)?);
+                    } else {
+                        println!("# UncertaintyDive v{}", dive.version);
+                        println!("coach: {}", dive.coach_line);
+                        println!(
+                            "simulate: σ={:.2} E={:.1} cp=[{}]",
+                            dive.simulate.pert_sigma,
+                            dive.simulate.length_expected,
+                            dive.simulate.cp_path.join(" → ")
+                        );
+                        if let Some(a) = &dive.next_auth {
+                            println!("auth black hole: {} — {}", a.id, a.reason);
+                        }
+                        if let Some(p) = &dive.next_physical {
+                            println!("physical beacon: {} — {}", p.id, p.reason);
+                        }
+                        if let Some(p) = &dive.next_probe {
+                            println!(
+                                "next probe: {} (score={:.1}) — {}",
+                                p.id, p.uncertainty_score, p.reason
+                            );
+                        } else {
+                            println!("next probe: (none)");
+                        }
+                        println!(
+                            "guards: budget={} refuse_auto_auth={} claim_via_cp={}",
+                            dive.trauma_guards.probe_budget,
+                            dive.trauma_guards.refuse_auto_auth,
+                            dive.trauma_guards.claim_via_cp_only
+                        );
+                    }
+                    eprintln!(
+                        "RUNTIME_OK dive candidates={} probe={}",
+                        dive.candidates.len(),
+                        dive.next_probe
+                            .as_ref()
+                            .map(|p| p.id.as_str())
+                            .unwrap_or("-")
+                    );
                 }
             }
         }

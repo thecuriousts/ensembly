@@ -1,10 +1,11 @@
 //! peram-kernel — Game of Peram life control plane (Rust iron-peak).
 //!
-//! Node `src/*` is legacy dogfood. New product logic lands here.
+//! Operator CLI (`bin/swarm.js` + `src/*`) is the live day/turn/graph host.
+//! Control-plane features expand here.
 //!
 //! Layers: privacy · realm · approvals · digital_flow · turn/rank_now ·
-//! life-state S · DepGraph G · CP+P · MsgBus · Runtime/Agents (Issue #1) ·
-//! T1 SQLite store · sealed backup · T2 vault seal bridge.
+//! life-state S · DepGraph G · CP+P · UncertaintyDive · MsgBus · Runtime/Agents ·
+//! T1 SQLite store · sealed backup · T2 vault seal bridge · episodic memory sink.
 
 pub mod agent;
 pub mod approvals;
@@ -21,6 +22,7 @@ pub mod runtime;
 pub mod store;
 pub mod trigger;
 pub mod turn;
+pub mod uncertainty_dive;
 pub mod vault;
 
 pub use approvals::{
@@ -48,9 +50,10 @@ pub use turn::{
     context_at, rank_now, select_next_auth, select_next_physical, Action, ContextFrame, FocusItem,
     FocusPlan, ScheduleSlot,
 };
+pub use uncertainty_dive::{plan_dive, DiveReport, DEFAULT_PROBE_BUDGET, DIVE_IR_VERSION};
 pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
 
 /// Kernel banner for CLI / hosts.
 pub fn kernel_version() -> &'static str {
-    "peram-kernel 0.5.0 rust-life-control s+g+cp msgbus hitl-hootl t1-sqlite t2-seal episodic-memory"
+    "peram-kernel 0.5.1 rust-life-control s+g+cp dive msgbus hitl-hootl t1-sqlite t2-seal episodic-memory"
 }
