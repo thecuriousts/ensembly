@@ -32,7 +32,7 @@ Notes:
 - Approve/deny take the **action id** (`pay-rent`); an `auth-` prefix is accepted and stripped.
 - Tick honesty: one agent step per tick — claim **or** complete, never both.
 - Top-level gates (`peram approve …`) refuse loudly without a durable life-state; run `runtime load` first.
-- `runtime dive` does **not** mutate state — it surfaces epistemic emptiness + trauma guards. Quest: [docs/thinking/uncertainty-ocean-quest.md](../../docs/thinking/uncertainty-ocean-quest.md).
+- `runtime dive` does **not** mutate state — it surfaces epistemic emptiness + trauma guards. Quest: [docs/thinking/uncertainty-space-quest.md](../../docs/thinking/uncertainty-space-quest.md) (space = new-era ocean).
 
 ## Episodic memory bridge (`memory_sink`)
 

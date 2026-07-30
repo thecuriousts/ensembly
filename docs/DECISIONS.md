@@ -246,7 +246,7 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 ## UncertaintyDive — process under epistemic emptiness (2026-07-30)
 
-**Verdict:** Name and ship the operator’s “uncertainty ocean” belief as an inspectable control-plane process: **Prior → Probe → Simulate (CP+P) → Score → ActOrAsk**. v1 is pure + CLI (`runtime dive`); it does not mutate gates. Trauma = refuse auto Auth/Physical, Claim-via-CP, probe budget, one HOOTL step/tick (existing).
+**Verdict:** Name and ship the operator’s belief — navigate **uncertain space** (space = new-era ocean) / black holes without trauma — as an inspectable control-plane process: **Prior → Probe → Simulate (CP+P) → Score → ActOrAsk**. v1 is pure + CLI (`runtime dive`); it does not mutate gates. Trauma = refuse auto Auth/Physical, Claim-via-CP, probe budget, one HOOTL step/tick (existing).
 
 | Adopt | Refuse |
 |-------|--------|
@@ -255,8 +255,8 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 | Sparse/Empty digital on CP → Probe candidate | Unbounded probes |
 | Simulate via existing PERT σ / optional MC | Parallel dive that bypasses MsgBus |
 
-**Ship:** `crates/peram-kernel/src/uncertainty_dive.rs` · `runtime dive [--json] [--probe-budget N]` · quest note `docs/thinking/uncertainty-ocean-quest.md`  
-**Near-term:** close DOE loop (probe tick updates duration span); optional memory as Prior enrichment (never gates).
+**Ship:** `crates/peram-kernel/src/uncertainty_dive.rs` · `runtime dive [--json] [--probe-budget N]` · quest note [`docs/thinking/uncertainty-space-quest.md`](thinking/uncertainty-space-quest.md)  
+**Near-term:** close DOE loop (probe tick updates duration span) — spacemap **SN-9**; optional memory as Prior enrichment (never gates).
 
 ---
 

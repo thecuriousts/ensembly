@@ -3,15 +3,16 @@
 **Audience:** Operator · implementer · agents  
 **Style:** Short words. Diagrams over prose. Optimism grounded in evidence.  
 **Contract:** [PRIVACY.md](../PRIVACY.md) · [SWARM-DESIGN.md](../SWARM-DESIGN.md) · [DECISIONS.md](../DECISIONS.md)  
-**Method:** stellar-roadmap · fusion-sage · ai-optimization · higher-order-decision-architect · looper
+**Method:** stellar-spacemap · fusion-sage · ai-optimization · higher-order-decision-architect · control-graph  
+**Quest:** [uncertainty-space-quest.md](../thinking/uncertainty-space-quest.md) — *space is the new-era ocean*
 
-*Last updated: 2026-07-29*
+*Last updated: 2026-07-30*
 
 ---
 
 ## 0. Mission (one sentence)
 
-Remove digital friction so the swarm automates curate/plan/classify while the operator only picks up **physical world** work and grants **approvals** — and plays the **Game of Peram** as a truthful, engaging world. **Production life infrastructure** (see [PRODUCT-CHARTER.md](../PRODUCT-CHARTER.md), [AGENTS.md](../../AGENTS.md)) — not a hobby demo.
+Remove digital friction so the swarm automates curate/plan/classify while the operator only picks up **physical world** work and grants **approvals** — navigates **uncertain space** without trauma — and plays the **Game of Peram** as a truthful, engaging world. **Production life infrastructure** (see [PRODUCT-CHARTER.md](../PRODUCT-CHARTER.md), [AGENTS.md](../../AGENTS.md)) — not a hobby demo.
 
 ---
 
@@ -25,6 +26,7 @@ flowchart TB
     K1[persona + balance + privacy]
     K2[looper day cycle]
     K3[idle snapshot approve deny]
+    K4[UncertaintyDive Prior Probe Simulate Score ActOrAsk]
   end
   subgraph bridgeY["Product bridge — command ops"]
     B1[operator turn surface]
@@ -34,6 +36,7 @@ flowchart TB
   subgraph weather["Cosmic weather we punch through"]
     W1[vendor agent frameworks]
     W2[cloud host churn]
+    W3[epistemic emptiness blank days]
   end
   weather --> kernelY
   kernelY --> bridgeY
@@ -42,11 +45,11 @@ flowchart TB
 
 | 2036 role | What it is | Why it still wins |
 |-----------|------------|-------------------|
-| **Kernel** | Pure prioritize/balance/privacy/loop + durable wait snapshots | Host-agnostic; testable; privacy default-deny |
+| **Kernel** | Pure prioritize/balance/privacy/loop + durable wait snapshots + **dive into uncertain space** | Host-agnostic; testable; privacy default-deny; trauma-light process under no data |
 | **Bridge** | Turn surface, graph play view, optional Eve/Stately adapters | Swap renderers; keep iron-peak state machine |
-| **Boundary** | Physical pickups + explicit approve/deny only | Human energy is scarce; agents do digital chores |
+| **Boundary** | Physical pickups + explicit approve/deny only (Auth = black hole) | Human energy is scarce; agents do digital chores |
 
-**Design bet:** Kernel forever = harmonious life-state control plane. Today’s renderer (CLI/markdown/HTML) is disposable. Multiplayer voice room is ascent, not a side quest to abandon.
+**Design bet:** Kernel forever = harmonious life-state control plane that can **jump into uncertain space with a tether** (Prior→Probe→Simulate→Score→ActOrAsk). Today’s renderer (CLI/markdown/HTML) is disposable. Multiplayer voice room is ascent, not a side quest to abandon.
 
 ---
 
@@ -61,10 +64,13 @@ flowchart LR
     T[turn surface]
     G[game graph]
     W[WASM world]
+    R[runtime S+G+CP]
+    Dive[UncertaintyDive]
   end
   subgraph open["Next altitude B/C"]
     E[Eve bridge]
     M[multiplayer voice]
+    Doe[SN9 DOE probe loop]
   end
   shipped --> open
 ```
@@ -83,11 +89,13 @@ flowchart LR
 | Digital-flow bill_pay / Bank | A− | HITL + dry-run execute; deny no-run | `src/digital-flow.js`, `swarm digital-flow`, `test/digital-flow.test.js` |
 | **Rust kernel restart** | B+ | Control SoT moves to `peram-kernel`; T1 SQLite + sealed backup + vault seal | `crates/peram-kernel`, `cargo test -p peram-kernel`, `peram` CLI |
 | **Issue #1 HITL/HOOTL runtime** | A− | S+G+CP+P, MsgBus, triggers, HOOTL agents, AuthGate/PhysicalBeacon; game excluded | `runtime load\|status\|tick\|approve\|claim\|complete`, `fixtures/issue-1-runtime.json`, [DECISIONS](../DECISIONS.md#issue-1-hitlhootl-runtime-core-2026-07-24) |
+| **UncertaintyDive (space navigator)** | A− | Inspect Prior→Probe→Simulate→Score→ActOrAsk; Auth black hole; trauma guards; no mutate | `uncertainty_dive.rs`, `runtime dive`, [quest](../thinking/uncertainty-space-quest.md), [DECISIONS](../DECISIONS.md#uncertaintydive--process-under-epistemic-emptiness-2026-07-30) |
 | Immersive game world | A− | Env/sprites/props + WASM focus SoT | `public/game/`, `crates/peram-core`, `npm run game` |
 | Eve bridge map | B | Fit doc: channels/HITL/schedules only | [EVE-FIT.md](../EVE-FIT.md), SN-5 |
 | Multiplayer voice room | C | Ascent only | SN-6 |
+| DOE closed-loop probe | C | Dive inspects; tick does not yet shrink duration spans | SN-9 |
 
-**Plain rule:** Digital automates; human touches physical world + authorizations.
+**Plain rule:** Digital automates; human touches physical world + authorizations; blank days → dive into uncertain space with a tether.
 
 ---
 
@@ -103,6 +111,7 @@ flowchart TB
   snap[Wait snapshot HITL]
   turn[Operator turn]
   graphIR[Game graph IR]
+  dive[UncertaintyDive plan_dive]
   watchUI[Watch mermaid or HTML]
   playWorld[Game of Peram WASM world]
   persona --> dayLoop
@@ -114,12 +123,14 @@ flowchart TB
   snap --> turn
   dayLoop --> graphIR
   snap --> graphIR
+  graphIR --> dive
   graphIR --> watchUI
   graphIR --> playWorld
   turn -->|"approve / deny"| snap
+  dive -->|"ActOrAsk Auth black hole"| turn
 ```
 
-**Fused abstraction:** *Game of Peram control plane* = day plan + realm split + idle-snapshot approvals + exportable graph + playable world. Trace: `src/day.js`, `src/approvals.js`, `src/graph.js`, `src/game/`, `public/game/`.
+**Fused abstraction:** *Game of Peram control plane* = day plan + realm split + idle-snapshot approvals + exportable graph + playable world + **UncertaintyDive** (navigate uncertain space). Trace: `src/day.js`, `src/approvals.js`, `src/graph.js`, `src/game/`, `public/game/`, `crates/peram-kernel/src/uncertainty_dive.rs`.
 
 ---
 
@@ -171,8 +182,9 @@ sequenceDiagram
 | Graph viz (`@statelyai/graph`) | med | Play-view polish | IR first; layout peer optional | 70% |
 | Voice multiplayer rooms | med | Watch + join | SN backlog; not gate MVP | 55% |
 | Privacy regulation / family data | high | Leak cost extreme | Default-deny + ignore + classifier | 90% |
+| Epistemic emptiness / blank days | high | Classical rank fails with sparse data | UncertaintyDive process; active DOE (SN-9) | 80% |
 
-**Acceleration trigger:** When operator uses `swarm turn` daily for a week, invest in watch room + optional Eve/Stately adapters — do not shrink autonomy pillars.
+**Acceleration trigger:** When operator uses `swarm turn` daily for a week, invest in watch room + optional Eve/Stately adapters — do not shrink autonomy pillars. When `runtime dive` is the morning habit on blank days, close the DOE loop (SN-9) before more inference theater.
 
 ---
 
@@ -186,6 +198,8 @@ flowchart TD
     A3[Rewrite kernel onto Eve before dogfood]
     A4[Legacy webpack as product UI]
     A5[Upload private persona to Eve cloud]
+    A6[LLM as Dive SoT]
+    A7[Unbounded probes auto Auth]
   end
   subgraph build["Build toward 2036"]
     B1[Turn surface physical + HITL]
@@ -193,6 +207,7 @@ flowchart TD
     B3[Game graph plus WASM world]
     B4[Autonomous digital chores]
     B5[Eve channel bridge redacted]
+    B6[Dive into uncertain space with tether]
   end
 ```
 
@@ -202,6 +217,8 @@ flowchart TD
 | Defeatist “game pillar dies” | Game of Peram as north-star play surface |
 | Scope-creep multiplayer first | Dogfood day+turn+graph+game before voice room |
 | Eve as persona vault | Eve as channel + approval + schedule bridge |
+| LLM decides dive / auto Auth | Inspect `runtime dive` + trauma guards; Auth = black hole |
+| Ocean-drown metaphor as product law | **Space-era** navigation: void, black hole, tether, EVA |
 
 ---
 
@@ -472,6 +489,44 @@ cargo run -p peram-agents --bin peram-mcp   # then: grok mcp add --scope project
 **Guardrail:** Prefer official docs over grok-build internal reverse-RPC details. Project MCP via `.grok/config.toml`; never commit API keys (`XAI_API_KEY` stays env).
 
 ---
+
+### SN-9 · UncertaintyDive — closed-loop probe in uncertain space
+
+**Problem:** Inspect dive shipped (PR #7); blank days still do not *shrink* ignorance — duration spans / Empty→Sparse do not update after a probe tick.
+
+```mermaid
+flowchart LR
+  prior[Prior G+CP] --> dive[plan_dive]
+  dive --> probe[next_probe budgeted]
+  probe --> tick[HOOTL claim or complete]
+  tick --> update[narrow duration span]
+  update --> sim[recompute CP+P]
+  sim --> score[DiveReport]
+  score --> act[ActOrAsk HITL Auth]
+```
+
+| File | Work |
+|------|------|
+| `crates/peram-kernel/src/uncertainty_dive.rs` | Keep pure inspect; optional `apply_probe_result` IR |
+| `crates/peram-kernel/src/runtime.rs` / tick path | After probe tick, update optimistic/pessimistic spans on probed node |
+| `fixtures/` | Blank-sheet + sparse-CP fixtures (ARC-style micro) |
+| [docs/thinking/uncertainty-space-quest.md](../thinking/uncertainty-space-quest.md) | Quest SoT — space = new-era ocean |
+
+**Shipped (SN-9a — inspect):** `plan_dive` · `runtime dive [--json]` · trauma guards · Auth black hole · [DECISIONS](../DECISIONS.md#uncertaintydive--process-under-epistemic-emptiness-2026-07-30)
+
+**Done when (SN-9b):** One dogfood load→dive→tick→dive shows lower `uncertainty_score` or narrower PERT span on the probed digital CP node; Auth still never auto-approved.
+
+**Verify:**
+
+```bash
+cargo test -p peram-kernel uncertainty_dive
+cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
+cargo run -p peram-kernel -- runtime dive --json
+```
+
+**Law:** Dive may advise; MsgBus + HITL still own mutation. Memory may enrich Prior only — never gates.
+
+---
 ## 8. Scope lock
 
 | Locked in | Deferred |
@@ -482,6 +537,8 @@ cargo run -p peram-agents --bin peram-mcp   # then: grok mcp add --scope project
 | Eve fit map + product charter (SN-5 docs) | Eve production bridge (channel + cron + gated approve) |
 | Privacy default-deny | Live bank/email; private vault on cloud |
 | Production bar (AGENTS.md) | Multiplayer room before remote turn is lived |
+| UncertaintyDive inspect (`runtime dive`) | SN-9b DOE closed-loop span update |
+| Space-era metaphor (void / black hole / tether) | Ocean framing as product law |
 
 ---
 
@@ -502,6 +559,12 @@ gantt
   section Bridge
   SN5_eve_fit_docs        :done, sn5d, 2026-07-13, 1d
   SN5_eve_prototype       :sn5p, 2026-07-14, 14d
+  section Memory_Inference
+  SN7_episodic_memory     :done, sn7, 2026-07-29, 1d
+  SN8_grok_first_agents   :done, sn8, 2026-07-29, 2d
+  section Uncertain_space
+  SN9a_dive_inspect       :done, sn9a, 2026-07-30, 1d
+  SN9b_DOE_probe_loop     :sn9b, 2026-07-30, 7d
   section Ascent
   SN6_multiplayer_voice   :sn6, after sn5p, 30d
 ```
@@ -517,6 +580,8 @@ gantt
 | Pending after approve | decreases | Fix snapshot apply |
 | Day plan sections | present | Fix day path |
 | Private in git status | never | Fix gitignore |
+| `runtime dive` Auth black hole | surfaces when Auth on CP | Fix `plan_dive` classification |
+| Probe budget | ≤ DEFAULT_PROBE_BUDGET | Refuse unbounded EVA |
 
 ---
 
@@ -530,6 +595,10 @@ gantt
 | 2026-07-13 | Eve fit map: channels/HITL/schedules adopt; kernel refuse rewrite ([EVE-FIT.md](../EVE-FIT.md)) |
 | 2026-07-13 | Product charter + AGENTS.md: production-grade life infrastructure; no hobby/prototype theater |
 | 2026-07-24 | Issue #1 HITL/HOOTL runtime core in `peram-kernel` (S+G+CP+P, MsgBus, AuthGate/PhysicalBeacon); formal AppGenMathPhyLang |
+| 2026-07-29 | Episodic memory (`peram-memory`) + `runtime reflect`; SN-7 |
+| 2026-07-29 | SN-8 stretch: Grok-first agents / MCP export (PR #6) |
+| 2026-07-30 | Remove dead legacy webpack SPA; Operator CLI retitle |
+| 2026-07-30 | UncertaintyDive inspect (`runtime dive`); quest → space-era metaphor (PR #7); SN-9a |
 
 ---
 
@@ -549,17 +618,25 @@ mindmap
       game
     crates
       peram-kernel
+        uncertainty_dive
+        runtime
+        memory_sink
       peram-core
+      peram-memory
+      peram-agents
     bin
       swarm
     fixtures
     arch-design
+      coming-next
     docs
-      arch-design
+      thinking
+        uncertainty-space-quest
       EVE-FIT
       PRIVACY
       MAP
       PLAYBOOK
+      DECISIONS
     public
       game
       watch
@@ -579,10 +656,13 @@ mindmap
 | [Vercel Eve](https://vercel.com/eve) | Optional bridge: channels, approvals, schedules |
 | [EVE-FIT.md](../EVE-FIT.md) | Project decision map adopt/adapt/refuse |
 | [Introducing eve](https://vercel.com/blog/introducing-eve) | Product primitives + durable HITL |
-| [looper skill](~/.grok/skills/looper/SKILL.md) | Outer loop budgets/phases |
+| [control-graph skill](~/.cursor/skills/control-graph/SKILL.md) | Outer state / phase budgets |
+| [stellar-spacemap skill](~/.cursor/skills/stellar-spacemap/SKILL.md) | This backlog contract |
 | [PRIVACY.md](../PRIVACY.md) | Push boundary |
 | [SWARM-DESIGN.md](../SWARM-DESIGN.md) | Day cycle iron-peak |
+| [uncertainty-space-quest.md](../thinking/uncertainty-space-quest.md) | Epistemic emptiness → Dive process; space = new-era ocean |
+| [DECISIONS UncertaintyDive](../DECISIONS.md#uncertaintydive--process-under-epistemic-emptiness-2026-07-30) | Adopt/refuse for dive |
 
 ---
 
-**Footer plain rule:** Automate the digital; surface the physical; wait only for explicit permission.
+**Footer plain rule:** Automate the digital; surface the physical; wait only for explicit permission; jump into uncertain space with a tether — never without trauma guards.
