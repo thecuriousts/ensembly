@@ -300,6 +300,7 @@ Rust entry: `crates/peram-core/src/{lib,world,layout}.rs` → WASM exports `worl
 | Premflow shared capture (`~/.premflow` + `flow` wrapper + life-os link) | [PREMFLOW-FIT.md](PREMFLOW-FIT.md) |
 | Remote Eve adopt/refuse | [EVE-FIT.md](EVE-FIT.md) |
 | Roadmap SN cards | [arch-design/coming-next.md](arch-design/coming-next.md) |
+| Hub constellation (satellites · NotifyPort · XChat) | [arch-design/hub-constellation.md](arch-design/hub-constellation.md) |
 | Material decisions log | [DECISIONS.md](DECISIONS.md) |
 
 **Footer:** If a surface is not in §1, treat it as trajectory until it has a command/URL and tests on the shipped path.

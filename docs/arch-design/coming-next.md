@@ -4,9 +4,10 @@
 **Style:** Short words. Diagrams over prose. Optimism grounded in evidence.  
 **Contract:** [PRIVACY.md](../PRIVACY.md) · [SWARM-DESIGN.md](../SWARM-DESIGN.md) · [DECISIONS.md](../DECISIONS.md)  
 **Method:** stellar-spacemap · fusion-sage · ai-optimization · higher-order-decision-architect · control-graph  
-**Quest:** [uncertainty-space-quest.md](../thinking/uncertainty-space-quest.md) — *space is the new-era ocean*
+**Quest:** [uncertainty-space-quest.md](../thinking/uncertainty-space-quest.md) — *space is the new-era ocean*  
+**Constellation (hub ↔ satellites):** [hub-constellation.md](hub-constellation.md)
 
-*Last updated: 2026-07-30*
+*Last updated: 2026-07-30* (constellation link 2026-08-12)
 
 ---
 
