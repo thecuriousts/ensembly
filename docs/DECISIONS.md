@@ -299,3 +299,24 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 **Ship order:** P2a trait + deterministic → P3a recall → P4a MCP export (register into Grok) → **P2b Grok MCP + P2c/P3b Grok ACP** → P2d secondary adapters (opencode, pi, Ollama feature) → P5 peer-to-peer decision.
 
 **Grok-first rationale (2026-07-29):** Official xAI docs — MCP via [`grok mcp add`](https://docs.x.ai/build/features/mcp-servers) / `.grok/config.toml`; ACP via [`grok agent stdio`](https://docs.x.ai/build/cli/headless-scripting#acp); headless inference via `grok -p --output-format json`. Export `peram-mcp`; dogfood Grok before Ollama. Never commit `XAI_API_KEY` or `~/.grok/mcp_credentials.json`.
+
+---
+
+## Hub constellation — hub-not-absorb + energy lock (2026-08-12)
+
+**Verdict:** One daily-driver **hub experience** (ensembly), not one mega-repo. Satellites keep their SoTs; bridges carry typed/redacted IR only. Spacemap: [arch-design/hub-constellation.md](arch-design/hub-constellation.md).
+
+| Adopt | Refuse |
+|-------|--------|
+| **A — hub-not-absorb** + cloud-deployable modules | Merge life-os / wealth-core / premflow / vault into ensembly git as one Life OS tree |
+| Single-writer per SoT; fixture-first; dry-run default; HITL before external mutate | Dual-write ledgers; unattended bank/email; free-form chat/Bot → mark-paid |
+| **Pain-order 2 → 3 → 1** (wealth practice → outbound nudge → ensembly hub habit) | Parallel feature builds on outbound + wealth bridge; constellation code during SN-HUB-1 |
+| **Build-order after practice:** SN-HUB-3 → SN-HUB-2 → hub habit → SN-HUB-4 → SN-HUB-7 (one Bot) | Conflating pain-order with bridge-card order; multi-bot handoffs as v1 |
+| Grok Bot (x.ai) = **outer swarm workers** (propose into hub) | Bot shared computer / cloud VM as day, T1, wealth, or premflow SoT |
+| XChat via groxy outbound first; host-decrypt verb inbound later | Cloud-only decrypt of life cmds; Eve as parallel human inbox before NotifyPort |
+| ensembly = sole authoritative **human inbox** for pending gates | Second pending store in XChat, Eve, or Bot chat |
+| life-os = portfolio memory (D0 projection); premflow = D0 capture bytes | Vault as runtime clone or day kernel |
+
+**Near-term energy (SN-HUB-1):** wealth-core board/brief lived practice; ensembly `turn` / `runtime status` only as optional status glance; no NotifyPort / wealth-HITL / Bot-bind / Eve / vault-T2 feature work until gates open per spacemap. Kernel/game cards stay in [coming-next.md](arch-design/coming-next.md) but stretch is energy-deferred while wealth primary holds.
+
+**Confidence:** shape 90%; sequence under capacity scarcity 85%.

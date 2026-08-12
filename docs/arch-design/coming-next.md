@@ -7,7 +7,9 @@
 **Quest:** [uncertainty-space-quest.md](../thinking/uncertainty-space-quest.md) — *space is the new-era ocean*  
 **Constellation (hub ↔ satellites):** [hub-constellation.md](hub-constellation.md)
 
-*Last updated: 2026-07-30* (constellation link 2026-08-12)
+*Last updated: 2026-07-30* (constellation link + energy deferral 2026-08-12)
+
+**Energy lock (2026-08-12):** Operator pain-order is **wealth practice → outbound nudge → ensembly hub habit** ([hub-constellation](hub-constellation.md) SN-HUB-1; [DECISIONS](../DECISIONS.md#hub-constellation--hub-not-absorb--energy-lock-2026-08-12)). Kernel/game SN cards in **this** file stay the SoT for runtime/world work, but **deep ensembly stretch is energy-deferred** while wealth primary holds — do not open parallel constellation bridge tracks from this backlog.
 
 ---
 

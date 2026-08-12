@@ -6,7 +6,7 @@
 **Kernel roadmap (game / runtime SN cards):** [coming-next.md](coming-next.md)  
 **Method:** stellar-spacemap · eva-emptiness · higher-order-decision-architect · fusion-sage · control-graph  
 
-*Last updated: 2026-08-12* (priority lock 2→3→1; Grok Bot swarm layer)  
+*Last updated: 2026-08-12* (priority lock 2→3→1; pain vs build order split; Grok Bot swarm layer)  
 *Provenance:* EVA session — hub-not-absorb (A) + cloud-flex modules + XChat bidirectional (host-decrypt, verb-first) + arch-machine groxy NotifyPort + **x.ai Grok Bot as outer swarm**.
 
 ---
@@ -157,10 +157,10 @@ flowchart TB
 
 | Project | Dist | Port shape | Must not |
 |---------|------|------------|----------|
-| life-os | D0 | Cards/sessions only | Merge vault into ensembly git |
-| premflow | D0 | Keep C CLI; ensembly view | Second todo DB |
+| life-os | D0 projection | Cards/sessions only (memory SoT — not runtime bytes shared with hub) | Merge vault into ensembly git; treat as day/HITL SoT |
+| premflow | D0 shared bytes | Keep C CLI; ensembly view | Second todo DB |
 | peram-vault | D1 | T2 ciphertext bridge | Eve/Bot plaintext vault |
-| **Grok Bot (x.ai)** | **D1–D2** | **Outer swarm** — named bots claim digital work via hub IR / MCP; bot↔bot handoff OK | Own day/T1/wealth/premflow SoT; unattended bank/email; upload full persona |
+| **Grok Bot (x.ai)** | **D1–D2** | **Outer swarm** — named bots claim via hub IR / MCP; v1 = one Bot propose; handoffs later | Own day/T1/wealth/premflow SoT; unattended bank/email; upload full persona |
 | groxy / arch-machine | D1–D2 | NotifyPort backend + host plane | Become day kernel |
 | wealth-core | D2 | Brief → HITL; cues out | Dual-write ledger from hub/chat/bot |
 | collab-finder | D2 | Later RO status IR | Write collab DB from ensembly |
@@ -192,10 +192,11 @@ sequenceDiagram
 
 | Layer | Owns | Must not |
 |-------|------|----------|
-| ensembly kernel | Day, HITL, schedules, **swarm claim graph** | Own wealth math / premflow format / PQ crypto |
-| **Grok Bot swarm** | Digital execution, drafts, routines, bot handoffs | Life SoT bytes; unattended finance mutate |
+| ensembly kernel | Day, HITL, schedules, **swarm claim graph**; **sole authoritative human inbox** for pending gates | Own wealth math / premflow format / PQ crypto |
+| **Grok Bot swarm** | Digital execution, drafts, routines; multi-bot handoffs only after v1 claim works | Life SoT bytes; unattended finance mutate; second approval ledger |
 | Module SoT | Its DB/files + domain tests | Accept free PATCH from chat/cloud/bot |
-| NotifyPort | Redacted outbound + verb inbound IR | Carry balances/paths/vault plaintext |
+| NotifyPort | Redacted outbound + verb inbound IR | Carry balances/paths/vault plaintext; invent pending state |
+| XChat / Eve | Thin remote controller for hub gates (nudge + verbs) | Second todo list or authoritative pending store |
 | Cloud bridge | Stateless delivery / cron | Second writer on T1/wealth/premflow |
 
 ---
@@ -293,9 +294,9 @@ flowchart LR
 
 | File / surface | Work |
 |----------------|------|
-| `ensembly/docs/` or `src/notify/` | Schema: `kind`, `redacted_body`, `gate_ids[]`, `dry_run` |
-| Privacy classifier | All outbound through classify |
-| `~/arch-machine` groxy | Document as first backend; ensembly CLI calls inject or shared bin |
+| `ensembly/docs/` or `src/notify/` | Schema v0: `kind`, `redacted_body`, `gate_ids[]`, `dry_run`. Production round-trip should add `schema_version`, `event_id` / idempotency, `source`, `severity`, `expires_at`, `correlation_id` |
+| Privacy classifier | All outbound through classify; reject matrix for finance/path/vault plaintext |
+| `~/arch-machine` groxy | First backend; ensembly CLI calls inject or shared bin. Full “port” only when a second producer needs the same contract |
 
 **Done when:** One command from ensembly posts a **redacted** turn nudge via groxy; fixture test rejects finance plaintext.
 
@@ -349,15 +350,17 @@ flowchart LR
 | Verb grammar | Allow-list only |
 | Registry | Optional `!alias` → ACP later (after verbs) |
 
-**Done when:** Operator can `approve <gateId>` from XChat; dual-writes ensembly IR; unknown verbs refuse loudly; no ledger write from free text.
+**Done when:** Operator can `approve <gateId>` from XChat; hub **resolves the gate in ensembly IR (single writer)**; modules receive allow-listed cues only after that hub event; unknown verbs refuse loudly; no ledger write from free text. (Not “dual-write” — chat never owns pending state.)
 
-**Verify:** Fixture ciphertext/verb table tests; manual live check on a non-finance gate first.
+**Verify:** Fixture ciphertext/verb table tests; idempotent re-approve no-ops; manual live check on a non-finance gate first.
 
 ---
 
-### SN-HUB-5 · peram-vault T2 bridge (read/seal only)
+### SN-HUB-5 · peram-vault T2 bridge (parked until seal pain)
 
 **Problem:** High-sens blobs need PQ seal path named in DECISIONS without reinventing crypto in the game loop.
+
+**Energy:** **Off active sprint** until a concrete seal need (not “because DECISIONS named it”). Footnote only on near gantt.
 
 **Done when:** ensembly can seal/status against peram-vault law with fixtures; Eve never sees plaintext.
 
@@ -365,43 +368,45 @@ flowchart LR
 
 ---
 
-### SN-HUB-6 · Eve cockpit behind NotifyPort (later)
+### SN-HUB-6 · Eve cockpit behind NotifyPort (footnote / later)
 
 **Problem:** Remote approve UX may outgrow chat verbs; Eve remains optional bridge per EVE-FIT.
 
-**Done when:** Same NotifyPort schema posts to Eve channel; privacy checklist green.
+**Energy:** **Not on critical path** until XChat verbs (SN-HUB-4) are lived ≥2 weeks. Same NotifyPort schema only — never a parallel human inbox.
 
-**Verify:** Per EVE-FIT done-when — after SN-HUB-2 stable.
+**Done when:** Same NotifyPort schema posts to Eve channel; privacy checklist green; pending gates still authoritative only in ensembly.
+
+**Verify:** Per EVE-FIT done-when — after SN-HUB-2 stable **and** SN-HUB-4 lived.
 
 ---
 
 ### SN-HUB-7 · Grok Bot swarm bind (x.ai)
 
-**Problem:** Named Grok Bots can already parallelize digital work, hand off, and run routines — but without hub IR they become a second life runtime (and share one cloud computer).
+**Problem:** Named Grok Bots can already parallelize digital work — but without hub IR they become a second life runtime (and share one cloud computer).
 
 ```mermaid
 flowchart LR
-  Hub[ensembly schedule claim] --> Bots[Grok Bot swarm]
-  Bots --> Hand[bot to bot handoff]
-  Hand --> Prop[propose or pending auth]
+  Hub[ensembly schedule claim] --> Bot[one named Grok Bot]
+  Bot --> Prop[propose or pending auth]
   Prop --> Hub
-  Bots -.->|refuse| SoT[T1 wealth premflow vault]
+  Bot -.->|refuse| SoT[T1 wealth premflow vault]
 ```
 
 | File / surface | Work |
 |----------------|------|
-| ensembly runtime / clone ledger | Roles: which Bot claims which digital chore class |
-| MCP / redacted tools | Bot calls hub read + propose; mutate only via HITL gates |
+| ensembly runtime / clone ledger | v1: **one** named Bot → one digital chore class |
+| MCP / redacted tools | Bot calls hub read + propose; mutate only via HITL gates; redaction on Bot-facing tools too |
 | Privacy + connector policy | No vault/bank/email unattended on shared Bot computer |
 | Docs | Fit note: Bot = swarm worker; ensembly = ship computer |
 
-**Adopt:** multi-bot digital chores, drafts, research, PR prep, schedule digests → hub.  
+**Adopt (v1):** one Bot, digital chore → hub-visible propose.  
+**Adopt (later):** multi-bot handoffs/routines only after v1 claim is daily and hub habit exists.  
 **Adapt:** Bot routines fire only after hub-compatible propose/HITL.  
-**Refuse:** Bot VM as day/T1/wealth/premflow SoT; unattended finance/email; full persona upload.
+**Refuse:** Bot VM as day/T1/wealth/premflow SoT; unattended finance/email; full persona upload; Bot chat as approval ledger.
 
-**Done when:** At least one named Bot completes a digital chore and lands a **hub-visible** propose or pending gate (fixture or live); no direct ledger write from Bot.
+**Done when:** At least one named Bot completes a digital chore and lands a **hub-visible** propose or pending gate (fixture or live); no direct ledger write from Bot; operator denies from turn (XChat verb only if SN-HUB-4 already live).
 
-**Verify:** Privacy checklist; dry-run path; operator can deny from turn/XChat verb.
+**Verify:** Privacy checklist; dry-run path; no multi-bot handoff required for v1.
 
 ---
 
@@ -418,15 +423,37 @@ flowchart LR
 | Park | thepulimaangani, shelf-life, adaptate, elomaxz, ask-grok, grokplans, testskills, latex-cv deep work |
 | Archive | Only with explicit operator list |
 
-**14-day+ priority order (locked 2026-08-12):**
+### Pain-order vs build-order (do not conflate)
+
+Two schedules. Agents that merge them invent parallel tracks.
+
+**A — Pain-order (operator energy, locked 2026-08-12 as 2 → 3 → 1)**
+
+| Rank | Choice | Human energy | During this phase |
+|------|--------|--------------|-------------------|
+| **1st** | **2** — wealth | wealth-core board/brief daily | **SN-HUB-1 only.** Zero bridge *feature* code. Optional 30s ensembly `turn` / `runtime status` as **status glance** only. Optional one non-finance light `groxy inject` (not a project). |
+| **2nd** | **3** — outbound nudge | Trust redacted digests via groxy | Practice inject; **SN-HUB-2 feature work** still closed until wealth primary living **and** (when building) after SN-HUB-3 dry-run trusted per build-order |
+| **3rd** | **1** — ensembly hub | Daily turn / runtime habit | Hub becomes ship computer; opens path to inbound verbs + Bot IR bind |
+
+**B — Build-order (bridge cards after SN-HUB-1 pass — serialize)**
+
+| Step | Card | Opens when | Note |
+|------|------|------------|------|
+| 0 | SN-HUB-1 | Now | No new code; practice gate |
+| 1 | SN-HUB-3 | Wealth primary living ≥5 days | Wealth brief → HITL dry-run |
+| 2 | SN-HUB-2 | SN-HUB-3 dry-run trusted | NotifyPort + groxy outbound (v0 may be thin inject + reject tests; full port when 2nd producer needs it) |
+| 3 | Hub habit | Outbound nudge trusted | Daily ensembly turn/runtime — not kernel stretch tourism |
+| 4 | SN-HUB-4 | Hub habit started + outbound trusted | XChat inbound verbs |
+| 5 | SN-HUB-7 | Hub habit exists | **One** Bot propose-only; handoffs later |
+| — | SN-HUB-5 / SN-HUB-6 | Concrete seal pain / XChat verbs lived | Parked off critical path |
 
 | Rank | Choice | Meaning | Bridge card when ready |
 |------|--------|---------|------------------------|
-| **1st** | **2** — wealth | wealth-core CLI / brief as daily practice; finance pain first | → **SN-HUB-3** |
-| **2nd** | **3** — outbound nudge | `groxy inject` + redacted digest | → **SN-HUB-2** |
+| **1st** | **2** — wealth | wealth-core CLI / brief as daily practice; finance pain first | → **SN-HUB-3** (after practice) |
+| **2nd** | **3** — outbound nudge | `groxy inject` + redacted digest | → **SN-HUB-2** (after SN-HUB-3 trusted) |
 | **3rd** | **1** — ensembly hub | daily turn / runtime habit | kernel [coming-next](coming-next.md) + hub daily practice |
 
-Serialize: do not start SN-HUB-2 feature work until wealth primary is living; do not deep-dive ensembly stretch until nudge is trusted. Light overlap (one inject while wealth is the live primary) OK; parallel *feature* builds on 2+3 refused.
+Serialize: do not start SN-HUB-2 **feature** work until wealth primary is living; do not parallelize SN-HUB-2 with SN-HUB-3; do not deep-dive ensembly stretch until nudge is trusted. Light inject during wealth primary OK. **One human inbox:** pending gates authoritative only in ensembly — XChat/Eve/Bot never hold a second pending store.
 
 ---
 
@@ -445,15 +472,15 @@ gantt
   section Hub habit
   ensembly turn runtime daily habit   :a0, after a2, 14d
   section Channel
-  SN-HUB-4 XChat inbound verbs    :a4, after a2, 14d
+  SN-HUB-4 XChat inbound verbs    :a4, after a0, 14d
   section Swarm
-  SN-HUB-7 Grok Bot swarm bind    :a7, after a0, 14d
-  section Later
-  SN-HUB-5 vault T2 bridge        :a5, after a3, 14d
-  SN-HUB-6 Eve behind NotifyPort  :a6, after a4, 21d
+  SN-HUB-7 one Bot propose bind   :a7, after a4, 14d
+  section Parked
+  SN-HUB-5 vault T2 until seal pain :a5, after a7, 1d
+  SN-HUB-6 Eve after verbs lived    :a6, after a7, 1d
 ```
 
-**Rule:** Order is **wealth → outbound NotifyPort → ensembly habit → inbound verbs → Grok Bot swarm bind**. Do not parallelize SN-HUB-2 feature work with SN-HUB-3. Bots may be *used* manually earlier; **IR bind** waits until hub habit exists.
+**Rule:** **Pain:** wealth practice → light/outbound nudge → ensembly habit. **Build after practice:** SN-HUB-3 → SN-HUB-2 → hub habit → SN-HUB-4 → SN-HUB-7 (one Bot). Do not parallelize SN-HUB-2 with SN-HUB-3. Bots may be *used* manually earlier; **IR bind** waits until hub habit exists. Eve + vault T2 stay parked.
 
 ---
 
@@ -481,6 +508,7 @@ gantt
 | 2026-08-12 | This spacemap created |
 | 2026-08-12 | Priority lock: **2 → 3 → 1** (wealth → outbound nudge → ensembly turn) |
 | 2026-08-12 | **Grok Bot (x.ai) added as outer swarm layer** — SN-HUB-7; not life SoT |
+| 2026-08-12 | Second-opinion + deep-research: **pain-order vs build-order** split; one human inbox; SN-HUB-4 single-writer wording; SN-HUB-5/6 off critical path; SN-HUB-7 v1 = one Bot; DECISIONS + clone ledger aligned |
 
 Kernel/game done log remains in [coming-next.md](coming-next.md) §11.
 
