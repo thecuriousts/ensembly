@@ -87,6 +87,7 @@ Continuous connectors and frequent event hooks are **ensembly trajectory**, not 
 | Operator turn, next physical / next auth, claim/complete, day plan, privacy classify, graph watch, game focus | **ensembly** |
 | Fleeting note, inbox task dump, pomo focus clock, evening micro-review | **premflow** (`~/.premflow/`) — not ensembly turn; portfolio card only at `~/life-os/Projects/premflow/` — see [PREMFLOW-FIT.md](PREMFLOW-FIT.md) |
 | Copilot implement on a portfolio code repo (proposal → PR) | **That repo** + life-os card/session update; law in [CLONE-COPILOT.md](CLONE-COPILOT.md) |
+| Open a satellite, read shared local SoT, gated cross-write | **Cluster** — [SATELLITE-CLUSTER.md](SATELLITE-CLUSTER.md) |
 | Clone’s own ideas / working schedule | **ensembly** `private/clone/` (local only) |
 | New experiment repo | New or existing satellite; **register** card in life-os; do **not** dump into ensembly kernel |
 | Continuous hooks, calendar/email *connectors* (read-mostly → HITL mutate) | **ensembly trajectory** (not implemented by this doc) |
