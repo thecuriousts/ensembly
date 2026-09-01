@@ -2,7 +2,7 @@
 
 **Status:** Binding product intent  
 **Audience:** Operator, implementers, coding agents  
-**Last updated:** 2026-07-13
+**Last updated:** 2026-09-01
 
 ---
 
@@ -15,6 +15,25 @@ This is **serious life infrastructure**. Not a joke. Not a hobby demo. Productio
 **Not the vault:** Portfolio memory of projects started and clustered lives in **`~/life-os`**. ensembly is the **digital clone** that works the digital layer continuously (or frequently) so you **pair** when you can — body work + HITL, not full-time digital thrash. Boundary: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md).
 
 **Copilot:** The clone may implement across portfolio code projects under human **proposal oversight** and **PR** flow (phase 1). See [CLONE-COPILOT.md](CLONE-COPILOT.md).
+
+---
+
+## Market position (operator OS)
+
+Mass-market agent services (Grok Bot, Grok Build, hosted chat codegen) optimize for **capture at scale**: draft, code, PR, routine chores for millions of users. They cannot go deep on one operator's day turn, pending gates, learned workflows, durable traces, or personal taste. That is not a gap to fix in their product. It is why agent APIs exist so you build your own kernel.
+
+**ensembly is that kernel.** Grok proposes. The hub holds **done / pending / denied** as durable data you own: wait snapshots, activity traces, `propose` → `approve` / `deny`, finance-shaped `digital-flow`, premflow capture. The payoff is less repeated token spend, fewer manual re-tweaks, and workflows you refine once instead of re-litigating every session. Time travel and replay ride the same ledger (partial today; binding direction).
+
+| Layer | Role | Product shape |
+|-------|------|----------------|
+| **Grok Bot / Build** | Black hole — capture, swarm workers, cloud drafts | Their service; not your SoT |
+| **ensembly** | White hole — emit, gates, history, operator craft | Personal kernel today; **productizable** as exportable hub law |
+| **Whitehole** (repo) | Typed launch / campaign chrome | Portfolio artifact; not a second inbox |
+| **Marketplace kit** | Escrow settle for paid agent work | Separate harness; not life loop |
+
+**Product thesis (one paragraph):** Agent platforms sell inference and surfaces. ensembly sells the **operator layer** underneath: one pending ledger, physical-first turn, privacy default-deny, and learned workflows encoded in structure instead of chat memory. Personal taste and craft live here first. Actualizing for others means exporting the **shape** (hub law, typed IR, HITL resume), not shipping this operator's private persona. Compete on depth per human, not on beating Grok at chat.
+
+See also: [arch-design/hub-constellation.md](arch-design/hub-constellation.md).
 
 ---
 
