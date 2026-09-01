@@ -77,6 +77,7 @@ function needsApprovalKind(kind) {
     'finance_transfer',
     'git_push_shared',
     'publish_private_data',
+    'swarm_emit',
   ].includes(kind);
 }
 

@@ -14,6 +14,7 @@ import {
   runPhysicalDecision,
   runGraphExport,
   runDigitalFlowCommand,
+  runSwarmProposeCommand,
   snapshotPath,
 } from '../src/turn.js';
 import { graphToWatchHtml } from '../src/graph.js';
@@ -48,6 +49,9 @@ function parseArgs(argv) {
     actor: 'operator',
     limit: 50,
     dbPath: null,
+    source: null,
+    summary: null,
+    area: null,
     positional: [],
   };
   for (let i = 3; i < argv.length; i++) {
@@ -62,6 +66,9 @@ function parseArgs(argv) {
     else if (a === '--kind') args.kind = argv[++i];
     else if (a === '--message' || a === '-m') args.message = argv[++i];
     else if (a === '--actor') args.actor = argv[++i];
+    else if (a === '--source') args.source = argv[++i];
+    else if (a === '--summary') args.summary = argv[++i];
+    else if (a === '--area') args.area = argv[++i];
     else if (a === '--limit') args.limit = Number(argv[++i]) || 50;
     else if (a === '--db') args.dbPath = argv[++i];
     else if (a === '--help' || a === '-h') args.help = true;
@@ -93,6 +100,7 @@ function help() {
 Commands:
   day                 Bounded day cycle → daily plan
   turn                Operator turn: next physical + next auth (+ lists)
+  propose <title>     Deposit swarm_emit gate from outer worker (Grok Bot → hub)
   approve <id>        Approve a pending authorization (resume wait snapshot)
   deny <id>           Deny a pending authorization
   claim <id>          Claim a physical pickup (body work in progress)
@@ -115,6 +123,9 @@ Options:
   --html              Write public/watch/index.html (graph command)
   --kind <type>       Filter/append kind (activity/log)
   --message|-m <text> Append message payload (activity/log)
+  --source <name>     Propose source label (default grok-bot)
+  --summary <text>    Propose detail line for auth reason
+  --area <name>       Propose area bucket (default Systems)
   --actor <name>      Actor label (default operator)
   --limit <n>         List limit (default 50)
   --db <path>         Override activity SQLite path
@@ -124,6 +135,7 @@ Examples:
   npm run swarm:turn
   node bin/swarm.js turn --fixture fixtures/state-sample.json --stdout
   node bin/swarm.js turn --fixture fixtures/state-sample.json --json --no-write
+  node bin/swarm.js propose "Publish kingsparrow explainer" --source grok-build --summary "static page ready"
   node bin/swarm.js approve auth-apply-high-signal
   node bin/swarm.js claim grocery-errand
   node bin/swarm.js complete grocery-errand
@@ -311,6 +323,45 @@ async function main() {
       console.log(`balance: ${result.context?.balance}`);
     }
     if (result.status !== 'DONE' && result.status !== 'HITL_PLAN_GATE') process.exit(2);
+    return;
+  }
+
+  if (args.cmd === 'propose') {
+    const title = args.message || args.positional.join(' ') || null;
+    if (!title) {
+      console.error('Usage: node bin/swarm.js propose <title> [--source grok-bot] [--summary text]');
+      process.exit(1);
+    }
+    const result = runSwarmProposeCommand({
+      ...common,
+      title,
+      summary: args.summary || undefined,
+      source: args.source || undefined,
+      area: args.area || undefined,
+      id: args.id || undefined,
+    });
+    if (args.json) {
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            ok: true,
+            propose: result.propose,
+            approval: result.approval,
+            pendingCount: (result.snapshot?.pending || []).filter((row) => row.status === 'pending')
+              .length,
+            snapshotPath: result.snapshotPath,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    } else {
+      console.log(
+        `PROPOSE_OK id=${result.propose.id} auth=${result.approval.id} source=${result.propose.source} status=pending`,
+      );
+      if (result.snapshotPath) console.log(`snapshot: ${result.snapshotPath}`);
+    }
+    console.error(`PROPOSE_GATE auth=${result.approval.id} title=${result.propose.title}`);
     return;
   }
 

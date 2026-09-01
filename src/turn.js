@@ -36,6 +36,11 @@ import {
   flowToApprovalRecord,
   runDigitalFlowCycle,
 } from './digital-flow.js';
+import {
+  createSwarmPropose,
+  swarmProposeToActionCandidate,
+  swarmProposeToApprovalRecord,
+} from './swarm-propose.js';
 
 /**
  * Parse HH:MM to minutes from midnight. Returns null if invalid.
@@ -817,4 +822,71 @@ export function runDigitalFlowCommand(cmd, opts = {}) {
   }
 
   return result;
+}
+
+/**
+ * Grok Bot / outer worker deposits a pending swarm_emit gate into wait-snapshot.
+ *
+ * @param {{
+ *   title: string,
+ *   summary?: string,
+ *   source?: string,
+ *   area?: string,
+ *   id?: string,
+ *   write?: boolean,
+ *   root?: string,
+ *   snapshotFile?: string,
+ *   now?: string,
+ * }} opts
+ */
+export function runSwarmProposeCommand(opts = {}) {
+  const root = opts.root || resolveRoot();
+  const now = opts.now || new Date().toISOString();
+  const title = String(opts.title || '').trim();
+  if (!title) {
+    throw new Error('propose requires a title');
+  }
+
+  const propose = createSwarmPropose({
+    title,
+    summary: opts.summary,
+    source: opts.source,
+    area: opts.area,
+    id: opts.id,
+    now,
+  });
+  const action = swarmProposeToActionCandidate(propose);
+  const approval = swarmProposeToApprovalRecord(propose);
+
+  const snapFile = snapshotPath(root, opts);
+  let snap = loadSnapshot(snapFile);
+  snap = upsertPendingFromActions([action], snap, { now });
+
+  const proposePath = path.join(root, 'private', 'state', 'swarm-proposes.json');
+  let proposeStore = { version: 1, proposes: [] };
+  if (fs.existsSync(proposePath)) {
+    try {
+      proposeStore = JSON.parse(fs.readFileSync(proposePath, 'utf8'));
+    } catch {
+      proposeStore = { version: 1, proposes: [] };
+    }
+  }
+  const others = (proposeStore.proposes || []).filter((row) => row.id !== propose.id);
+  proposeStore.proposes = [...others, propose];
+  proposeStore.updatedAt = now;
+
+  if (opts.write !== false) {
+    saveSnapshot(snapFile, snap);
+    fs.mkdirSync(path.dirname(proposePath), { recursive: true });
+    fs.writeFileSync(proposePath, `${JSON.stringify(proposeStore, null, 2)}\n`, 'utf8');
+  }
+
+  return {
+    propose,
+    approval,
+    action,
+    snapshot: snap,
+    snapshotPath: snapFile,
+    proposePath,
+  };
 }
