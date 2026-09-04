@@ -7,10 +7,14 @@ use peram_kernel::approvals::{
     list_pending, upsert_pending_from_actions, upsert_physical, Snapshot,
 };
 use peram_kernel::backup::{
-    create_backup_pack, read_backup_pack, restore_dry_run, write_backup_pack,
+    create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
 };
 use peram_kernel::digital_flow::{run_cycle, DigitalFlow};
 use peram_kernel::memory_sink::{MemorySink, DEFAULT_MEMORY_PATH};
+use peram_kernel::pulse_pack::{
+    export_pulse_pack, import_pulse_pack, local_pulse_status, read_pulse_pack, write_pulse_pack,
+    PulseExportOpts, PulseImportOpts, DEFAULT_ARCHIVE_SIDECAR,
+};
 use peram_kernel::msg_bus::ManualCmd;
 use peram_kernel::runtime::Runtime;
 use peram_kernel::store::OpsStore;
@@ -74,7 +78,7 @@ enum Commands {
         #[command(subcommand)]
         sub: DfCmd,
     },
-    /// Create sealed backup pack of T1 ops
+    /// Create sealed backup pack of T1 ops (uses OpsBundle inside BackupPack)
     Backup {
         #[arg(long)]
         out: PathBuf,
@@ -90,10 +94,93 @@ enum Commands {
         #[arg(long)]
         unlock: Option<String>,
     },
+    /// Apply sealed backup pack into primary ops DB (canonical host only)
+    #[command(name = "restore-apply")]
+    RestoreApply {
+        #[arg(long)]
+        pack: PathBuf,
+        #[arg(long)]
+        unlock: Option<String>,
+        /// Required — destructive write to peram-ops.sqlite
+        #[arg(long)]
+        i_understand: bool,
+    },
+    /// Unsealed T1 ops bundle export/import (peram-ops-bundle-v1 — not pulse)
+    #[command(name = "ops-bundle")]
+    OpsBundle {
+        #[command(subcommand)]
+        sub: OpsBundleCmd,
+    },
+    /// Portable pulse + memory sync (laptop ↔ bot; no dual-writer ops)
+    #[command(name = "pulse-pack")]
+    PulsePack {
+        #[command(subcommand)]
+        sub: PulsePackCmd,
+    },
     /// Issue #1 control plane: S+G+CP, MsgBus, HITL/HOOTL tick
     Runtime {
         #[command(subcommand)]
         sub: RuntimeCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum OpsBundleCmd {
+    /// Export unsealed ops bundle JSON from peram-ops.sqlite
+    Export {
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Import ops bundle (canonical host / disaster recovery — not laptop sync)
+    Import {
+        #[arg(long)]
+        bundle: PathBuf,
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum PulsePackCmd {
+    /// Export episodic memory + optional audit archive slice to a portable pack
+    Export {
+        #[arg(long)]
+        out: PathBuf,
+        /// Include audit archive slice from ops DB (read-only export)
+        #[arg(long, default_value_t = false)]
+        include_archive: bool,
+        /// Max audit rows when --include-archive (default 200)
+        #[arg(long, default_value_t = 200)]
+        archive_limit: usize,
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Import/merge a pack into local memory (CRDT merge; archive → sidecar JSONL)
+    Import {
+        #[arg(long)]
+        pack: PathBuf,
+        /// Validate only — do not write local stores
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+        /// Archive sidecar path (default data/local/pulse-archive.jsonl)
+        #[arg(long)]
+        archive_sidecar: Option<PathBuf>,
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Print pack or local pulse status (counts, last_seen, hash)
+    Status {
+        /// Inspect a pack file instead of local stores
+        #[arg(long)]
+        pack: Option<PathBuf>,
+        #[arg(long)]
+        archive_sidecar: Option<PathBuf>,
+        #[arg(long, default_value_t = false)]
+        json: bool,
     },
 }
 
@@ -540,6 +627,216 @@ fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&report)?);
             if !report.ok {
                 std::process::exit(2);
+            }
+        }
+        Commands::RestoreApply {
+            pack,
+            unlock,
+            i_understand,
+        } => {
+            if !i_understand {
+                bail!(
+                    "restore-apply is destructive — re-run with --i-understand. \
+                     Canonical host only; laptop must not dual-write ops SoT."
+                );
+            }
+            let store = OpsStore::open(&db_path)?;
+            let key = unlock_material(&unlock)?;
+            let pack = read_backup_pack(&pack)?;
+            restore_apply(&store, &pack, &key)?;
+            println!(
+                "RESTORE_APPLY_OK db={:?} keys={}",
+                store.path(),
+                store.export_bundle()?.kv.len()
+            );
+            eprintln!("RESTORE_OK apply db={}", store.path().display());
+        }
+        Commands::OpsBundle { sub } => match sub {
+            OpsBundleCmd::Export { out, json } => {
+                let store = OpsStore::open(&db_path)?;
+                let bundle = store.export_bundle()?;
+                OpsStore::write_bundle_file(&out, &bundle)?;
+                let body = serde_json::json!({
+                    "ok": true,
+                    "cmd": "ops-bundle.export",
+                    "format": bundle.format,
+                    "schema_version": bundle.schema_version,
+                    "kv_keys": bundle.kv.len(),
+                    "path": out,
+                    "db": store.path(),
+                });
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&body)?);
+                } else {
+                    println!(
+                        "OPS_BUNDLE_EXPORT_OK path={out:?} keys={} schema={}",
+                        bundle.kv.len(),
+                        bundle.schema_version
+                    );
+                }
+            }
+            OpsBundleCmd::Import { bundle, dry_run, json } => {
+                let read = OpsStore::read_bundle_file(&bundle)?;
+                if dry_run {
+                    let temp = OpsStore::open_in_memory()?;
+                    temp.import_bundle(&read)?;
+                    let body = serde_json::json!({
+                        "ok": true,
+                        "cmd": "ops-bundle.import",
+                        "dry_run": true,
+                        "kv_keys": read.kv.len(),
+                        "message": "dry-run OK — primary store not modified",
+                    });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!(
+                            "OPS_BUNDLE_IMPORT_DRY_RUN_OK keys={} (primary not modified)",
+                            read.kv.len()
+                        );
+                    }
+                } else {
+                    let store = OpsStore::open(&db_path)?;
+                    store.import_bundle(&read)?;
+                    let body = serde_json::json!({
+                        "ok": true,
+                        "cmd": "ops-bundle.import",
+                        "dry_run": false,
+                        "kv_keys": read.kv.len(),
+                        "db": store.path(),
+                    });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!(
+                            "OPS_BUNDLE_IMPORT_OK db={:?} keys={}",
+                            store.path(),
+                            read.kv.len()
+                        );
+                    }
+                    eprintln!("OPS_BUNDLE_OK import keys={}", read.kv.len());
+                }
+            }
+        },
+        Commands::PulsePack { sub } => {
+            let memory_path = cli
+                .memory
+                .clone()
+                .unwrap_or_else(|| PathBuf::from(DEFAULT_MEMORY_PATH));
+            let archive_sidecar = PathBuf::from(DEFAULT_ARCHIVE_SIDECAR);
+            match sub {
+                PulsePackCmd::Export {
+                    out,
+                    include_archive,
+                    archive_limit,
+                    json,
+                } => {
+                    let ops_db = if include_archive {
+                        Some(db_path.clone())
+                    } else {
+                        None
+                    };
+                    let pack = export_pulse_pack(&PulseExportOpts {
+                        memory_path: memory_path.clone(),
+                        archive_sidecar: archive_sidecar.clone(),
+                        ops_db,
+                        archive_limit,
+                        source_host: std::env::var("HOSTNAME")
+                            .or_else(|_| std::env::var("COMPUTERNAME"))
+                            .unwrap_or_else(|_| "unknown".into()),
+                    })?;
+                    write_pulse_pack(&out, &pack)?;
+                    let status = pack.status();
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&status)?);
+                    } else {
+                        println!(
+                            "PULSE_EXPORT_OK path={out:?} traces={} archive={} hash={} last_seen={}",
+                            status.memory_trace_count,
+                            status.archive_event_count,
+                            status.pack_hash,
+                            status
+                                .last_seen
+                                .map(|t| t.to_rfc3339())
+                                .unwrap_or_else(|| "-".into())
+                        );
+                    }
+                    eprintln!(
+                        "PULSE_OK export traces={} archive={}",
+                        status.memory_trace_count,
+                        status.archive_event_count
+                    );
+                }
+                PulsePackCmd::Import {
+                    pack,
+                    dry_run,
+                    archive_sidecar: archive_path,
+                    json,
+                } => {
+                    let read = read_pulse_pack(&pack)?;
+                    let report = import_pulse_pack(
+                        &read,
+                        &PulseImportOpts {
+                            memory_path: memory_path.clone(),
+                            archive_sidecar: archive_path
+                                .clone()
+                                .unwrap_or_else(|| archive_sidecar.clone()),
+                            dry_run,
+                        },
+                    )?;
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&report)?);
+                    } else {
+                        println!(
+                            "PULSE_IMPORT_OK dry_run={} traces_before={} traces_after={} archive_appended={} hash={}",
+                            report.dry_run,
+                            report.memory_trajectory_before,
+                            report.memory_trajectory_after,
+                            report.archive_appended,
+                            report.pack_hash
+                        );
+                    }
+                    eprintln!(
+                        "PULSE_OK import dry_run={} after={}",
+                        report.dry_run,
+                        report.memory_trajectory_after
+                    );
+                }
+                PulsePackCmd::Status {
+                    pack,
+                    archive_sidecar: archive_path,
+                    json,
+                } => {
+                    let sidecar = archive_path.unwrap_or(archive_sidecar);
+                    let from_pack = pack.is_some();
+                    let status = if let Some(p) = pack {
+                        read_pulse_pack(&p)?.status()
+                    } else {
+                        local_pulse_status(&memory_path, &sidecar)?
+                    };
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&status)?);
+                    } else {
+                        println!(
+                            "# Pulse status — {}",
+                            if from_pack { "pack" } else { "local" }
+                        );
+                        println!("format: {}", status.format);
+                        println!("traces: {}", status.memory_trace_count);
+                        println!("archive: {}", status.archive_event_count);
+                        println!(
+                            "last_seen: {}",
+                            status
+                                .last_seen
+                                .map(|t| t.to_rfc3339())
+                                .unwrap_or_else(|| "-".into())
+                        );
+                        println!("hash: {}", status.pack_hash);
+                        if let Some(h) = &status.memory_hash {
+                            println!("memory_hash: {}", h);
+                        }
+                    }
+                }
             }
         }
         Commands::Runtime { sub } => {

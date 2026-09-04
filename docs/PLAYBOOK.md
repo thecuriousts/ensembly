@@ -58,6 +58,73 @@ cargo run -p peram-kernel -- runtime status        # regime Hootl when gates cle
 
 Durable store: `data/local/peram-ops.sqlite` (gitignored). `--json` appends a trailing `RUNTIME_OK …` line.
 
+### 1.2 Pulse + memory sync (bot ↔ laptop)
+
+**Two pack layers (do not conflate):**
+
+| Layer | Format | CLI | Laptop may import? |
+|-------|--------|-----|-------------------|
+| **T1 ops** | `peram-backup-pack-v1` (sealed) · `peram-ops-bundle-v1` (plain) | `backup` · `restore-dry-run` · `restore-apply --i-understand` · `ops-bundle` | **No** — canonical host only |
+| **Pulse** | `peram-pulse-pack-v1` (`memory_traces` + `archive_events`) | `pulse-pack export\|import\|status` | **Yes** — memory CRDT merge only |
+
+**Topology (binding):** Grok Bot computer = **canonical kernel host** (single writer on `peram-ops.sqlite`). Laptop = **client/offline** — imports pulse packs, never dual-writes ops. Sync is **file copy** of portable packs (USB, shared folder, `scp`); no live multi-master.
+
+| Host | Role | Writable |
+|------|------|----------|
+| **Grok Bot** | Kernel SoT, runtime tick, sealed T1 backup | `data/local/peram-ops.sqlite`, `data/local/peram-memory.json` |
+| **Laptop** | Game, Grok Build, offline reflect | `data/local/peram-memory.json` (CRDT merge), `data/local/pulse-archive.jsonl` (append-only archive sidecar) |
+
+**Pack paths (gitignored):**
+
+| Path | Contents |
+|------|----------|
+| `data/local/peram-memory.json` | Episodic CRDT (merge on import) |
+| `data/local/pulse-archive.jsonl` | Optional audit/archive slice from bot (nat_key dedupe) |
+| `~/sync/pulse/` (or any operator folder) | Staging for `*.pulse.json` packs between hosts |
+
+**Recipe — bot exports after a session:**
+
+```bash
+# On Grok Bot (canonical host)
+cargo run -p peram-kernel -- pulse-pack export \
+  --out ~/sync/pulse/bot-$(date +%Y%m%d).pulse.json \
+  --include-archive
+cargo run -p peram-kernel -- pulse-pack status --pack ~/sync/pulse/bot-$(date +%Y%m%d).pulse.json
+```
+
+**Recipe — laptop imports (idempotent CRDT merge):**
+
+```bash
+# Copy pack from bot (example: scp, USB, shared folder — no Tailscale required)
+cp /path/from/bot/bot-*.pulse.json ~/sync/pulse/
+
+# Dry-run first
+cargo run -p peram-kernel -- pulse-pack import \
+  --pack ~/sync/pulse/bot-*.pulse.json --dry-run
+
+# Merge into local memory
+cargo run -p peram-kernel -- pulse-pack import \
+  --pack ~/sync/pulse/bot-*.pulse.json
+
+cargo run -p peram-kernel -- pulse-pack status
+cargo run -p peram-kernel -- runtime reflect   # optional: coherence over merged trajectory
+```
+
+**Laptop → bot (memory only):** export on laptop, copy pack to bot, `pulse-pack import` on bot. Ops ledger stays on bot; do **not** run `restore-apply` or `ops-bundle import` on laptop.
+
+**Bot ops backup (separate from pulse):**
+
+```bash
+# Sealed T1 snapshot (canonical host)
+cargo run -p peram-kernel -- backup --out ~/sync/ops/ops-$(date +%Y%m%d).peram.json --unlock "$PERAM_UNLOCK"
+cargo run -p peram-kernel -- restore-dry-run --pack ~/sync/ops/ops-*.peram.json --unlock "$PERAM_UNLOCK"
+
+# Plain bundle (same OpsBundle inside BackupPack — debugging / migration)
+cargo run -p peram-kernel -- ops-bundle export --out ~/sync/ops/ops-bundle.json
+```
+
+`peram-mcp` remains **read-only export** — pulse packs are the portable path for cross-host memory sync.
+
 ---
 
 ## 2. How to play Game of Peram (laptop)
