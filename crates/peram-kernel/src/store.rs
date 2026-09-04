@@ -17,6 +17,8 @@ pub enum StoreError {
     Json(#[from] serde_json::Error),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+    #[error("bundle: {0}")]
+    Bundle(String),
 }
 
 pub struct OpsStore {
@@ -261,6 +263,29 @@ impl OpsStore {
         self.audit("bundle.import", &format!("keys={}", bundle.kv.len()))?;
         Ok(())
     }
+
+    /// Write unsealed ops bundle JSON (same shape as inside `BackupPack`).
+    pub fn write_bundle_file(path: impl AsRef<Path>, bundle: &OpsBundle) -> Result<(), StoreError> {
+        if let Some(parent) = path.as_ref().parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(bundle)?;
+        std::fs::write(path, json)?;
+        Ok(())
+    }
+
+    /// Read unsealed ops bundle JSON.
+    pub fn read_bundle_file(path: impl AsRef<Path>) -> Result<OpsBundle, StoreError> {
+        let raw = std::fs::read_to_string(path)?;
+        let bundle: OpsBundle = serde_json::from_str(&raw)?;
+        if bundle.format != "peram-ops-bundle-v1" {
+            return Err(StoreError::Bundle(format!(
+                "unexpected bundle format {}",
+                bundle.format
+            )));
+        }
+        Ok(bundle)
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -308,6 +333,21 @@ mod tests {
         assert_eq!(bundle.format, "peram-ops-bundle-v1");
         let b = OpsStore::open_in_memory().unwrap();
         b.import_bundle(&bundle).unwrap();
+        assert!(b.load_snapshot().unwrap().is_some());
+    }
+
+    #[test]
+    fn bundle_file_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ops-bundle.json");
+        let a = OpsStore::open_in_memory().unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 7, 15, 12, 0, 0).unwrap();
+        a.save_snapshot(&Snapshot::empty(now)).unwrap();
+        let bundle = a.export_bundle().unwrap();
+        OpsStore::write_bundle_file(&path, &bundle).unwrap();
+        let read = OpsStore::read_bundle_file(&path).unwrap();
+        let b = OpsStore::open_in_memory().unwrap();
+        b.import_bundle(&read).unwrap();
         assert!(b.load_snapshot().unwrap().is_some());
     }
 }

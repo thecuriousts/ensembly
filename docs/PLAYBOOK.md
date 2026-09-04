@@ -60,7 +60,14 @@ Durable store: `data/local/peram-ops.sqlite` (gitignored). `--json` appends a tr
 
 ### 1.2 Pulse + memory sync (bot ↔ laptop)
 
-**Topology (binding):** Grok Bot computer = **canonical kernel host** (single writer on `peram-ops.sqlite`). Laptop = **client/offline** — imports memory packs, never dual-writes ops. Sync is **file copy** of portable packs (USB, shared folder, `scp`); no live multi-master.
+**Two pack layers (do not conflate):**
+
+| Layer | Format | CLI | Laptop may import? |
+|-------|--------|-----|-------------------|
+| **T1 ops** | `peram-backup-pack-v1` (sealed) · `peram-ops-bundle-v1` (plain) | `backup` · `restore-dry-run` · `restore-apply --i-understand` · `ops-bundle` | **No** — canonical host only |
+| **Pulse** | `peram-pulse-pack-v1` (`memory_traces` + `archive_events`) | `pulse-pack export\|import\|status` | **Yes** — memory CRDT merge only |
+
+**Topology (binding):** Grok Bot computer = **canonical kernel host** (single writer on `peram-ops.sqlite`). Laptop = **client/offline** — imports pulse packs, never dual-writes ops. Sync is **file copy** of portable packs (USB, shared folder, `scp`); no live multi-master.
 
 | Host | Role | Writable |
 |------|------|----------|
@@ -103,9 +110,20 @@ cargo run -p peram-kernel -- pulse-pack status
 cargo run -p peram-kernel -- runtime reflect   # optional: coherence over merged trajectory
 ```
 
-**Laptop → bot (memory only):** export on laptop, copy pack to bot, `pulse-pack import` on bot. Ops ledger stays on bot; do **not** import sealed `peram backup` packs on laptop as a second writer.
+**Laptop → bot (memory only):** export on laptop, copy pack to bot, `pulse-pack import` on bot. Ops ledger stays on bot; do **not** run `restore-apply` or `ops-bundle import` on laptop.
 
-`peram-mcp` remains **read-only export** — packs are the portable path for cross-host memory sync.
+**Bot ops backup (separate from pulse):**
+
+```bash
+# Sealed T1 snapshot (canonical host)
+cargo run -p peram-kernel -- backup --out ~/sync/ops/ops-$(date +%Y%m%d).peram.json --unlock "$PERAM_UNLOCK"
+cargo run -p peram-kernel -- restore-dry-run --pack ~/sync/ops/ops-*.peram.json --unlock "$PERAM_UNLOCK"
+
+# Plain bundle (same OpsBundle inside BackupPack — debugging / migration)
+cargo run -p peram-kernel -- ops-bundle export --out ~/sync/ops/ops-bundle.json
+```
+
+`peram-mcp` remains **read-only export** — pulse packs are the portable path for cross-host memory sync.
 
 ---
 

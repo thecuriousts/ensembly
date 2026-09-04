@@ -1,9 +1,11 @@
-//! Portable pulse + memory sync packs — export/replica path for laptop ↔ bot.
+//! Portable **pulse** pack — memory_traces + archive_events layer.
 //!
-//! Law: **one writer** on `peram-ops.sqlite` (canonical kernel host). Packs carry
-//! episodic memory (CRDT) and optional read-only archive slices — never dual-live
-//! ops mutation. Import merges into `peram-memory.json` via CRDT `merge`; archive
-//! rows land in a sidecar JSONL (`pulse-archive.jsonl`), not the ops ledger.
+//! This is **not** T1 ops backup. For `peram-ops.sqlite` use existing
+//! `OpsStore::export_bundle` / `BackupPack` (`peram backup`, `peram ops-bundle`).
+//!
+//! Law: **one writer** on `peram-ops.sqlite` (canonical kernel host). Pulse packs
+//! carry episodic learning + archive slices only. Import merges into
+//! `peram-memory.json` via CRDT `merge`; archive rows land in sidecar JSONL.
 
 use chrono::{DateTime, Utc};
 use peram_memory::{CrdtDocument, TrajectoryEntry, TrajectoryType};
@@ -79,6 +81,8 @@ pub struct PulsePack {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PulseExportOpts {
     pub memory_path: PathBuf,
+    pub archive_sidecar: PathBuf,
+    /// Read-only: pull audit tail from canonical ops DB (bot host only).
     pub ops_db: Option<PathBuf>,
     pub archive_limit: usize,
     pub source_host: String,
@@ -126,13 +130,17 @@ impl PulsePack {
     ) -> Self {
         let memory_traces = traces_from_document(doc);
         let mem_hash = doc.hash.clone();
-        let pack_hash = compute_pack_hash(&memory_traces, &archive, Some(&mem_hash));
+        let pack_hash = compute_pack_hash(
+            &memory_traces,
+            &archive,
+            effective_memory_hash(Some(&mem_hash)),
+        );
         Self {
             format: PULSE_PACK_FORMAT.into(),
             exported_at: Utc::now(),
             source_host: source_host.into(),
             pack_hash,
-            memory_hash: Some(mem_hash),
+            memory_hash: effective_memory_hash(Some(&mem_hash)).map(str::to_string),
             memory_traces,
             archive_events: archive,
             memory_crdt: Some(doc.clone()),
@@ -143,9 +151,12 @@ impl PulsePack {
         let mem_hash = self
             .memory_hash
             .as_deref()
-            .or_else(|| self.memory_crdt.as_ref().map(|d| d.hash.as_str()))
-            .filter(|h| !h.is_empty());
-        let expected = compute_pack_hash(&self.memory_traces, &self.archive_events, mem_hash);
+            .or_else(|| self.memory_crdt.as_ref().map(|d| d.hash.as_str()));
+        let expected = compute_pack_hash(
+            &self.memory_traces,
+            &self.archive_events,
+            effective_memory_hash(mem_hash),
+        );
         if expected != self.pack_hash {
             return Err(PulsePackError::Pack(format!(
                 "pack_hash mismatch: expected {expected}, got {}",
@@ -269,13 +280,55 @@ pub fn export_pulse_pack(opts: &PulseExportOpts) -> Result<PulsePack, PulsePackE
         None => CrdtDocument::new("peram-swarm"),
     };
 
-    let archive = if let Some(db_path) = &opts.ops_db {
-        export_archive_from_ops(db_path, opts.archive_limit)?
-    } else {
-        vec![]
-    };
+    let mut archive = load_archive_sidecar(&opts.archive_sidecar)?;
+    if let Some(db_path) = &opts.ops_db {
+        let audit = export_archive_from_ops(db_path, opts.archive_limit)?;
+        archive = merge_archive_events(archive, audit);
+    }
 
     Ok(PulsePack::from_memory(&doc, archive, &opts.source_host))
+}
+
+fn load_archive_sidecar(path: &Path) -> Result<Vec<ArchiveEvent>, PulsePackError> {
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let file = fs::File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut out = vec![];
+    for line in reader.lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Ok(event) = serde_json::from_str::<ArchiveEvent>(&line) {
+            out.push(event);
+        }
+    }
+    Ok(out)
+}
+
+fn merge_archive_events(
+    mut base: Vec<ArchiveEvent>,
+    more: Vec<ArchiveEvent>,
+) -> Vec<ArchiveEvent> {
+    let mut index: HashMap<String, usize> = HashMap::new();
+    for (i, e) in base.iter().enumerate() {
+        index.insert(e.nat_key.clone(), i);
+    }
+    for event in more {
+        match index.get(&event.nat_key) {
+            Some(&i) if base[i].ts >= event.ts => {}
+            Some(&i) => {
+                base[i] = event;
+            }
+            None => {
+                index.insert(event.nat_key.clone(), base.len());
+                base.push(event);
+            }
+        }
+    }
+    base
 }
 
 fn export_archive_from_ops(
@@ -400,6 +453,10 @@ pub fn local_pulse_status(
         memory_trajectory_count: doc.as_ref().map(|d| d.trajectory.len()),
         memory_hash: mem_hash,
     })
+}
+
+fn effective_memory_hash(h: Option<&str>) -> Option<&str> {
+    h.filter(|s| !s.is_empty())
 }
 
 fn compute_pack_hash(
@@ -567,6 +624,7 @@ mod tests {
 
         let pack = export_pulse_pack(&PulseExportOpts {
             memory_path: mem_path.clone(),
+            archive_sidecar: archive_path.clone(),
             ops_db: None,
             archive_limit: 0,
             source_host: "grok-bot".into(),
@@ -620,6 +678,7 @@ mod tests {
 
         let bot_pack = export_pulse_pack(&PulseExportOpts {
             memory_path: bot_mem.clone(),
+            archive_sidecar: archive.clone(),
             ops_db: None,
             archive_limit: 0,
             source_host: "bot".into(),
@@ -627,6 +686,7 @@ mod tests {
         .unwrap();
         let laptop_pack = export_pulse_pack(&PulseExportOpts {
             memory_path: laptop_mem.clone(),
+            archive_sidecar: archive.clone(),
             ops_db: None,
             archive_limit: 0,
             source_host: "laptop".into(),
@@ -691,7 +751,10 @@ mod tests {
         let mut pack_with_update = pack;
         pack_with_update.memory_traces = vec![sample_trace("key-1", newer, "new")];
         pack_with_update.memory_crdt = Some(peer_doc);
-        pack_with_update.memory_hash = pack_with_update.memory_crdt.as_ref().map(|d| d.hash.clone());
+        pack_with_update.memory_hash = pack_with_update
+            .memory_crdt
+            .as_ref()
+            .and_then(|d| effective_memory_hash(Some(&d.hash)).map(str::to_string));
         pack_with_update.pack_hash = compute_pack_hash(
             &pack_with_update.memory_traces,
             &pack_with_update.archive_events,
@@ -714,6 +777,47 @@ mod tests {
             .unwrap();
         let entry = loaded.trajectory.get("key-1").unwrap();
         assert_eq!(entry.content["from"], "new");
+    }
+
+    #[test]
+    fn archive_sidecar_roundtrip_on_import() {
+        let dir = tempfile::tempdir().unwrap();
+        let mem_path = dir.path().join("mem.json");
+        let archive_path = dir.path().join("archive.jsonl");
+
+        let ts = Utc.with_ymd_and_hms(2026, 9, 4, 8, 0, 0).unwrap();
+        let event = ArchiveEvent {
+            nat_key: "pulse:test:1".into(),
+            ts,
+            kind: "observation".into(),
+            payload: serde_json::json!({"note": "archive"}),
+        };
+        let line = serde_json::to_string(&event).unwrap();
+        fs::write(&archive_path, format!("{line}\n")).unwrap();
+
+        let pack = export_pulse_pack(&PulseExportOpts {
+            memory_path: mem_path.clone(),
+            archive_sidecar: archive_path.clone(),
+            ops_db: None,
+            archive_limit: 0,
+            source_host: "bot".into(),
+        })
+        .unwrap();
+        assert_eq!(pack.archive_events.len(), 1);
+
+        let dest_archive = dir.path().join("dest-archive.jsonl");
+        import_pulse_pack(
+            &pack,
+            &PulseImportOpts {
+                memory_path: mem_path,
+                archive_sidecar: dest_archive.clone(),
+                dry_run: false,
+            },
+        )
+        .unwrap();
+        let loaded = load_archive_sidecar(&dest_archive).unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].nat_key, "pulse:test:1");
     }
 
     #[test]

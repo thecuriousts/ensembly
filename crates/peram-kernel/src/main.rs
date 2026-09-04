@@ -7,7 +7,7 @@ use peram_kernel::approvals::{
     list_pending, upsert_pending_from_actions, upsert_physical, Snapshot,
 };
 use peram_kernel::backup::{
-    create_backup_pack, read_backup_pack, restore_dry_run, write_backup_pack,
+    create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
 };
 use peram_kernel::digital_flow::{run_cycle, DigitalFlow};
 use peram_kernel::memory_sink::{MemorySink, DEFAULT_MEMORY_PATH};
@@ -78,7 +78,7 @@ enum Commands {
         #[command(subcommand)]
         sub: DfCmd,
     },
-    /// Create sealed backup pack of T1 ops
+    /// Create sealed backup pack of T1 ops (uses OpsBundle inside BackupPack)
     Backup {
         #[arg(long)]
         out: PathBuf,
@@ -94,6 +94,23 @@ enum Commands {
         #[arg(long)]
         unlock: Option<String>,
     },
+    /// Apply sealed backup pack into primary ops DB (canonical host only)
+    #[command(name = "restore-apply")]
+    RestoreApply {
+        #[arg(long)]
+        pack: PathBuf,
+        #[arg(long)]
+        unlock: Option<String>,
+        /// Required — destructive write to peram-ops.sqlite
+        #[arg(long)]
+        i_understand: bool,
+    },
+    /// Unsealed T1 ops bundle export/import (peram-ops-bundle-v1 — not pulse)
+    #[command(name = "ops-bundle")]
+    OpsBundle {
+        #[command(subcommand)]
+        sub: OpsBundleCmd,
+    },
     /// Portable pulse + memory sync (laptop ↔ bot; no dual-writer ops)
     #[command(name = "pulse-pack")]
     PulsePack {
@@ -104,6 +121,26 @@ enum Commands {
     Runtime {
         #[command(subcommand)]
         sub: RuntimeCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum OpsBundleCmd {
+    /// Export unsealed ops bundle JSON from peram-ops.sqlite
+    Export {
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
+    /// Import ops bundle (canonical host / disaster recovery — not laptop sync)
+    Import {
+        #[arg(long)]
+        bundle: PathBuf,
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+        #[arg(long, default_value_t = false)]
+        json: bool,
     },
 }
 
@@ -592,6 +629,95 @@ fn main() -> Result<()> {
                 std::process::exit(2);
             }
         }
+        Commands::RestoreApply {
+            pack,
+            unlock,
+            i_understand,
+        } => {
+            if !i_understand {
+                bail!(
+                    "restore-apply is destructive — re-run with --i-understand. \
+                     Canonical host only; laptop must not dual-write ops SoT."
+                );
+            }
+            let store = OpsStore::open(&db_path)?;
+            let key = unlock_material(&unlock)?;
+            let pack = read_backup_pack(&pack)?;
+            restore_apply(&store, &pack, &key)?;
+            println!(
+                "RESTORE_APPLY_OK db={:?} keys={}",
+                store.path(),
+                store.export_bundle()?.kv.len()
+            );
+            eprintln!("RESTORE_OK apply db={}", store.path().display());
+        }
+        Commands::OpsBundle { sub } => match sub {
+            OpsBundleCmd::Export { out, json } => {
+                let store = OpsStore::open(&db_path)?;
+                let bundle = store.export_bundle()?;
+                OpsStore::write_bundle_file(&out, &bundle)?;
+                let body = serde_json::json!({
+                    "ok": true,
+                    "cmd": "ops-bundle.export",
+                    "format": bundle.format,
+                    "schema_version": bundle.schema_version,
+                    "kv_keys": bundle.kv.len(),
+                    "path": out,
+                    "db": store.path(),
+                });
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&body)?);
+                } else {
+                    println!(
+                        "OPS_BUNDLE_EXPORT_OK path={out:?} keys={} schema={}",
+                        bundle.kv.len(),
+                        bundle.schema_version
+                    );
+                }
+            }
+            OpsBundleCmd::Import { bundle, dry_run, json } => {
+                let read = OpsStore::read_bundle_file(&bundle)?;
+                if dry_run {
+                    let temp = OpsStore::open_in_memory()?;
+                    temp.import_bundle(&read)?;
+                    let body = serde_json::json!({
+                        "ok": true,
+                        "cmd": "ops-bundle.import",
+                        "dry_run": true,
+                        "kv_keys": read.kv.len(),
+                        "message": "dry-run OK — primary store not modified",
+                    });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!(
+                            "OPS_BUNDLE_IMPORT_DRY_RUN_OK keys={} (primary not modified)",
+                            read.kv.len()
+                        );
+                    }
+                } else {
+                    let store = OpsStore::open(&db_path)?;
+                    store.import_bundle(&read)?;
+                    let body = serde_json::json!({
+                        "ok": true,
+                        "cmd": "ops-bundle.import",
+                        "dry_run": false,
+                        "kv_keys": read.kv.len(),
+                        "db": store.path(),
+                    });
+                    if json {
+                        println!("{}", serde_json::to_string_pretty(&body)?);
+                    } else {
+                        println!(
+                            "OPS_BUNDLE_IMPORT_OK db={:?} keys={}",
+                            store.path(),
+                            read.kv.len()
+                        );
+                    }
+                    eprintln!("OPS_BUNDLE_OK import keys={}", read.kv.len());
+                }
+            }
+        },
         Commands::PulsePack { sub } => {
             let memory_path = cli
                 .memory
@@ -612,6 +738,7 @@ fn main() -> Result<()> {
                     };
                     let pack = export_pulse_pack(&PulseExportOpts {
                         memory_path: memory_path.clone(),
+                        archive_sidecar: archive_sidecar.clone(),
                         ops_db,
                         archive_limit,
                         source_host: std::env::var("HOSTNAME")
