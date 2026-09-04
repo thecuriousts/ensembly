@@ -1,8 +1,8 @@
 # peram-kernel
 
-Control Source of Truth for the Game of Peram: life-state **S**, dependency graph **G**, critical path with PERT/Monte Carlo **P**, typed message bus, Human-In-The-Loop gates and Human-Out-Of-The-Loop agent runtime, Tier-1 SQLite durability, sealed backups, and the episodic-memory bridge. Terms expanded: [docs/GLOSSARY.md](../../docs/GLOSSARY.md).
+Control Source of Truth for ensembly: life-state **S**, dependency graph **G**, critical path with PERT/Monte Carlo **P**, typed message bus, Human-In-The-Loop gates and Human-Out-Of-The-Loop agent runtime, Tier-1 SQLite durability, sealed backups, pulse-pack sync, and the episodic-memory bridge. Terms expanded: [docs/GLOSSARY.md](../../docs/GLOSSARY.md).
 
-Node `src/*` + `bin/swarm.js` are the **Operator CLI + game session**. New *control-plane* logic lands in this crate.
+All new *control-plane* logic lands in this crate. Parked game/Node stack: [prototype/](../../prototype/README.md).
 
 ## Build and test
 

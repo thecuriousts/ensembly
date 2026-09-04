@@ -1,6 +1,6 @@
 # peram-memory
 
-Episodic learning layer for the Game of Peram swarm: a durable, mergeable memory of **what actually happened** — trajectory, skills, goals — plus a coherence engine that reflects over it.
+Episodic learning layer for the ensembly operator kernel: a durable, mergeable memory of **what actually happened** — trajectory, skills, goals — plus a coherence engine that reflects over it.
 
 **Boundary law:** this crate remembers and learns. It never decides. `peram-kernel` remains the control Source of Truth (gates, critical path, priorities); nothing here approves, denies, claims, or reprioritizes. Terms expanded: [docs/GLOSSARY.md](../../docs/GLOSSARY.md).
 

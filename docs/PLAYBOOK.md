@@ -1,412 +1,151 @@
-# Operator playbook — play, steer, produce (laptop + remote)
+# Operator playbook — kernel + pulse sync
 
-**Status:** Binding dogfood guide for the human pair and the digital clone  
-**Product:** ensembly · **Game of Peram**  
-**Last updated:** 2026-07-24  
+**Status:** Binding dogfood guide  
+**Product:** ensembly operator kernel  
+**Last updated:** 2026-09-04 (Musk cut)
 
-This is how you **use** ensembly to maximize real-day productivity — not how the modules are named.  
-Companion law: [MAP.md](MAP.md) (capabilities · hosts · layers · IR) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · [PREMFLOW-FIT.md](PREMFLOW-FIT.md) (notes/tasks/pomo vs turn) · [EVE-FIT.md](EVE-FIT.md) · [CLONE-COPILOT.md](CLONE-COPILOT.md) · [DECISIONS.md](DECISIONS.md#issue-1-hitlhootl-runtime-core-2026-07-24)
+Companion: [MAP.md](MAP.md) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [MUSK-CUT-2026-09-04.md](MUSK-CUT-2026-09-04.md) · [PRIVACY.md](PRIVACY.md)
+
+Parked game/Node surfaces: [../prototype/README.md](../prototype/README.md) — not covered here.
 
 ---
 
 ## 0. What you are optimizing
 
-| Scarce resource | What ensembly does | What only you do |
-|-----------------|--------------------|------------------|
-| **Attention** | Surfaces **one next body act** + **one next auth** | Choose and execute |
-| **Capacity** (family, health) | Day plan + schedule respect non-negotiables | Show up in the body-world |
-| **Risk** | HITL gates; no unattended bank/email | Approve / deny |
-| **Momentum** | XP, quests, **$SPN** tape from real progress | Keep the streak honest |
+| Scarce resource | What kernel does | What only you do |
+|-----------------|------------------|------------------|
+| **Attention** | Surfaces pending auth + physical beacons via runtime | Approve, deny, claim, complete |
+| **Risk** | HITL gates in T1 SQLite; no unattended bank/email | Judgment |
+| **Continuity** | Episodic memory + pulse-pack across harness sessions | Export/import discipline |
 
-**North star:** Digital thrash is automated. You join as a **pair** for physical work and judgment — from the laptop **or** a remote channel.
+**North star:** Grok/Cursor capture proposals. Kernel records **outcomes**. You pair for body-world work.
 
 ---
 
-## 1. Surfaces (pick by context)
+## 1. Surfaces (live)
 
-| Surface | When | Command / URL |
-|---------|------|----------------|
-| **Runtime HITL/HOOTL (SoT)** | Issue #1 control plane: S+G+CP, MsgBus, AuthGate / PhysicalBeacon | `cargo run -p peram-kernel -- runtime …` · `npm run peram -- runtime …` · fixture `fixtures/issue-1-runtime.json` |
-| **Game of Peram** | Feel the day, claim beacons, clear gates, watch **$SPN** | `npm run game` → `http://127.0.0.1:4173/game/` |
-| **Operator turn (CLI)** | Fast “what now?” via wait-snapshot | `npm run swarm:turn` or `node bin/swarm.js turn --stdout` |
-| **Status IR (JSON)** | Agents / scripts / future phone bots | `node bin/swarm.js turn --json` |
-| **Watch map** | See next act + diagram without game loop | `npm run swarm:graph` → open `public/watch/index.html` |
-| **Life dashboard** | Stats, insights, overview of progress | `npm run swarm:dashboard` → open `public/watch/dashboard.html` |
-| **Shared notes/tasks/pomo** | One inbox with premflow + vault (`~/.premflow`) | `node bin/swarm.js flow …` · `npm run flow:link` · [PREMFLOW-FIT.md](PREMFLOW-FIT.md) |
-| **Day plan** | Morning structure: projects, schedule, balance | `npm run swarm:day` |
-| **Remote channels** (Eve trajectory) | Slack/web/phone: digest + approve/deny away from desk | See [§5 Remote](#5-remote--channels-not-just-the-laptop) · [EVE-FIT.md](EVE-FIT.md) |
+| Surface | When | Command |
+|---------|------|---------|
+| **Runtime HITL/HOOTL (SoT)** | Daily control plane | `cargo run -p peram-kernel -- runtime …` |
+| **Reflect** | After ticks — coherence, skills | `cargo run -p peram-kernel -- runtime reflect` |
+| **Turn / FocusPlan** | Coached next acts from CP | `cargo run -p peram-kernel -- turn` |
+| **Pulse export/import** | Bot ↔ laptop memory sync | `pulse-pack export\|import\|status` |
+| **peram-mcp** | Grok/Cursor read memory | `cargo build -p peram-agents --bin peram-mcp` |
+| **Backup** | Sealed durability | `cargo run -p peram-kernel -- backup …` |
 
-**Kernel truth (SoT):** `peram-kernel` life-state + DepGraph + CP. Operator CLI (`bin/swarm.js`) covers day/turn/graph/watch. Hosts stay thin.
+---
 
-### 1.1 Issue #1 laptop recipe (HITL / HOOTL)
+## 2. Runtime recipe (laptop or canonical host)
 
 ```bash
 cargo test -p peram-kernel
+
 cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
 cargo run -p peram-kernel -- runtime status
-# One HOOTL step per tick (claim *or* complete). Repeat until digital thrash on CP is gone.
-cargo run -p peram-kernel -- runtime tick          # claim triage-inbox
-cargo run -p peram-kernel -- runtime tick          # complete triage-inbox
-cargo run -p peram-kernel -- runtime tick          # claim draft-transfer
-cargo run -p peram-kernel -- runtime tick          # complete draft-transfer
-# AuthGate: approve the *action* id (pay-rent); auth- prefix is accepted then stripped
+
+# HOOTL: one step per tick (claim OR complete)
+cargo run -p peram-kernel -- runtime tick   # claim triage-inbox
+cargo run -p peram-kernel -- runtime tick   # complete triage-inbox
+cargo run -p peram-kernel -- runtime tick   # claim draft-transfer
+cargo run -p peram-kernel -- runtime tick   # complete draft-transfer
+
+# HITL: action id (pay-rent); auth- prefix accepted then stripped
 cargo run -p peram-kernel -- runtime approve pay-rent
+
 cargo run -p peram-kernel -- runtime claim grocery-errand
 cargo run -p peram-kernel -- runtime complete grocery-errand
-cargo run -p peram-kernel -- runtime status        # regime Hootl when gates cleared
+
+cargo run -p peram-kernel -- runtime status   # expect Hootl when gates cleared
+cargo run -p peram-kernel -- runtime reflect
 ```
 
-Durable store: `data/local/peram-ops.sqlite` (gitignored). `--json` appends a trailing `RUNTIME_OK …` line.
+Durable store: `data/local/peram-ops.sqlite` (gitignored).  
+`--json` prints JSON then trailing `RUNTIME_OK …` — strip last line before parsing.
 
-### 1.2 Pulse + memory sync (bot ↔ laptop)
+Memory flags: `--memory <path>` (explicit; open failure fatal) · `--no-memory`.
 
-**Two pack layers (do not conflate):**
+---
+
+## 3. Pulse + memory sync (bot ↔ laptop)
+
+**Two pack layers — do not conflate:**
 
 | Layer | Format | CLI | Laptop may import? |
 |-------|--------|-----|-------------------|
-| **T1 ops** | `peram-backup-pack-v1` (sealed) · `peram-ops-bundle-v1` (plain) | `backup` · `restore-dry-run` · `restore-apply --i-understand` · `ops-bundle` | **No** — canonical host only |
-| **Pulse** | `peram-pulse-pack-v1` (`memory_traces` + `archive_events`) | `pulse-pack export\|import\|status` | **Yes** — memory CRDT merge only |
+| **T1 ops** | `peram-backup-pack-v1` / `peram-ops-bundle-v1` | `backup` · `restore-*` · `ops-bundle` | **No** — canonical host only |
+| **Pulse** | `peram-pulse-pack-v1` | `pulse-pack export\|import\|status` | **Yes** — memory CRDT merge only |
 
-**Topology (binding):** Grok Bot computer = **canonical kernel host** (single writer on `peram-ops.sqlite`). Laptop = **client/offline** — imports pulse packs, never dual-writes ops. Sync is **file copy** of portable packs (USB, shared folder, `scp`); no live multi-master.
+**Topology:** Grok Bot = **canonical kernel host** (single writer on ops DB). Laptop = client — imports pulse packs, never dual-writes ops.
 
-| Host | Role | Writable |
-|------|------|----------|
-| **Grok Bot** | Kernel SoT, runtime tick, sealed T1 backup | `data/local/peram-ops.sqlite`, `data/local/peram-memory.json` |
-| **Laptop** | Game, Grok Build, offline reflect | `data/local/peram-memory.json` (CRDT merge), `data/local/pulse-archive.jsonl` (append-only archive sidecar) |
-
-**Pack paths (gitignored):**
-
-| Path | Contents |
-|------|----------|
-| `data/local/peram-memory.json` | Episodic CRDT (merge on import) |
-| `data/local/pulse-archive.jsonl` | Optional audit/archive slice from bot (nat_key dedupe) |
-| `~/sync/pulse/` (or any operator folder) | Staging for `*.pulse.json` packs between hosts |
-
-**Recipe — bot exports after a session:**
+### Bot exports after session
 
 ```bash
-# On Grok Bot (canonical host)
 cargo run -p peram-kernel -- pulse-pack export \
   --out ~/sync/pulse/bot-$(date +%Y%m%d).pulse.json \
   --include-archive
-cargo run -p peram-kernel -- pulse-pack status --pack ~/sync/pulse/bot-$(date +%Y%m%d).pulse.json
+
+cargo run -p peram-kernel -- pulse-pack status --pack ~/sync/pulse/bot-*.pulse.json
 ```
 
-**Recipe — laptop imports (idempotent CRDT merge):**
+### Laptop imports (idempotent CRDT merge)
 
 ```bash
-# Copy pack from bot (example: scp, USB, shared folder — no Tailscale required)
 cp /path/from/bot/bot-*.pulse.json ~/sync/pulse/
 
-# Dry-run first
-cargo run -p peram-kernel -- pulse-pack import \
-  --pack ~/sync/pulse/bot-*.pulse.json --dry-run
-
-# Merge into local memory
-cargo run -p peram-kernel -- pulse-pack import \
-  --pack ~/sync/pulse/bot-*.pulse.json
-
-cargo run -p peram-kernel -- pulse-pack status
-cargo run -p peram-kernel -- runtime reflect   # optional: coherence over merged trajectory
+cargo run -p peram-kernel -- pulse-pack import --pack ~/sync/pulse/bot-*.pulse.json
+cargo run -p peram-kernel -- runtime reflect
 ```
 
-**Laptop → bot (memory only):** export on laptop, copy pack to bot, `pulse-pack import` on bot. Ops ledger stays on bot; do **not** run `restore-apply` or `ops-bundle import` on laptop.
+Paths (gitignored): `data/local/peram-memory.json`, `data/local/pulse-archive.jsonl`.
 
-**Bot ops backup (separate from pulse):**
+**Next (not automated yet):** Drive/shared-folder staging for `*.pulse.json` — file copy only, no live sync.
+
+---
+
+## 4. Harness fit (Grok / Cursor)
+
+1. **Canonical host** runs `runtime load` + `tick` + gate commands during bot session.
+2. **Export pulse** at session end.
+3. **Register peram-mcp** for read-only memory queries during coding:
+   ```bash
+   cargo build -p peram-agents --bin peram-mcp
+   grok mcp add --scope project peram -- cargo run -p peram-agents --bin peram-mcp
+   ```
+4. **Laptop** imports pulse; runs `reflect` — does not rewrite ops from chat.
+
+Refuse: treating chat history as pending-ledger SoT.
+
+---
+
+## 5. Remote / channels (trajectory)
+
+Eve or Slack digests would call kernel with **redacted** JSON only. Not shipped at root. See [EVE-FIT.md](EVE-FIT.md).
+
+---
+
+## 6. Privacy checkpoint
+
+Before any export or pulse copy:
+
+- No `private/` contents in packs unless explicitly designed and classified.
+- Pulse pack = memory traces + archive events — verify with `pulse-pack status`.
+- Full rules: [PRIVACY.md](PRIVACY.md).
+
+---
+
+## 7. Quick reference
 
 ```bash
-# Sealed T1 snapshot (canonical host)
-cargo run -p peram-kernel -- backup --out ~/sync/ops/ops-$(date +%Y%m%d).peram.json --unlock "$PERAM_UNLOCK"
-cargo run -p peram-kernel -- restore-dry-run --pack ~/sync/ops/ops-*.peram.json --unlock "$PERAM_UNLOCK"
+cargo test -p peram-kernel && cargo test -p peram-memory
 
-# Plain bundle (same OpsBundle inside BackupPack — debugging / migration)
-cargo run -p peram-kernel -- ops-bundle export --out ~/sync/ops/ops-bundle.json
+cargo run -p peram-kernel -- runtime status
+cargo run -p peram-kernel -- runtime approve <action-id>
+cargo run -p peram-kernel -- runtime deny <action-id>
+cargo run -p peram-kernel -- runtime claim <beacon-id>
+cargo run -p peram-kernel -- runtime complete <beacon-id>
+
+cargo run -p peram-kernel -- pulse-pack export --out /tmp/x.pulse.json
+cargo run -p peram-kernel -- pulse-pack import --pack /tmp/x.pulse.json
 ```
 
-`peram-mcp` remains **read-only export** — pulse packs are the portable path for cross-host memory sync.
-
----
-
-## 2. How to play Game of Peram (laptop)
-
-### 2.1 Launch
-
-```bash
-cd ~/Work/personal/ensembly
-npm test          # optional confidence
-npm run game      # trailing slash required: /game/
-```
-
-Default loadout: **clean courtyard** — world first, chrome on demand.
-
-### 2.2 Controls
-
-| Input | Action |
-|-------|--------|
-| **Tab** / `j` `k` / arrows | Cycle focus (beacons) |
-| **Enter** / Space / **C** | **Claim** focused beacon → XP |
-| **A** / **Y** | **Approve** open HITL gate → XP |
-| **D** / **N** | **Deny** open HITL gate → XP (and **$SPN** sells) |
-| **B** / **Q** | Growth **board** (quests, balance axes, coach) |
-| **I** | Status **bars** (level, XP, streak, **$SPN** inline) |
-| **M** | Command menu (type / voice) |
-| **?** / **H** | Help codex |
-| **Esc** | Clear chrome |
-| **V** | Voice start/stop |
-| Gamepad | D-pad focus · face approve/deny |
-
-### 2.3 Progression (what “winning” means)
-
-| Axis | Counts as progress |
-|------|--------------------|
-| **Body** | Physical pickups (errands, outdoor, body-world) |
-| **Presence** | Family / health / schedule beacons |
-| **Craft** | Deep work & ship beacons |
-| **Gates** | HITL approve / deny |
-
-- Claim → XP → streak combos → levels (**Ember → Horizon**).  
-- Coach steers you **off pure digital grind** toward body/presence when empty.  
-- Engine: `src/game/growth.js`.
-
-### 2.4 $SPN (your personal tape)
-
-Top-right **stock-style ticker** **`$SPN`**:
-
-| Real outcome | Tape |
-|--------------|------|
-| Claim body / presence / craft | **Up** |
-| Approve gate | **Up** |
-| Deny gate | **Down** (miss priced) |
-| Craft-only with no body/presence | **Imbalance drag** |
-
-**Use:** glance at green/red sparkline after a work block. If craft runs and **$SPN** drags, the day is out of balance — claim a body/presence beacon. Pure math: `src/game/spn.js`.
-
-### 2.5 Session hygiene (game)
-
-1. Open game after morning turn (or load sample graph when offline).  
-2. Clear **open gates** first if they block digital path (A/D).  
-3. Claim **physical/presence** before endless craft.  
-4. Toggle board (**B**) only when you need quest list; stay in world when possible.  
-5. Esc when chrome steals focus from the day.
-
----
-
-## 3. Steer the day with CLI (productivity loop)
-
-The CLI is the **auditable control plane** — same decisions as the game, scriptable on SSH, CI, or a second machine.
-
-### 3.1 Morning (or any cold start)
-
-```bash
-# Full day structure (optional write under private/state when not --no-write)
-npm run swarm:day
-
-# What YOU must do next (markdown)
-node bin/swarm.js turn --stdout
-
-# What agents/bots must do next (JSON)
-node bin/swarm.js turn --json --no-write
-```
-
-Read:
-
-1. **Next body** — one physical act (claim/complete commands included).  
-2. **Next auth** — one gate (approve/deny commands).  
-3. Full queues below for context — **do not equal-weight** them; lead with primaries.
-
-### 3.2 Execute body work
-
-```bash
-node bin/swarm.js claim <physical-id>     # in progress
-# … do the real-world work …
-node bin/swarm.js complete <physical-id> # leaves open queue
-```
-
-Durable snapshot: `private/state/wait-snapshot.json` (local only).  
-Watch HTML refreshes on durable write so the map matches truth.
-
-### 3.3 Clear digital risk
-
-```bash
-node bin/swarm.js approve <auth-id>
-node bin/swarm.js deny <auth-id>
-```
-
-Never invent unattended bank/email. Gates exist so **you** decide.
-
-### 3.4 Map + agent handoff
-
-```bash
-npm run swarm:graph    # public/watch/ — next-action panel + Mermaid + $SPN-era day map
-```
-
-Clone/agents: prefer `turn --json` over scraping markdown.
-
-### 3.5 Fixture dry-run (safe demo)
-
-```bash
-node bin/swarm.js turn --fixture fixtures/state-sample.json --stdout --no-write
-node bin/swarm.js turn --fixture fixtures/state-sample.json --json --no-write
-```
-
----
-
-## 4. Productivity recipes (not features for features’ sake)
-
-### Recipe A — “I have 25 minutes”
-
-1. `turn --stdout` → take **next body** if in a physical window, else next **auth** if blocking.  
-2. Complete or approve/deny.  
-3. Glance **$SPN** in game or re-run `turn --json` for clone.
-
-### Recipe B — “Deep work block”
-
-1. Confirm schedule block on day plan.  
-2. Clear pending HITL so agents aren’t stuck.  
-3. Claim craft beacons **after** a presence/body claim if coach warns.  
-4. End block: `complete` any claimed body; re-open turn.
-
-### Recipe C — “Clone does digital; I pair later”
-
-1. Clone reads `turn --json` / `private/state/turn-status.json`.  
-2. Clone advances digital work **behind** open gates only if allowed.  
-3. You receive **one** auth + **one** body when free (laptop game or channel).  
-4. Copilot PRs under [CLONE-COPILOT.md](CLONE-COPILOT.md) — you oversee proposals.
-
-### Recipe D — “Energy is low”
-
-1. Prefer **presence/body** primaries; ignore craft thrash.  
-2. Deny low-value digital pressure.  
-3. Watch **$SPN**: flat/down with craft-only = stop shipping cosplay.
-
----
-
-## 5. Remote — channels, not just the laptop
-
-### 5.1 What “remote” means here
-
-You are **not** tied to the game canvas. The same kernel decisions travel:
-
-| Remote need | Today (shipped) | Production bridge (trajectory) |
-|-------------|-----------------|--------------------------------|
-| See next act | `turn --stdout` / `--json` over SSH; open `public/watch/` on any device that can reach files | Channel digest (Slack/web): next body + next auth |
-| Approve / deny away from desk | CLI on phone SSH / laptop | **Eve** (or equivalent) tool approval buttons → same snapshot IR |
-| Morning nudge | Cron + CLI on a box you own | Eve schedules → redacted turn post |
-| Claim/complete body | CLI | Channel commands mapped to `claim` / `complete` |
-| Play the world | Browser on any machine with `npm run game` | Stays **local/browser** — Eve is not a game engine |
-
-### 5.2 Eve / channel contract (when built)
-
-From [EVE-FIT.md](EVE-FIT.md):
-
-| **Adopt** | Channels for digests + remote HITL + cron |
-| **Adapt** | Tools call pure ensembly modules / CLI |
-| **Refuse** | Full persona/vault on the cloud; Eve as kernel rewrite; unattended finance/email |
-
-Message shape for a channel (conceptual — implement against real CLI):
-
-```text
-Next body: Grocery errand · grocery-errand
-  claim:  node bin/swarm.js claim grocery-errand
-  done:   node bin/swarm.js complete grocery-errand
-
-Next auth: Apply packet · auth-apply-high-signal
-  [Approve] [Deny]
-```
-
-Privacy: **redact** titles if needed; never ship `private/persona` or vault medical/finance to a channel by default.
-
-### 5.3 How to steer remotely *today* (no Eve yet)
-
-1. **Phone + SSH / Termux / laptop left on:** run `turn --json` and `approve` / `complete`.  
-2. **Shared watch file:** regenerate graph; open HTML when on home LAN.  
-3. **Agent clone:** give it `turn --json` output; it proposes work; you approve PRs and HITL.  
-4. **life-os card:** after a session, update `Projects/ensembly/sessions/YYYY-MM-DD.md` so portfolio memory matches runtime.
-
-### 5.4 What never goes remote unattended
-
-- Bank / email **mutate** without explicit human auth  
-- Full private persona upload  
-- Silent merge to main of high-risk changes without oversee (copilot phase 1)
-
----
-
-## 6. One-day operating cadence
-
-```text
-Morning
-  day plan (optional) → turn --stdout → pick primary body/auth
-  optional: npm run game · glance $SPN open
-
-Work blocks
-  claim body when schedule says so
-  approve/deny gates so digital path can move
-  craft beacons only after capacity is honest
-
-Away from desk
-  turn --json / channel digest
-  approve/deny on phone path when built
-  clone continues digital under gates
-
-Evening
-  complete open claims
-  turn once more — queues should shrink
-  $SPN green with multi-axis balance = good day signal
-  life-os session note if the clone or you shipped work
-```
-
----
-
-## 7. Agent / clone steering (for coding sessions)
-
-Agents reading this repo:
-
-1. Prefer **operator life impact** over new stubs ([AGENTS.md](../AGENTS.md)).  
-2. Use **turn status IR** and durable snapshot — do not invent ranking.  
-3. Portfolio code work: [CLONE-COPILOT.md](CLONE-COPILOT.md) — proposal → PR.  
-4. life-os is **vault memory**; ensembly is **runtime** ([LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md)).  
-5. After dogfood: update tests on the **shipped** path; keep privacy default-deny.
-
----
-
-## 8. Quick command card
-
-```bash
-# Play
-npm run game
-
-# Next act
-node bin/swarm.js turn --stdout
-node bin/swarm.js turn --json
-
-# Body
-node bin/swarm.js claim <id>
-node bin/swarm.js complete <id>
-
-# Gates
-node bin/swarm.js approve <id>
-node bin/swarm.js deny <id>
-
-# Map
-npm run swarm:graph
-
-# Day
-npm run swarm:day
-```
-
----
-
-## 9. Related docs
-
-| Doc | Role |
-|-----|------|
-| [README.md](../README.md) | Drop-in + short play table |
-| [FOUNDATION-CRITIQUE.md](FOUNDATION-CRITIQUE.md) | Why next-action + status IR exist |
-| [SWARM-DESIGN.md](SWARM-DESIGN.md) | Day loop iron-peak |
-| [PRIVACY.md](PRIVACY.md) | What never ships |
-| [GAME-STACK.md](GAME-STACK.md) · [ENGINE.md](ENGINE.md) | Technical game stack |
-| [arch-design/coming-next.md](arch-design/coming-next.md) | Roadmap including remote SN cards |
-
----
-
-**Footer:** Maximize productivity by clearing **one body act** and **one gate** at a time — from the courtyard, the CLI, or a channel — and let **$SPN** tell you if the day is balanced.
+**Footer:** One writer on ops. Pulse for memory. Harness for capture.
