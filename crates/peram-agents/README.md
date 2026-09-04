@@ -1,6 +1,6 @@
 # peram-agents
 
-Protocol and inference **satellite** for the Game of Peram swarm (Eagle = `peram-kernel`).
+Protocol and inference **satellite** for the ensembly operator kernel (`peram-kernel` stays control SoT).
 
 Official Grok (xAI) docs:
 - [Headless & ACP](https://docs.x.ai/build/cli/headless-scripting#acp) — `grok agent stdio`, `grok -p`

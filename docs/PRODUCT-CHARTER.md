@@ -1,53 +1,49 @@
-# Product charter — ensembly / Game of Peram
+# Product charter — ensembly operator kernel
 
 **Status:** Binding product intent  
 **Audience:** Operator, implementers, coding agents  
-**Last updated:** 2026-09-01
+**Last updated:** 2026-09-04 (Musk cut)
 
 ---
 
 ## Mission
 
-Remove **digital friction** so scarce human energy goes to **physical presence**, **judgment (approvals)**, and **growth** — while the swarm curates, prioritizes, balances, and classifies. Make the control plane legible and **fun** as the **Game of Peram**: a world you inhabit, not a backlog you endure.
+Provide a **durable operator kernel** under external harnesses (Grok Bot, Grok Build, Cursor): **done / pending / denied** as data you own — gates, episodic memory, pulse sync — so capture tools do not re-litigate the same HITL state every session.
 
-This is **serious life infrastructure**. Not a joke. Not a hobby demo. Production-grade from day 0.
+Remove **digital friction** so scarce human energy goes to **physical presence** and **judgment (approvals)**. This is **serious life infrastructure**. Not a joke. Not a hobby demo.
 
-**Not the vault:** Portfolio memory of projects started and clustered lives in **`~/life-os`**. ensembly is the **digital clone** that works the digital layer continuously (or frequently) so you **pair** when you can — body work + HITL, not full-time digital thrash. Boundary: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md).
+**Not the vault:** Portfolio memory lives in **`~/life-os`**. ensembly is the **kernel** the clone runs locally. Boundary: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md).
 
-**Copilot:** The clone may implement across portfolio code projects under human **proposal oversight** and **PR** flow (phase 1). See [CLONE-COPILOT.md](CLONE-COPILOT.md).
-
----
-
-## Market position (operator OS)
-
-Mass-market agent services (Grok Bot, Grok Build, hosted chat codegen) optimize for **capture at scale**: draft, code, PR, routine chores for millions of users. They cannot go deep on one operator's day turn, pending gates, learned workflows, durable traces, or personal taste. That is not a gap to fix in their product. It is why agent APIs exist so you build your own kernel.
-
-**ensembly is that kernel.** Grok proposes. The hub holds **done / pending / denied** as durable data you own: wait snapshots, activity traces, `propose` → `approve` / `deny`, finance-shaped `digital-flow`, premflow capture. The payoff is less repeated token spend, fewer manual re-tweaks, and workflows you refine once instead of re-litigating every session. Time travel and replay ride the same ledger (partial today; binding direction).
-
-| Layer | Role | Product shape |
-|-------|------|----------------|
-| **Grok Bot / Build** | Black hole — capture, swarm workers, cloud drafts | Their service; not your SoT |
-| **ensembly** | White hole — emit, gates, history, operator craft | Personal kernel today; **productizable** as exportable hub law |
-| **Whitehole** (repo) | Typed launch / campaign chrome | Portfolio artifact; not a second inbox |
-| **Marketplace kit** | Escrow settle for paid agent work | Separate harness; not life loop |
-
-**Product thesis (one paragraph):** Agent platforms sell inference and surfaces. ensembly sells the **operator layer** underneath: one pending ledger, physical-first turn, privacy default-deny, and learned workflows encoded in structure instead of chat memory. Personal taste and craft live here first. Actualizing for others means exporting the **shape** (hub law, typed IR, HITL resume), not shipping this operator's private persona. Compete on depth per human, not on beating Grok at chat.
-
-See also: [arch-design/hub-constellation.md](arch-design/hub-constellation.md).
+**Not a game product (at root):** Game of Peram browser client is **parked** in [`prototype/`](../prototype/README.md) — optional experiment, not SoT.
 
 ---
 
-## Success (how we know it worked)
+## Market position
+
+Mass-market agent services optimize **capture at scale**. They cannot be the durable ledger for one operator's pending gates, learned workflows, and episodic traces.
+
+| Layer | Role |
+|-------|------|
+| **Grok Bot / Build / Cursor** | Capture, codegen, chat — their surface |
+| **ensembly** | White hole — gates, memory CRDT, pulse-pack, `peram-mcp` read wire |
+| **prototype/** | Parked game/watch — not maintained as product |
+
+**Thesis:** Agent platforms sell inference. ensembly sells the **operator layer underneath**: one pending ledger, HITL honesty, privacy default-deny, pulse sync without dual writers.
+
+Cut record: [MUSK-CUT-2026-09-04.md](MUSK-CUT-2026-09-04.md).
+
+---
+
+## Success
 
 | Horizon | Signal |
 |---------|--------|
-| **Today** | Operator opens turn or game and *knows* the next physical act and the next authorization |
-| **This week** | Day plans are used, not ignored; approve/deny actually gates risk; focus never lies |
-| **This quarter** | Measurable less thrash (fewer “what should I do?” loops); balance (family/health) holds under career pressure |
-| **This year** | Growth compounds: craft, relationships, health, and career move in one coherent story the swarm can restate |
-| **2036** | Kernel still pure and private; hosts (game, Eve channels, desktop) swap; human judgment remains the scarce resource |
+| **Today** | `cargo run -p peram-kernel -- runtime status` shows honest regime and pending gates |
+| **This week** | Grok session ends with pulse export; laptop import merges memory without ops conflict |
+| **This quarter** | Harness + kernel loop replaces re-explaining pending auth in chat |
+| **This year** | Kernel pure and private; hosts swap; human judgment remains scarce |
 
-If a feature cannot connect to a row above, it is entertainment debt or architecture tourism — defer it.
+If a feature cannot connect to a row above, defer it.
 
 ---
 
@@ -55,99 +51,51 @@ If a feature cannot connect to a row above, it is entertainment debt or architec
 
 ### 1. Impact (life)
 
-- **Physical first** — Surface what only a body can do. Agents never cosplay errands.
-- **Authorization honest** — Pending gates are first-class state, resumable, never buried in prose.
-- **Balance enforced** — Relationships and health capacity are scheduled before career noise fills the day.
-- **Privacy default-deny** — Useful locally; shareable only when classified public. Vault never rides a casual deploy.
+- **Physical first** — Kernel surfaces physical beacons; agents do not cosplay errands.
+- **Authorization honest** — Auth gates are durable, resumable state in T1 SQLite.
+- **Privacy default-deny** — Useful locally; shareable only when classified public.
 
-### 2. Engagement (fun)
+### 2. Complementary (harness fit)
 
-- **World > chrome** — Courtyard, sprites, props, motion, focus beacon; HUD is secondary glass.
-- **Input feels immediate** — Keys, voice, gamepad; single source of truth so the avatar and labels never disagree.
-- **Growth loop** — Claim physical/presence/craft beacons for XP; clear HITL gates; streak combos; balance axes (Body · Presence · Craft · Gates). Coach steers away from craft-only thrash. See `src/game/growth.js`.
-- **Feedback loops** — XP toast, path glow, claimed beacons, quest board — every real act *registers*.
-- **Craft over gimmick** — Prefer one polished growth interaction over five dead buttons.
+- **Kernel under capture** — Grok proposes; kernel records outcomes.
+- **Read-only MCP** — Agents query memory; they do not own ops DB.
+- **Pulse not dual-write** — Portable memory sync; canonical host holds ops.
 
 ### 3. Growth (ascent)
 
-- Plans and graphs should make **progress visible**, not just tasks listed.
-- The persona model optimizes for **capacity and goal attainment**, not inbox zero cosplay.
-- Digital automation exists so the human can invest in **irreplaceable growth work** (presence, deep craft, health, relationships).
+- Episodic `reflect` makes progress visible without chat amnesia.
+- Automation exists so humans invest in irreplaceable work.
 
 ### 4. Production grade (day 0)
 
 | Standard | Practice |
 |----------|----------|
-| Real entry paths | `npm test`, `npm run game`, `swarm turn/day/graph` work on clean clone (+ prebuilt WASM) |
-| Shipped-path tests | Unit + smoke; no orphan modules |
-| Durable HITL | Snapshots/approvals survive process restart |
-| Host adapters | Eve (when built) is production channels + approval + cron — **not** a throwaway prototype |
-| Observability | Operator can see mode, focus, pending, engine; agents leave traces in tests/docs |
-| Reversibility | Undo where user intent can be wrong; no silent external mutate |
+| Dogfood | `cargo test -p peram-kernel` on every change |
+| Durability | T1 SQLite + sealed backup paths tested |
+| Loud failure | CLI status lines; no silent gate drift |
+| Single writer | One canonical host for `peram-ops.sqlite` |
 
 ---
 
-## Explicit non-goals (for now)
+## Non-goals (root repo)
 
-- AAA open world, multiplayer MMO, or voice room as **gate** to usefulness  
-- Unattended finance or email  
-- Shipping private persona  
-- Rewriting the kernel into a prompt-only Eve agent  
-- Legacy webpack SPA as the product  
-- Absorbing `~/life-os` vault content into this git tree (vault remains portfolio of record)  
-- Making the Obsidian vault the connector/daemon host (hooks/connectors are ensembly trajectory)
+- Browser game as primary surface
+- Node wait-snapshot as co-equal SoT
+- Live cloud sync / dual master
+- Second chat OS or plugin sprawl
+- Multiplayer / Eve / hub constellation as near-term build
 
----
-
-## Host strategy (serious, not sequential toys)
-
-| Host | Role | Bar |
-|------|------|-----|
-| **CLI swarm** | Auditable day/turn/approve/graph | Fast, scriptable, CI-true |
-| **Game of Peram** | Daily *felt* situational awareness | Fun, immersive, focus-correct |
-| **Eve bridge** | Remote comms, remote approval, schedules | Production deploy, redacted I/O, durable park — when built, built to run life, not demo Slack |
-| **Desktop (later)** | Same Rust world core | Share sim, thin shell |
-
-No “prototype Eve then maybe real.” When Eve lands, it is the production remote surface for this operator’s life loop. Until then, CLI + game must already be production-quality daily tools.
+See `prototype/` for preserved experiments.
 
 ---
 
-## Operator contract
-
-**You give:** attention for physical work + explicit yes/no on risk.  
-**You get:** a day plan that respects capacity, a pending queue you can trust, a graph/world that tells the truth, and automation of digital thrash.  
-**You never get:** surprise side effects, private data in public git, or a product that wastes your play energy on broken toys.
-
----
-
-## Agent contract
-
-Coding agents treat this charter + [AGENTS.md](../AGENTS.md) as law:
-
-1. Prefer finishing production surfaces over opening new stubs.  
-2. Never ship joke UX or desynced state.  
-3. Measure done by **operator life impact**, not file count.  
-4. When adding cloud/remote paths, enforce privacy redaction as hard as tests.  
-5. Keep the Game of Peram **actually fun** — impeccable UX is not optional polish.
-
----
-
-## How to operate (play + remote)
-
-Operator dogfood guide — game controls, CLI turn/claim/complete, **$SPN**, productivity recipes, and remote/channel trajectory: **[PLAYBOOK.md](PLAYBOOK.md)**.
-
-## References
+## Canonical references
 
 | Doc | Role |
 |-----|------|
-| [PLAYBOOK.md](PLAYBOOK.md) | Play, steer, produce (laptop + remote) |
-| [AGENTS.md](../AGENTS.md) | Session binding rules |
-| [PRIVACY.md](PRIVACY.md) | Data boundary |
-| [EVE-FIT.md](EVE-FIT.md) | What Eve owns |
-| [SWARM-DESIGN.md](SWARM-DESIGN.md) | Day loop |
-| [arch-design/coming-next.md](arch-design/coming-next.md) | Roadmap |
-| [WORLD-FOUNDATION.md](WORLD-FOUNDATION.md) | Immersive foundation |
+| [MAP.md](MAP.md) | Live kernel map |
+| [PLAYBOOK.md](PLAYBOOK.md) | Operator dogfood |
+| [PRIVACY.md](PRIVACY.md) | Push boundary |
+| [DECISIONS.md](DECISIONS.md) | Architecture log |
 
----
-
-**Footer plain rule:** Automate the digital; surface the physical; wait only for permission; make the truth playable — and ship it like the year depends on it.
+**Footer:** Complement the harness. Own the gates.

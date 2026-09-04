@@ -1,7 +1,6 @@
-# Workspace root — kernel (control) + world (sim) + Operator CLI (Node `src/*`).
+# Workspace root — operator kernel (Rust only at repo root).
 [workspace]
 members = [
-    "crates/peram-core",
     "crates/peram-kernel",
     "crates/peram-memory",
     "crates/peram-agents",

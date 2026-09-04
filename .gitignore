@@ -21,8 +21,8 @@ data/private/
 .env.*
 !.env.example
 
-# Operator life-derived game graph (CLI export; sample-graph.json is the committed fallback)
-public/game/life-graph.json
+# Operator life-derived game graph (prototype CLI export; sample-graph is committed fallback)
+prototype/public/game/life-graph.json
 
 # Agent / scratch (local only)
 .agents/
@@ -33,7 +33,8 @@ tmp/
 # Grok CLI project config (operator-generated via `grok mcp add`; never commit keys)
 .grok/
 
-# Rust / WASM build artifacts (shipped browser pkg lives under public/game/pkg/)
+# Rust build artifacts
 target/
 crates/**/target/
+prototype/crates/**/target/
 **/*.rs.bk

@@ -542,15 +542,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "peram-core"
-version = "0.2.0"
-dependencies = [
- "wasm-bindgen",
-]
-
-[[package]]
 name = "peram-kernel"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "aes-gcm",
  "anyhow",

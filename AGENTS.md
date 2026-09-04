@@ -1,4 +1,4 @@
-# AGENTS.md — binding rules for ensembly / Game of Peram
+# AGENTS.md — binding rules for ensembly
 
 Read this before any non-trivial change. These are **product law**, not suggestions.
 
@@ -6,41 +6,39 @@ Read this before any non-trivial change. These are **product law**, not suggesti
 
 ## 0. What this project is
 
-**ensembly** is production-grade life infrastructure for one operator (and, later, people who share the same bar). It is **not** a demo, weekend toy, portfolio piece, or “MVP to throw away.”
+**ensembly** is production-grade **operator kernel** infrastructure: durable gates, pulses, and ledger for one operator (and later, people who share the same bar). It is **not** a demo, weekend toy, portfolio piece, or “MVP to throw away.” It is **not** a competing chat OS — Grok/Cursor own capture; ensembly owns **done / pending / denied**.
 
-### Substrate restart (2026-07-15) — binding
+### Substrate (2026-09-04 Musk cut) — binding
 
 | Layer | SoT | Notes |
 |-------|-----|-------|
 | **Control / HITL / turn / digital-flow** | **`crates/peram-kernel` (Rust)** | Expand control here. CLI: `cargo run -p peram-kernel -- …` |
-| **World sim** | `crates/peram-core` (Rust) | Evolves toward places/biomes; mirrors FocusPlan |
-| **Operator CLI + Game session** | **`bin/swarm.js` + `src/*` (Node)** | Live: day/turn/graph/watch + game focus/$SPN. New *control-plane* features → Rust; game/host UX stays Node |
+| **Episodic memory** | `crates/peram-memory` (Rust) | CRDT trajectory; kernel consults on `reflect` only |
+| **Agent wire** | `crates/peram-agents` (Rust) | Read-only `peram-mcp` for Grok/Cursor |
 | **Data** | T1 SQLite + T2 PQ vault (peram-vault law) | Backup/restore are product paths |
-| **Primary host trajectory** | Native console (Hyprland) | Browser game = optional thin client later |
+| **Parked prototype** | `prototype/` | Game/watch/Node/WASM — history preserved, not SoT |
 
-Full law: [docs/DECISIONS.md](docs/DECISIONS.md) (Rust life-console restart).
+Full cut: [docs/MUSK-CUT-2026-09-04.md](docs/MUSK-CUT-2026-09-04.md).
 
 ### life-os vs this repo (do not confuse)
 
 | | **`~/life-os`** | **ensembly (this repo)** |
 |--|-----------------|---------------------------|
-| Role | Clustered **Projects/Areas vault** — wiki of what was started and organized over time | **Digital clone / continuous life swarm** — data-aware friction removal; human joins as **pair** for physical + HITL |
-| Not | Always-on connector runtime | Obsidian portfolio of record |
+| Role | Clustered **Projects/Areas vault** | **Operator kernel** — gates, memory, pulse sync |
+| Not | Always-on connector runtime | Game client or second chat inbox |
 
-Binding detail: [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md). **Refuse** merging the vault into this git tree or treating life-os notes as the turn/approvals kernel.
+Binding detail: [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md).
 
-**Clone as copilot (phase 1):** Free to work across **life-os portfolio code projects** as copilot — keep ideas/schedules in `private/clone/`, surface **proposals** for human oversee, then **open PRs** when allowed. Human pairs for physical + HITL and merge. Law: [docs/CLONE-COPILOT.md](docs/CLONE-COPILOT.md).
+**Clone as copilot (phase 1):** Portfolio code projects under human oversee → PRs. Law: [docs/CLONE-COPILOT.md](docs/CLONE-COPILOT.md).
 
 It must be:
 
 | Pillar | Meaning |
 |--------|---------|
-| **Impactful** | Changes real days: less digital thrash, clearer physical work, honest HITL, measurable balance |
-| **Engaging** | Game of Peram is *played* — focus, motion, feedback, delight — not a dashboard with game skin |
-| **Growth-oriented** | Capacity, relationships, health, craft, and career compound; the swarm serves *ascent*, not busywork |
-| **Production-grade from day 0** | Ship paths that survive deploys, reloads, tests, privacy audits, and daily dogfood |
-
-If a change would be fine “for a hobby” but would embarrass a product you bet your year on, **do not ship it**.
+| **Impactful** | Changes real days: less digital thrash, clearer physical work, honest HITL |
+| **Complementary** | Scales with Grok Bot / Grok Build / Cursor — kernel under harness, not beside it |
+| **Growth-oriented** | Capacity and craft compound; kernel records truth harnesses can replay |
+| **Production-grade from day 0** | Ship paths that survive deploys, reloads, tests, privacy audits, daily dogfood |
 
 ---
 
@@ -48,60 +46,53 @@ If a change would be fine “for a hobby” but would embarrass a product you be
 
 | Refuse | Why |
 |--------|-----|
-| Prototype theater | No half-wired demos, fake data as the product surface, or “we’ll harden later” |
-| Joke UX | No placeholder lorem, broken focus, desynced HUD/world, dead buttons, silent failures |
-| Hobby architecture | No throwaway modules that cannot grow into desktop/WASM shared core or a real Eve bridge |
-| Privacy laziness | Never commit or push `private/`, vaults, secrets, or unredacted life data |
+| Prototype theater at root | No half-wired game/watch as primary product surface |
+| Dual live writers | Cloud or laptop must not dual-write `peram-ops.sqlite` |
+| Second chat OS | No competing capture/inbox — complement Grok |
+| Kernel rewrite thrash | Simplify by deletion, not greenfield rewrite of working Rust |
+| Privacy laziness | Never commit or push `private/`, vaults, secrets |
 | Unattended bank/email | External mutate only behind explicit human authorization |
-| Kernel rewrite thrash | Do not burn the pure day/privacy/realm/approvals IR to chase a host framework |
-| Scope cosplay | Multiplayer voice rooms, AAA art, or framework tourism before the daily loop is *lived* |
+| Scope cosplay | Multiplayer, Eve bridge, AAA game before kernel loop is *lived* |
 
 ---
 
 ## 2. Production bar (every PR / agent session)
 
-1. **Dogfood path** — There is a real command or URL the operator can run today (`cargo run -p peram-kernel -- runtime …`, `cargo test -p peram-kernel`, `npm test`, `npm run game`, `npm run swarm:turn`, etc.).
-2. **Tests on the shipped path** — Pure logic unit-tested; smoke for launch surfaces; no “tests for code that isn’t wired.”
-3. **Failure is loud and recoverable** — Status lines, errors, undo where it matters; no silent wrong focus/state.
-4. **Privacy default-deny** — Classifier + gitignore + docs stay green; redaction at every cloud/channel boundary.
-5. **Single source of truth** — Session/store owns operator intent (e.g. focus); renderers and WASM *mirror*.
-6. **Fun is a requirement** — Input latency, visual hierarchy, sound/haptics later if needed; the world must feel *alive*.
-7. **Impact is a requirement** — Features must map to: less friction, clearer next physical act, safer auth, better balance, or growth signal — or they wait.
+1. **Dogfood path** — `cargo run -p peram-kernel -- runtime …`, `cargo test -p peram-kernel`, `cargo test -p peram-memory`, `cargo build -p peram-agents --bin peram-mcp`.
+2. **Tests on the shipped path** — Pure logic unit-tested; no tests only for `prototype/`.
+3. **Failure is loud and recoverable** — Status lines, errors; no silent wrong state.
+4. **Privacy default-deny** — Classifier + gitignore + docs stay green.
+5. **Single source of truth** — Kernel owns ops DB and runtime gates; harnesses read/write via CLI/MCP/pulse only.
+6. **Impact is a requirement** — Features map to less friction, safer auth, or better sync — or they wait.
 
 ---
 
 ## 3. Architecture law
 
 ```text
-Kernel (local, pure, audited)     → day, privacy, realm, approvals IR, graph IR, looper
-Host (game / CLI / desktop)       → input, paint, local store
-Bridge (Eve optional, production) → channels, remote approval UX, cron — calls kernel, never owns vault
+Kernel (local, pure, audited) → life-state, gates, MsgBus, T1 SQLite, pulse-pack, memory bridge
+Harness (Grok / Cursor / …)   → capture, codegen, chat — calls kernel, never owns vault
+Bridge (Eve optional, trajectory) → channels, remote approval UX — redacted IR only
+Prototype (parked)            → game/watch/Node — optional client experiments
 ```
-
-- **Eve / remote**: production bridge for communication + approve/deny + schedules — not a sandbox toy. See [docs/EVE-FIT.md](docs/EVE-FIT.md).
-- **Game**: immersive world first; HUD secondary. See [docs/WORLD-FOUNDATION.md](docs/WORLD-FOUNDATION.md), [docs/PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md).
-- **Desktop later**: keep sim in Rust (`crates/peram-core`); thin hosts only.
 
 ---
 
 ## 4. Effort standard for agents
 
-- Prefer **depth over breadth**: finish one surface to production quality before opening three stubs.
-- Prefer **truth over theater**: if the game feels like software telemetry, fix the world — don’t document the dashboard.
-- Prefer **operator life over codebase elegance** when they conflict: the day that improves is the acceptance test.
-- When unsure, load: **higher-order-decision-architect**, **stellar-roadmap**, **impeccable**, **looper**, privacy docs.
-- Do **not** answer with “quick prototype” language. Design for the version the operator will still use in 90 days.
+- Prefer **depth over breadth**: finish kernel surfaces before reviving prototype.
+- Prefer **truth over theater**: if dogfood needs npm game, the cut failed — fix docs or kernel path.
+- When unsure, load: privacy docs, [MUSK-CUT](docs/MUSK-CUT-2026-09-04.md), [MAP](docs/MAP.md).
+- Do **not** answer with “quick prototype” language at repo root.
 
 ---
 
 ## 5. Definition of done (session)
 
-A session is not done when code compiles. It is done when:
-
-1. The change is **testable** and tests (or smoke) pass on the real entry path.  
-2. The operator can **feel or measure** the improvement (turn clarity, game feel, approval trust, privacy safety).  
-3. Docs that agents will read next are **updated if law or map changed**.  
-4. No new joke / hobby / prototype smell in the diff.
+1. Change is **testable** on kernel/memory/agents paths.
+2. Operator can **measure** improvement (gate clarity, pulse sync, harness fit).
+3. Docs updated if law or map changed.
+4. No new joke / hobby smell in root diff.
 
 ---
 
@@ -109,20 +100,13 @@ A session is not done when code compiles. It is done when:
 
 | Doc | Role |
 |-----|------|
-| [docs/MAP.md](docs/MAP.md) | **Orientation:** live capabilities, CLI/game/watch hosts, layer ownership (`src` vs `public/game` vs Rust WASM), what **IR** means |
-| [docs/PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) | Why this exists; fun + impact + growth bar |
-| [docs/PLAYBOOK.md](docs/PLAYBOOK.md) | How to play, steer sessions, maximize productivity (laptop + remote) |
-| [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md) | life-os vault vs ensembly digital clone (pair model) |
-| [docs/PREMFLOW-FIT.md](docs/PREMFLOW-FIT.md) | Premflow notes/tasks/pomo vs ensembly day vs life-os — one SoT per concern |
-| [docs/CLONE-COPILOT.md](docs/CLONE-COPILOT.md) | Clone works portfolio projects; propose → PR; internal schedule |
+| [docs/MAP.md](docs/MAP.md) | Live kernel capabilities, CLI, pulse sync |
+| [docs/PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) | Why kernel exists; complement Grok |
+| [docs/PLAYBOOK.md](docs/PLAYBOOK.md) | Dogfood: runtime + pulse |
+| [docs/MUSK-CUT-2026-09-04.md](docs/MUSK-CUT-2026-09-04.md) | What was deleted/parked and why |
+| [prototype/README.md](prototype/README.md) | Parked game/Node surfaces |
+| [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md) | life-os vault vs kernel |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Push boundary |
-| [docs/EVE-FIT.md](docs/EVE-FIT.md) | Cloud bridge adopt/adapt/refuse |
-| [docs/SWARM-DESIGN.md](docs/SWARM-DESIGN.md) | Day loop iron-peak |
-| [docs/ENGINE.md](docs/ENGINE.md) | Shared Rust engine (WASM now · desktop later) |
-| [docs/GAME-STACK.md](docs/GAME-STACK.md) | Race-car stack decision (WASM + paint shell) |
-| [docs/arch-design/coming-next.md](docs/arch-design/coming-next.md) | Roadmap SN cards |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Material architecture decisions |
 
----
-
-**Footer plain rule:** Build as if this software will run the operator’s best years — because that is the point.
+**Footer:** Build the kernel you will still trust in 90 days — because harnesses come and go.
