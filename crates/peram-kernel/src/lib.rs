@@ -10,6 +10,7 @@
 pub mod agent;
 pub mod approvals;
 pub mod backup;
+pub mod pulse_pack;
 pub mod critical_path;
 pub mod digital_flow;
 pub mod graph;
@@ -32,6 +33,11 @@ pub use approvals::{
 pub use backup::{
     create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
     BackupPack, RestoreDryRunReport,
+};
+pub use pulse_pack::{
+    export_pulse_pack, import_pulse_pack, local_pulse_status, read_pulse_pack, write_pulse_pack,
+    ArchiveEvent, MemoryTrace, PulseExportOpts, PulseImportOpts, PulseImportReport, PulsePack,
+    PulsePackStatus, DEFAULT_ARCHIVE_SIDECAR, PULSE_PACK_FORMAT,
 };
 pub use critical_path::{compute_critical_path, explain_node, CriticalPathReport};
 pub use digital_flow::{
