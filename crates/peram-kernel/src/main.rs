@@ -18,7 +18,8 @@ use peram_kernel::pulse_pack::{
 use peram_kernel::msg_bus::ManualCmd;
 use peram_kernel::runtime::Runtime;
 use peram_kernel::store::OpsStore;
-use peram_kernel::turn::{context_at, rank_now, Action};
+use peram_kernel::channel_pulse::{reconcile_channel_pulse, DEFAULT_CHANNEL_PULSE_PATH};
+use peram_kernel::turn::{build_channel_ir, context_at, rank_now, Action};
 use peram_kernel::{kernel_version, private_path_patterns};
 use std::path::PathBuf;
 
@@ -52,6 +53,9 @@ enum Commands {
         fixture: Option<PathBuf>,
         #[arg(long)]
         json: bool,
+        /// Emit versioned channel IR (one body + one gate); no stderr banner
+        #[arg(long)]
+        channel: bool,
         /// location_label: home|travel|office
         #[arg(long)]
         location: Option<String>,
@@ -121,6 +125,12 @@ enum Commands {
     Runtime {
         #[command(subcommand)]
         sub: RuntimeCmd,
+    },
+    /// Redacted channel pulse (Issue #8) — observation only, never writes G
+    #[command(name = "channel-pulse")]
+    ChannelPulse {
+        #[command(subcommand)]
+        sub: ChannelPulseCmd,
     },
 }
 
@@ -256,6 +266,28 @@ enum DfCmd {
     Status {
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ChannelPulseCmd {
+    /// Weekday reconcile: diff wait-snapshot vs last pulse; write when changed (quiet when not)
+    Reconcile {
+        /// Redacted pulse output path (default data/local/channel-pulse.json)
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// JSON fixture for actions when no runtime graph is loaded
+        #[arg(long)]
+        fixture: Option<PathBuf>,
+        /// location_label: home|travel|office
+        #[arg(long)]
+        location: Option<String>,
+        /// Print reconcile report JSON even when unchanged
+        #[arg(long, default_value_t = false)]
+        json: bool,
+        /// Print a one-line status when pulse was updated
+        #[arg(long, default_value_t = false)]
+        verbose: bool,
     },
 }
 
@@ -437,6 +469,7 @@ fn main() -> Result<()> {
         Commands::Turn {
             fixture,
             json,
+            channel,
             location,
         } => {
             let store = OpsStore::open(&db_path)?;
@@ -483,7 +516,10 @@ fn main() -> Result<()> {
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
                 }
             }
-            if json {
+            if channel {
+                let ir = build_channel_ir(&plan, &snap, Utc::now());
+                println!("{}", serde_json::to_string_pretty(&ir)?);
+            } else if json {
                 println!("{}", serde_json::to_string_pretty(&plan)?);
             } else {
                 println!("# FocusPlan — {}", plan.at.to_rfc3339());
@@ -507,20 +543,22 @@ fn main() -> Result<()> {
                 println!("coach: {}", plan.coach_line);
                 println!("db: {:?}", store.path());
             }
-            eprintln!(
-                "TURN_OK physical={} pending={} nextPhysical={} nextAuth={} biome={}",
-                plan.physical_count,
-                plan.pending_count,
-                plan.primary_physical
-                    .as_ref()
-                    .map(|p| p.id.as_str())
-                    .unwrap_or("-"),
-                plan.primary_auth
-                    .as_ref()
-                    .map(|p| p.id.as_str())
-                    .unwrap_or("-"),
-                plan.biome
-            );
+            if !channel {
+                eprintln!(
+                    "TURN_OK physical={} pending={} nextPhysical={} nextAuth={} biome={}",
+                    plan.physical_count,
+                    plan.pending_count,
+                    plan.primary_physical
+                        .as_ref()
+                        .map(|p| p.id.as_str())
+                        .unwrap_or("-"),
+                    plan.primary_auth
+                        .as_ref()
+                        .map(|p| p.id.as_str())
+                        .unwrap_or("-"),
+                    plan.biome
+                );
+            }
         }
         Commands::Approve { id } => {
             gate_via_runtime(
@@ -1084,6 +1122,37 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::ChannelPulse { sub } => match sub {
+            ChannelPulseCmd::Reconcile {
+                out,
+                fixture,
+                location,
+                json,
+                verbose,
+            } => {
+                let store = OpsStore::open(&db_path)?;
+                let actions = if let Some(f) = fixture {
+                    load_actions_from_fixture(&f)?
+                } else {
+                    vec![]
+                };
+                let pulse_path = out.unwrap_or_else(|| PathBuf::from(DEFAULT_CHANNEL_PULSE_PATH));
+                let report = reconcile_channel_pulse(
+                    &store,
+                    &actions,
+                    location.as_deref(),
+                    &pulse_path,
+                )?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                } else if verbose && report.wrote {
+                    eprintln!(
+                        "CHANNEL_PULSE_OK wrote={} path={:?} hash={}",
+                        report.wrote, report.pulse_path, report.content_hash
+                    );
+                }
+            }
+        },
     }
     Ok(())
 }

@@ -10,6 +10,7 @@
 pub mod agent;
 pub mod approvals;
 pub mod backup;
+pub mod channel_pulse;
 pub mod pulse_pack;
 pub mod critical_path;
 pub mod digital_flow;
@@ -53,8 +54,13 @@ pub use realm::{classify_realm, Realm};
 pub use runtime::{Runtime, TickReport};
 pub use store::{OpsBundle, OpsStore};
 pub use turn::{
-    context_at, rank_now, select_next_auth, select_next_physical, Action, ContextFrame, FocusItem,
-    FocusPlan, ScheduleSlot,
+    build_channel_ir, channel_pulse_content_hash, context_at, rank_now, select_next_auth,
+    select_next_physical, snapshot_channel_fingerprint, Action, ChannelAct, ChannelPulseIr,
+    ContextFrame, FocusItem, FocusPlan, ScheduleSlot, CHANNEL_IR_VERSION,
+};
+pub use channel_pulse::{
+    reconcile_channel_pulse, read_channel_pulse, resolve_focus_plan, write_channel_pulse,
+    ReconcileReport, DEFAULT_CHANNEL_PULSE_PATH,
 };
 pub use uncertainty_dive::{plan_dive, DiveReport, DEFAULT_PROBE_BUDGET, DIVE_IR_VERSION};
 pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
