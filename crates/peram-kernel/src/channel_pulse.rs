@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::approvals::Snapshot;
+use crate::approvals::{upsert_pending_from_actions, upsert_physical, Snapshot};
 use crate::runtime::Runtime;
 use crate::store::OpsStore;
 use crate::turn::{
@@ -27,15 +27,64 @@ pub struct ReconcileReport {
     pub pulse_path: PathBuf,
 }
 
+/// HITL kinds mirrored from `DepGraph` / `ensure_snap` — observation only.
+fn action_requires_hitl(a: &Action) -> bool {
+    matches!(
+        a.kind.as_deref(),
+        Some("job_application_submit")
+            | Some("finance_transfer")
+            | Some("external_email_send")
+            | Some("calendar_mutate")
+            | Some("git_push_shared")
+            | Some("publish_private_data")
+            | Some("bill_pay")
+    ) || a.area.as_deref() == Some("Finance")
+}
+
+fn action_is_physical(a: &Action) -> bool {
+    a.realm.as_deref() == Some("physical")
+        || matches!(a.kind.as_deref(), Some("physical_errand") | Some("outdoor"))
+}
+
+/// In-memory wait-snapshot from fixture actions. Does **not** persist G, life-state, or gates.
+pub fn project_wait_snapshot(
+    actions: &[Action],
+    existing: Option<Snapshot>,
+    now: chrono::DateTime<Utc>,
+) -> Snapshot {
+    let hitl: Vec<_> = actions
+        .iter()
+        .map(|a| {
+            (
+                a.id.clone(),
+                a.title.clone(),
+                a.kind.clone().unwrap_or_else(|| "hitl".into()),
+                action_requires_hitl(a),
+            )
+        })
+        .collect();
+    let snap = upsert_pending_from_actions(&hitl, existing, now);
+    let physical: Vec<_> = actions
+        .iter()
+        .filter(|a| action_is_physical(a))
+        .map(|a| (a.id.clone(), a.title.clone()))
+        .collect();
+    upsert_physical(&physical, Some(snap), now)
+}
+
 /// Resolve FocusPlan from durable store (mirrors `peram turn` without persisting).
+/// Empty store + fixture actions → in-memory snapshot only (no SQLite writes).
 pub fn resolve_focus_plan(
     store: &OpsStore,
     actions: &[Action],
     location: Option<&str>,
 ) -> Result<(FocusPlan, Snapshot)> {
-    let snap = store
-        .load_snapshot()?
-        .unwrap_or_else(|| Snapshot::empty(Utc::now()));
+    let snap = match store.load_snapshot()? {
+        Some(s) => s,
+        // Stable clock: projection is not persisted; a wall-clock `now` would
+        // churn `snapshot_fingerprint` and defeat quiet weekday reconcile.
+        None => project_wait_snapshot(actions, None, chrono::DateTime::<Utc>::UNIX_EPOCH),
+    };
     let mut plan = rank_now(
         &context_at(Utc::now(), location),
         actions,
@@ -241,5 +290,50 @@ mod tests {
             snapshot_channel_fingerprint(&snap_after)
         );
         assert_eq!(node_count_before, graph_after.nodes.len());
+    }
+
+    fn issue_1_fixture_path() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/issue-1-runtime.json")
+    }
+
+    #[test]
+    fn reconcile_fixture_empty_store_does_not_write_g() {
+        let dir = tempdir().unwrap();
+        let db = dir.path().join("ops.sqlite");
+        let pulse = dir.path().join("channel-pulse.json");
+        let store = OpsStore::open(&db).unwrap();
+        let actions = crate::turn::actions_from_fixture_path(&issue_1_fixture_path()).unwrap();
+        assert!(
+            actions.iter().any(|a| a.id == "pay-rent"),
+            "committed Issue #1 fixture must include pay-rent"
+        );
+
+        assert!(store.load_snapshot().unwrap().is_none());
+        assert!(store.load_life_state().unwrap().is_none());
+
+        let first = reconcile_channel_pulse(&store, &actions, Some("home"), &pulse).unwrap();
+        assert!(first.changed);
+        assert!(first.wrote);
+
+        assert!(
+            store.load_snapshot().unwrap().is_none(),
+            "reconcile must not persist wait-snapshot"
+        );
+        assert!(
+            store.load_life_state().unwrap().is_none(),
+            "reconcile must not persist life-state / G"
+        );
+
+        let raw = fs::read_to_string(&pulse).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["version"], 1);
+        assert!(v.get("next_body").is_some(), "fixture must project a body act");
+        assert!(v.get("next_gate").is_some(), "fixture must project a gate");
+        assert!(v.get("coach_line").is_none());
+
+        let second = reconcile_channel_pulse(&store, &actions, Some("home"), &pulse).unwrap();
+        assert!(!second.changed);
+        assert!(!second.wrote);
+        assert!(store.load_life_state().unwrap().is_none());
     }
 }

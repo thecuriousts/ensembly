@@ -2,7 +2,7 @@
 
 **Status:** Binding dogfood guide  
 **Product:** ensembly operator kernel  
-**Last updated:** 2026-09-04 (Musk cut)
+**Last updated:** 2026-09-05 (channel-pulse fixture dogfood)
 
 Companion: [MAP.md](MAP.md) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [MUSK-CUT-2026-09-04.md](MUSK-CUT-2026-09-04.md) · [PRIVACY.md](PRIVACY.md)
 
@@ -124,18 +124,21 @@ Refuse: treating chat history as pending-ledger SoT.
 | Surface | Command | Output |
 |---------|---------|--------|
 | **Channel IR** (stdout) | `cargo run -p peram-kernel -- turn --channel [--fixture …] [--location home\|travel\|office]` | Versioned JSON: `next_body`, `next_gate`, optional `where`/`when`, `snapshot_fingerprint`. No `TURN_OK` stderr banner. |
-| **Weekday reconcile** | `cargo run -p peram-kernel -- channel-pulse reconcile [--fixture …] [--out data/local/channel-pulse.json]` | Diff wait-snapshot vs last pulse file. **Unchanged → exit 0, silent.** Changed → write gitignored `data/local/channel-pulse.json`. |
+| **Weekday reconcile** | `cargo run -p peram-kernel -- --db <ops.sqlite> channel-pulse reconcile --fixture … --out <pulse.json>` | Diff wait-snapshot vs last pulse file. Empty DB + fixture → in-memory projection only. **Unchanged → exit 0, silent.** Changed → write `--out` (default gitignored `data/local/channel-pulse.json`). Never writes **G**. |
 
 ```bash
 # Emit channel IR for a harness (parse stdout only)
 cargo run -p peram-kernel -- turn --channel --fixture fixtures/issue-1-runtime.json
 
-# Weekday reconcile (cron-friendly: quiet when nothing new)
-cargo run -p peram-kernel -- channel-pulse reconcile --fixture fixtures/issue-1-runtime.json
-cargo run -p peram-kernel -- channel-pulse reconcile --fixture fixtures/issue-1-runtime.json  # silent exit 0
+# Agent / CI fixture dogfood — isolated temp DB + pulse; no Eve, no channel bot, no live ops
+cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \
+  --fixture fixtures/issue-1-runtime.json --out /tmp/channel-pulse.json --json
+cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \
+  --fixture fixtures/issue-1-runtime.json --out /tmp/channel-pulse.json
+  # unchanged → exit 0, silent
 
-# Inspect reconcile outcome explicitly
-cargo run -p peram-kernel -- channel-pulse reconcile --json --verbose
+# Operator weekday path (canonical host only — default DB + gitignored pulse)
+cargo run -p peram-kernel -- channel-pulse reconcile --fixture fixtures/issue-1-runtime.json
 ```
 
 **Channel pulse JSON shape (v1):** `{ version, generated_at, next_body?, next_gate?, where?, when?, snapshot_fingerprint }`. Private/finance titles are redacted via the kernel classifier; gate ids remain for HITL approve/deny on the canonical host.
@@ -172,7 +175,8 @@ cargo run -p peram-kernel -- runtime claim <beacon-id>
 cargo run -p peram-kernel -- runtime complete <beacon-id>
 
 cargo run -p peram-kernel -- turn --channel --fixture fixtures/issue-1-runtime.json
-cargo run -p peram-kernel -- channel-pulse reconcile --fixture fixtures/issue-1-runtime.json
+cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \
+  --fixture fixtures/issue-1-runtime.json --out /tmp/channel-pulse.json --json
 
 cargo run -p peram-kernel -- pulse-pack export --out /tmp/x.pulse.json
 cargo run -p peram-kernel -- pulse-pack import --pack /tmp/x.pulse.json

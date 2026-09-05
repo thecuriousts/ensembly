@@ -118,6 +118,10 @@ cargo run -p peram-kernel -- runtime status
 cargo run -p peram-kernel -- runtime tick
 cargo run -p peram-kernel -- runtime approve pay-rent
 cargo run -p peram-kernel -- runtime reflect
+
+# Isolated channel-pulse reconcile (fixtures only; does not write G)
+cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \
+  --fixture fixtures/issue-1-runtime.json --out /tmp/channel-pulse.json --json
 ```
 
 ---
