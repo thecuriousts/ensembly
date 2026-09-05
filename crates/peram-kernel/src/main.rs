@@ -1,6 +1,6 @@
 //! `peram` CLI — dogfood entry for the Rust life kernel.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use peram_kernel::approvals::{list_pending, Snapshot};
