@@ -25,11 +25,12 @@
     "game:smoke": "node scripts/smoke-game.mjs",
     "test": "node --test test/*.test.js",
     "test:rust": "cargo test --workspace",
-    "test:kernel": "cargo test -p peram-kernel",
-    "test:memory": "cargo test -p peram-memory",
-    "peram": "cargo run -q -p peram-kernel --",
+    "test:kernel": "cargo test -p ensembly-kernel",
+    "test:memory": "cargo test -p ensembly-memory",
+    "ensembly": "cargo run -q -p ensembly-kernel --",
+    "peram": "cargo run -q -p ensembly-kernel --",
     "start": "node scripts/serve-game.mjs",
-    "test:agents": "cargo test -p peram-agents"
+    "test:agents": "cargo test -p ensembly-agents"
   },
   "repository": {
     "type": "git",

@@ -155,9 +155,9 @@ System → greater automation while preserving Human judgment where it matters
 // ──────────────────────────────────────────────────────────────
 // 8. Relationship to Existing Code
 // ──────────────────────────────────────────────────────────────
-BuildOn(peram-kernel : control SoT)   // Issue #1 S+G+CP+P · MsgBus · HITL/HOOTL
+BuildOn(ensembly-kernel : control SoT)   // Issue #1 S+G+CP+P · MsgBus · HITL/HOOTL
 BuildOn(peram-core : Rust → WASM)     // world sim mirror; not control plane
-Strengthen GraphIR → first-class G + CP   // landed in peram-kernel::graph + critical_path
+Strengthen GraphIR → first-class G + CP   // landed in ensembly-kernel::graph + critical_path
 Day/Turn loops driven by CP               // FocusPlan coach when life-state present
 CLI(runtime approve|deny|claim|complete) ↦ MsgBus
 Eisenhower prioritization  ≼  G + CP   (replace or augment)
@@ -420,11 +420,11 @@ The system evolves toward greater automation while still preserving human judgme
 
 **Eight. Relationship to existing code.**
 
-We build the Issue #1 control core in peram-kernel (Rust CLI + T1 SQLite).
+We build the Issue #1 control core in ensembly-kernel (Rust CLI + T1 SQLite).
 
 peram-core remains the world-sim crate that maps Rust to WebAssembly; it mirrors focus and is not the control plane.
 
-The Graph intermediate representation is strengthened in peram-kernel until it is a first-class directed dependency graph carrying critical-path computation.
+The Graph intermediate representation is strengthened in ensembly-kernel until it is a first-class directed dependency graph carrying critical-path computation.
 
 Day-level and turn-level planning loops continue, now coached by the critical-path engine when life-state is present.
 

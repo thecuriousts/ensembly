@@ -12,9 +12,9 @@ Read this before any non-trivial change. These are **product law**, not suggesti
 
 | Layer | SoT | Notes |
 |-------|-----|-------|
-| **Control / HITL / turn / digital-flow** | **`crates/peram-kernel` (Rust)** | Expand control here. CLI: `cargo run -p peram-kernel -- …` |
-| **Episodic memory** | `crates/peram-memory` (Rust) | CRDT trajectory; kernel consults on `reflect` only |
-| **Agent wire** | `crates/peram-agents` (Rust) | Read-only `peram-mcp` for Grok/Cursor |
+| **Control / HITL / turn / digital-flow** | **`crates/ensembly-kernel` (Rust)** | Expand control here. CLI: `cargo run -p ensembly-kernel -- …` |
+| **Episodic memory** | `crates/ensembly-memory` (Rust) | CRDT trajectory; kernel consults on `reflect` only |
+| **Agent wire** | `crates/ensembly-agents` (Rust) | Read-only `ensembly-mcp` for Grok/Cursor |
 | **Data** | T1 SQLite + T2 PQ vault (peram-vault law) | Backup/restore are product paths |
 | **Parked prototype** | `prototype/` | Game/watch/Node/WASM — history preserved, not SoT |
 
@@ -47,7 +47,7 @@ It must be:
 | Refuse | Why |
 |--------|-----|
 | Prototype theater at root | No half-wired game/watch as primary product surface |
-| Dual live writers | Cloud or laptop must not dual-write `peram-ops.sqlite` |
+| Dual live writers | Cloud or laptop must not dual-write the ops sqlite (`ensembly-ops.sqlite` / legacy `peram-ops.sqlite`) |
 | Second chat OS | No competing capture/inbox — complement Grok |
 | Kernel rewrite thrash | Simplify by deletion, not greenfield rewrite of working Rust |
 | Privacy laziness | Never commit or push `private/`, vaults, secrets |
@@ -58,7 +58,7 @@ It must be:
 
 ## 2. Production bar (every PR / agent session)
 
-1. **Dogfood path** — `cargo run -p peram-kernel -- runtime …`, `cargo test -p peram-kernel`, `cargo test -p peram-memory`, `cargo build -p peram-agents --bin peram-mcp`.
+1. **Dogfood path** — `cargo run -p ensembly-kernel -- runtime …`, `cargo test -p ensembly-kernel`, `cargo test -p ensembly-memory`, `cargo build -p ensembly-agents --bin ensembly-mcp`.
 2. **Tests on the shipped path** — Pure logic unit-tested; no tests only for `prototype/`.
 3. **Failure is loud and recoverable** — Status lines, errors; no silent wrong state.
 4. **Privacy default-deny** — Classifier + gitignore + docs stay green.
@@ -108,5 +108,6 @@ Prototype (parked)            → game/watch/Node — optional client experiment
 | [docs/LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md) | life-os vault vs kernel |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Push boundary |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Material architecture decisions |
+| [RENAME.md](RENAME.md) | `peram-*` → `ensembly-*` crate map; on-disk paths stay |
 
 **Footer:** Build the kernel you will still trust in 90 days — because harnesses come and go.

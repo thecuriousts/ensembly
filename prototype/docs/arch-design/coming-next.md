@@ -90,7 +90,7 @@ flowchart LR
 | Life-mirror play graph | A− | Beacons from real next physical/auth; game loads life-graph first | `src/play.js`, `public/game/life-graph.json`, `test/play.test.js` |
 | life-os portfolio projection | A− | Cards → candidates; finance private | `src/lifeos/`, `test/lifeos-portfolio.test.js` |
 | Digital-flow bill_pay / Bank | A− | HITL + dry-run execute; deny no-run | `src/digital-flow.js`, `swarm digital-flow`, `test/digital-flow.test.js` |
-| **Rust kernel restart** | B+ | Control SoT moves to `peram-kernel`; T1 SQLite + sealed backup + vault seal | `crates/peram-kernel`, `cargo test -p peram-kernel`, `peram` CLI |
+| **Rust kernel restart** | B+ | Control SoT moves to `ensembly-kernel`; T1 SQLite + sealed backup + vault seal | `crates/ensembly-kernel`, `cargo test -p ensembly-kernel`, `peram` CLI |
 | **Issue #1 HITL/HOOTL runtime** | A− | S+G+CP+P, MsgBus, triggers, HOOTL agents, AuthGate/PhysicalBeacon; game excluded | `runtime load\|status\|tick\|approve\|claim\|complete`, `fixtures/issue-1-runtime.json`, [DECISIONS](../DECISIONS.md#issue-1-hitlhootl-runtime-core-2026-07-24) |
 | **UncertaintyDive (space navigator)** | A− | Inspect Prior→Probe→Simulate→Score→ActOrAsk; Auth black hole; trauma guards; no mutate | `uncertainty_dive.rs`, `runtime dive`, [quest](../thinking/uncertainty-space-quest.md), [DECISIONS](../DECISIONS.md#uncertaintydive--process-under-epistemic-emptiness-2026-07-30) |
 | Immersive game world | A− | Env/sprites/props + WASM focus SoT | `public/game/`, `crates/peram-core`, `npm run game` |
@@ -133,7 +133,7 @@ flowchart TB
   dive -->|"ActOrAsk Auth black hole"| turn
 ```
 
-**Fused abstraction:** *Game of Peram control plane* = day plan + realm split + idle-snapshot approvals + exportable graph + playable world + **UncertaintyDive** (navigate uncertain space). Trace: `src/day.js`, `src/approvals.js`, `src/graph.js`, `src/game/`, `public/game/`, `crates/peram-kernel/src/uncertainty_dive.rs`.
+**Fused abstraction:** *Game of Peram control plane* = day plan + realm split + idle-snapshot approvals + exportable graph + playable world + **UncertaintyDive** (navigate uncertain space). Trace: `src/day.js`, `src/approvals.js`, `src/graph.js`, `src/game/`, `public/game/`, `crates/ensembly-kernel/src/uncertainty_dive.rs`.
 
 ---
 
@@ -238,9 +238,9 @@ flowchart TD
 | Continuous Correctness/Effectiveness/Efficiency dashboards | Status counters only today |
 | Eve remote HITL | Bridge trajectory; local MsgBus first |
 
-**Shipped evidence:** [DECISIONS Issue #1](../DECISIONS.md#issue-1-hitlhootl-runtime-core-2026-07-24) · `cargo test -p peram-kernel` · `fixtures/issue-1-runtime.json`
+**Shipped evidence:** [DECISIONS Issue #1](../DECISIONS.md#issue-1-hitlhootl-runtime-core-2026-07-24) · `cargo test -p ensembly-kernel` · `fixtures/issue-1-runtime.json`
 
-**Verify:** `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json && cargo run -p peram-kernel -- runtime tick`
+**Verify:** `cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json && cargo run -p ensembly-kernel -- runtime tick`
 
 ---
 
@@ -390,7 +390,7 @@ flowchart TB
 
 ---
 
-### SN-7 · Episodic memory (peram-memory) — LANDED 2026-07-29
+### SN-7 · Episodic memory (ensembly-memory) — LANDED 2026-07-29
 
 **Problem:** The swarm forgot everything between CLI runs — no trajectory, no learned patterns, no reflection. IntelliArch prototype had the missing brain stem.
 
@@ -405,12 +405,12 @@ flowchart LR
 
 | File | Work |
 |------|------|
-| `crates/peram-memory` | CRDT trajectory/skills/goals + coherence engine (sync, durable pattern counts) |
-| `crates/peram-kernel/src/memory_sink.rs` | Bridge: record applied-only; `runtime reflect` CLI; `--memory/--no-memory` |
+| `crates/ensembly-memory` | CRDT trajectory/skills/goals + coherence engine (sync, durable pattern counts) |
+| `crates/ensembly-kernel/src/memory_sink.rs` | Bridge: record applied-only; `runtime reflect` CLI; `--memory/--no-memory` |
 
-**Done when (done):** `cargo test -p peram-memory` (9) · kernel tests green (44) · dogfood load/tick/reflect → durable trajectory · DECISIONS entry landed.
+**Done when (done):** `cargo test -p ensembly-memory` (9) · kernel tests green (44) · dogfood load/tick/reflect → durable trajectory · DECISIONS entry landed.
 
-**Verify:** `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json && cargo run -p peram-kernel -- runtime tick && cargo run -p peram-kernel -- runtime reflect`
+**Verify:** `cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json && cargo run -p ensembly-kernel -- runtime tick && cargo run -p ensembly-kernel -- runtime reflect`
 
 **Law:** memory is aux, never SoT — records what happened, never decides gates/CP.
 
@@ -426,21 +426,21 @@ flowchart LR
 |---------|------------------|-------------------|
 | Headless prompt | `grok --no-auto-update -p "…" --output-format json` | Fast InferenceProvider enrich |
 | ACP agent | `grok --no-auto-update agent stdio` | DelegationBackend / IDE host |
-| MCP register | `grok mcp add --scope project peram -- ./target/debug/peram-mcp` | Export memory tools into Grok |
+| MCP register | `grok mcp add --scope project peram -- ./target/debug/ensembly-mcp` | Export memory tools into Grok |
 | Project config | `.grok/config.toml` `[mcp_servers.peram]` | Operator generates via `grok mcp add` (gitignored; no secrets) |
 
 ```mermaid
 flowchart TB
-  subgraph eagle["peram-kernel Eagle"]
+  subgraph eagle["ensembly-kernel Eagle"]
     rt[runtime tick / reflect]
     worker[AgentWorker + recall hint]
   end
-  subgraph mem["peram-memory aux"]
+  subgraph mem["ensembly-memory aux"]
     doc[(CRDT trajectory)]
     det[Deterministic Jaccard]
   end
-  subgraph sat["peram-agents satellite"]
-    mcp[peram-mcp stdio]
+  subgraph sat["ensembly-agents satellite"]
+    mcp[ensembly-mcp stdio]
     inf[InferenceProvider]
     del[DelegationBackend]
   end
@@ -465,7 +465,7 @@ flowchart TB
 |-------|------|--------|
 | **P2a** | `InferenceProvider` + deterministic; `PERAM_INFERENCE` | shipping this slice |
 | **P3a** | AgentWorker claim detail gets `recall_hint` | shipping this slice |
-| **P4a** | `peram-mcp` read-only tools + Grok register docs | shipping this slice |
+| **P4a** | `ensembly-mcp` read-only tools + Grok register docs | shipping this slice |
 | **P2b** | Wire `grok -p` headless as enrich adapter | stub + argv helpers now; live spawn next |
 | **P2c / P3b** | Wire `grok agent stdio` ACP client (init→auth→session/new→prompt) | stubs + official params helpers |
 | **P2d** | opencode / Ollama / pi secondary | deferred |
@@ -485,8 +485,8 @@ Unavailable provider → stderr `INFERENCE_WARN` + deterministic. Control ops ne
 
 ```bash
 cargo test --workspace
-cargo run -p peram-kernel -- runtime reflect
-cargo run -p peram-agents --bin peram-mcp   # then: grok mcp add --scope project peram -- …
+cargo run -p ensembly-kernel -- runtime reflect
+cargo run -p ensembly-agents --bin ensembly-mcp   # then: grok mcp add --scope project peram -- …
 ```
 
 **Guardrail:** Prefer official docs over grok-build internal reverse-RPC details. Project MCP via `.grok/config.toml`; never commit API keys (`XAI_API_KEY` stays env).
@@ -510,8 +510,8 @@ flowchart LR
 
 | File | Work |
 |------|------|
-| `crates/peram-kernel/src/uncertainty_dive.rs` | Keep pure inspect; optional `apply_probe_result` IR |
-| `crates/peram-kernel/src/runtime.rs` / tick path | After probe tick, update optimistic/pessimistic spans on probed node |
+| `crates/ensembly-kernel/src/uncertainty_dive.rs` | Keep pure inspect; optional `apply_probe_result` IR |
+| `crates/ensembly-kernel/src/runtime.rs` / tick path | After probe tick, update optimistic/pessimistic spans on probed node |
 | `fixtures/` | Blank-sheet + sparse-CP fixtures (ARC-style micro) |
 | [docs/thinking/uncertainty-space-quest.md](../thinking/uncertainty-space-quest.md) | Quest SoT — space = new-era ocean |
 
@@ -522,9 +522,9 @@ flowchart LR
 **Verify:**
 
 ```bash
-cargo test -p peram-kernel uncertainty_dive
-cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
-cargo run -p peram-kernel -- runtime dive --json
+cargo test -p ensembly-kernel uncertainty_dive
+cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
+cargo run -p ensembly-kernel -- runtime dive --json
 ```
 
 **Law:** Dive may advise; MsgBus + HITL still own mutation. Memory may enrich Prior only — never gates.
@@ -597,8 +597,8 @@ gantt
 | 2026-07-13 | Immersive game world + WASM focus SoT; `npm run game` |
 | 2026-07-13 | Eve fit map: channels/HITL/schedules adopt; kernel refuse rewrite ([EVE-FIT.md](../EVE-FIT.md)) |
 | 2026-07-13 | Product charter + AGENTS.md: production-grade life infrastructure; no hobby/prototype theater |
-| 2026-07-24 | Issue #1 HITL/HOOTL runtime core in `peram-kernel` (S+G+CP+P, MsgBus, AuthGate/PhysicalBeacon); formal AppGenMathPhyLang |
-| 2026-07-29 | Episodic memory (`peram-memory`) + `runtime reflect`; SN-7 |
+| 2026-07-24 | Issue #1 HITL/HOOTL runtime core in `ensembly-kernel` (S+G+CP+P, MsgBus, AuthGate/PhysicalBeacon); formal AppGenMathPhyLang |
+| 2026-07-29 | Episodic memory (`ensembly-memory`) + `runtime reflect`; SN-7 |
 | 2026-07-29 | SN-8 stretch: Grok-first agents / MCP export (PR #6) |
 | 2026-07-30 | Remove dead legacy webpack SPA; Operator CLI retitle |
 | 2026-07-30 | UncertaintyDive inspect (`runtime dive`); quest → space-era metaphor (PR #7); SN-9a |
@@ -620,13 +620,13 @@ mindmap
       loop
       game
     crates
-      peram-kernel
+      ensembly-kernel
         uncertainty_dive
         runtime
         memory_sink
       peram-core
-      peram-memory
-      peram-agents
+      ensembly-memory
+      ensembly-agents
     bin
       swarm
     fixtures

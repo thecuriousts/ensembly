@@ -27,7 +27,7 @@ We do **not** ship a 14B neural world model here — we ship a **shareable deter
 └─────────────────┬───────────────────────────┘
                   │
 ┌─────────────────▼───────────────────────────┐
-│  peram-kernel (Rust)  ← control SoT         │
+│  ensembly-kernel (Rust)  ← control SoT         │
 │  privacy · realm · approvals · rank_now     │
 │  digital_flow · T1 SQLite · backup · vault  │
 │  Issue #1: S · G · CP+P · MsgBus · HITL     │
@@ -67,9 +67,9 @@ JS canvas painter (`world-render.js`) only interprets this — no game rules.
 
 ```bash
 # Control SoT (Issue #1 dogfood)
-cargo test -p peram-kernel
-cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
-cargo run -p peram-kernel -- runtime status
+cargo test -p ensembly-kernel
+cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
+cargo run -p ensembly-kernel -- runtime status
 # or: npm run peram -- runtime status
 
 # World / game

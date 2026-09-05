@@ -1,9 +1,9 @@
 # Workspace root — operator kernel (Rust only at repo root).
 [workspace]
 members = [
-    "crates/peram-kernel",
-    "crates/peram-memory",
-    "crates/peram-agents",
+    "crates/ensembly-kernel",
+    "crates/ensembly-memory",
+    "crates/ensembly-agents",
 ]
 resolver = "2"
 

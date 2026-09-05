@@ -180,7 +180,7 @@ Full law: [PREMFLOW-FIT.md](PREMFLOW-FIT.md). Ship: `src/premflow/*`, `node bin/
 
 ## Rust life-console restart (2026-07-15)
 
-**Verdict:** **Iron-peak control** lives in **Rust `peram-kernel`**: typed day/turn/privacy/HITL/digital-flow + **tiered durable data** + native console trajectory. Node **Operator CLI** (`bin/swarm.js` + `src/*`) remains the live day/turn/graph/game-session host. Browser/WASM is an optional thin client; sample-graph is never product truth.
+**Verdict:** **Iron-peak control** lives in **Rust `ensembly-kernel`**: typed day/turn/privacy/HITL/digital-flow + **tiered durable data** + native console trajectory. Node **Operator CLI** (`bin/swarm.js` + `src/*`) remains the live day/turn/graph/game-session host. Browser/WASM is an optional thin client; sample-graph is never product truth.
 
 ### Data plane (T0–T4)
 
@@ -205,18 +205,18 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 ### Host trajectory
 
-1. **Now:** `peram` Rust CLI + kernel tests (parity with fixtures).  
-2. **Next:** `peram-console` native (Hyprland) — one window, evolving world from `rank_now`.  
+1. **Now:** `ensembly` Rust CLI (compat alias `peram`) + kernel tests (parity with fixtures).  
+2. **Next:** native console (Hyprland) — one window, evolving world from `rank_now`.  
 3. **Later:** WASM thin client + Eve redacted approve bridge.
 
 | Adopt | Refuse |
 |-------|--------|
-| `crates/peram-kernel` as control SoT | Expanding product features in Node `src/` |
+| `crates/ensembly-kernel` as control SoT | Expanding product features in Node `src/` |
 | Backup/restore as tested product paths | “Backup = hope” |
 | Vault bridge to peram-vault law | Reinventing crypto in the game loop |
 | FocusPlan = rank_now(ContextFrame) | Sample-graph theater as daily surface |
 
-**Ship path:** `crates/peram-kernel` · `cargo test -p peram-kernel` · `cargo run -p peram-kernel -- turn` · `cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json`  
+**Ship path:** `crates/ensembly-kernel` · `cargo test -p ensembly-kernel` · `cargo run -p ensembly-kernel -- turn` · `cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json`  
 **Near-term confidence:** 75%. **Thrive bet:** 85%.
 
 ---
@@ -227,14 +227,14 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 | Adopt | Refuse |
 |-------|--------|
-| Runtime SoT for S+G+CP in `peram-kernel` | Unity/game layer as prerequisite for prioritization |
+| Runtime SoT for S+G+CP in `ensembly-kernel` | Unity/game layer as prerequisite for prioritization |
 | Agents claim via CP only | Free-form agent-to-agent chatter as coordination |
 | CLI `runtime *` + durable `life_state` in T1 SQLite | Eisenhower-only prioritization as final SoT |
 | Explainable CP reasons on FocusPlan | Opaque priority scores without graph path |
 
-**Ship path:** `cargo run -p peram-kernel -- runtime load|status|tick|approve|deny|claim|complete` · `npm run peram -- runtime …` · `fixtures/issue-1-runtime.json` · `cargo test -p peram-kernel`  
+**Ship path:** `cargo run -p ensembly-kernel -- runtime load|status|tick|approve|deny|claim|complete` · `npm run peram -- runtime …` · `fixtures/issue-1-runtime.json` · `cargo test -p ensembly-kernel`  
 **Approve id:** action id (e.g. `pay-rent`); optional `auth-` prefix is stripped — snapshot may still key `auth-*` internally.  
-**Top-level gates:** `peram approve|deny|claim|complete` require durable `life_state` (after `runtime load`) and always go through Runtime + `save_runtime_pair`. No snapshot-only fallback — refuse loud if life_state missing.  
+**Top-level gates:** `ensembly approve|deny|claim|complete` require durable `life_state` (after `runtime load`) and always go through Runtime + `save_runtime_pair`. No snapshot-only fallback — refuse loud if life_state missing.  
 **Claim-via-CP:** `next_hootl_digital` returns only open digital HOOTL **on the CP path** (no off-path fallback). Direct `AgentWorker::claim` also requires CP path membership.  
 **Auth/Physical off-CP surface (intentional asymmetry):** `next_auth_gate` / `next_physical_beacon` are **CP-first**, then fall back to earliest open Auth/Physical by id so HITL wait-state never hides a real gate. HOOTL agents remain Claim-via-CP only; Auth/Physical may surface off-CP. Do not make Auth/Physical CP-only without a product law change.  
 **Tick honesty:** one HOOTL agent step per tick — claim **or** complete owned claim, never silent same-tick Done-as-exec.  
@@ -255,14 +255,14 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 | Sparse/Empty digital on CP → Probe candidate | Unbounded probes |
 | Simulate via existing PERT σ / optional MC | Parallel dive that bypasses MsgBus |
 
-**Ship:** `crates/peram-kernel/src/uncertainty_dive.rs` · `runtime dive [--json] [--probe-budget N]` · quest note [`docs/thinking/uncertainty-space-quest.md`](thinking/uncertainty-space-quest.md)  
+**Ship:** `crates/ensembly-kernel/src/uncertainty_dive.rs` · `runtime dive [--json] [--probe-budget N]` · quest note [`docs/thinking/uncertainty-space-quest.md`](thinking/uncertainty-space-quest.md)  
 **Near-term:** close DOE loop (probe tick updates duration span) — spacemap **SN-9**; optional memory as Prior enrichment (never gates).
 
 ---
 
-## Episodic memory layer — peram-memory fused from IntelliArch (2026-07-29)
+## Episodic memory layer — ensembly-memory fused from IntelliArch (2026-07-29)
 
-**Verdict:** The IntelliArch prototype's local-first CRDT memory + coherence engine is adopted as a new crate `crates/peram-memory`, bridged into the kernel via `memory_sink`. The kernel runtime **records** what happened (applied bus messages, tick reports, graph loads) into a durable, mergeable episodic document; explicit `runtime reflect` runs coherence scoring, skill synthesis, and goal proposals over that trajectory. Origin: IntelliArch `tries/` (agent_memory + coherence_engine), ported synchronous to kernel discipline.
+**Verdict:** The IntelliArch prototype's local-first CRDT memory + coherence engine is adopted as a new crate `crates/ensembly-memory`, bridged into the kernel via `memory_sink`. The kernel runtime **records** what happened (applied bus messages, tick reports, graph loads) into a durable, mergeable episodic document; explicit `runtime reflect` runs coherence scoring, skill synthesis, and goal proposals over that trajectory. Origin: IntelliArch `tries/` (agent_memory + coherence_engine), ported synchronous to kernel discipline.
 
 | Adopt | Refuse |
 |-------|--------|
@@ -274,10 +274,10 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 | Explicit `--memory <path>` open failure → fatal (operator asked) | Silent degrade on explicit intent |
 | `data/local/peram-memory.json` (gitignored, T1 privacy boundary) | Memory under `public/` or commit-eligible paths |
 
-**Ship path:** `cargo test -p peram-memory` · `cargo run -p peram-kernel -- runtime load|tick|…` (records) · `cargo run -p peram-kernel -- runtime reflect [--json]` · flags `--memory <path>` / `--no-memory`  
+**Ship path:** `cargo test -p ensembly-memory` · `cargo run -p ensembly-kernel -- runtime load|tick|…` (records) · `cargo run -p ensembly-kernel -- runtime reflect [--json]` · flags `--memory <path>` / `--no-memory`  
 **Merge law:** entry-level CRDT merge is idempotent and commutative; re-merging held state is a true no-op (stable hash). Concurrent CLI writers reconcile via `sync_and_save` (load-merge-persist, atomic tmp+rename).  
 **Reflection contract:** skipped loudly below 5 trajectory entries; inference providers may augment coherence scoring and summaries **behind `InferenceProvider` trait** — deterministic Jaccard stays the default and the test oracle; unavailable or slow backends warn and fall back, never block reflect.  
-**Remaining (trajectory, not live):** live `grok -p` enrich (P2b), full Grok ACP client loop (P2c/P3b), secondary adapters (opencode, pi, Ollama feature), peer-to-peer replica sync, memory-informed coach lines (read-only, gated). Trait + deterministic + read-only `peram-mcp` ship in SN-8 P2a/P4a.
+**Remaining (trajectory, not live):** live `grok -p` enrich (P2b), full Grok ACP client loop (P2c/P3b), secondary adapters (opencode, pi, Ollama feature), peer-to-peer replica sync, memory-informed coach lines (read-only, gated). Trait + deterministic + read-only `ensembly-mcp` ship in SN-8 P2a/P4a.
 
 ---
 
@@ -287,18 +287,18 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 | Adopt | Refuse |
 |-------|--------|
-| `InferenceProvider` trait in `peram-agents`; **deterministic Jaccard** as default + test oracle | Ollama/`reqwest` in default `peram-memory` / `peram-agents` build |
+| `InferenceProvider` trait in `ensembly-agents`; **deterministic Jaccard** as default + test oracle | Ollama/`reqwest` in default `ensembly-memory` / `ensembly-agents` build |
 | Optional adapter crates or feature flags per backend (`judge-ollama`, `judge-grok-mcp`, …) | One-vendor inference lock-in |
 | Runtime selection: `PERAM_INFERENCE=deterministic\|ollama\|grok-mcp\|opencode-acp\|…` | Silent hang when a daemon is down |
 | Unavailable/slow provider → stderr warn + deterministic fallback | Reflect or tick failure because a model host is offline |
 | `DelegationBackend` trait for Human-Out-Of-The-Loop hands; **Grok Agent Client Protocol as first** adapter; opencode secondary | opencode as only delegation path |
 | Grok Model Context Protocol / opencode Model Context Protocol as **clients** calling external hosts | Embedding cloud keys in repo |
-| `peram-mcp` exposes Model Context Protocol server (`memory_*`, `swarm_banner`; `kernel_status` deferred); consumes external Model Context Protocol/Agent Client Protocol as providers | Shadow Model Context Protocol servers without operator approval |
+| `ensembly-mcp` exposes Model Context Protocol server (`memory_*`, `swarm_banner`; `kernel_status` deferred); consumes external Model Context Protocol/Agent Client Protocol as providers | Shadow Model Context Protocol servers without operator approval |
 | Tests: deterministic only; adapter tests behind `#[ignore]` or feature | CI requiring Ollama, Grok, or opencode running |
 
 **Ship order:** P2a trait + deterministic → P3a recall → P4a MCP export (register into Grok) → **P2b Grok MCP + P2c/P3b Grok ACP** → P2d secondary adapters (opencode, pi, Ollama feature) → P5 peer-to-peer decision.
 
-**Grok-first rationale (2026-07-29):** Official xAI docs — MCP via [`grok mcp add`](https://docs.x.ai/build/features/mcp-servers) / `.grok/config.toml`; ACP via [`grok agent stdio`](https://docs.x.ai/build/cli/headless-scripting#acp); headless inference via `grok -p --output-format json`. Export `peram-mcp`; dogfood Grok before Ollama. Never commit `XAI_API_KEY` or `~/.grok/mcp_credentials.json`.
+**Grok-first rationale (2026-07-29):** Official xAI docs — MCP via [`grok mcp add`](https://docs.x.ai/build/features/mcp-servers) / `.grok/config.toml`; ACP via [`grok agent stdio`](https://docs.x.ai/build/cli/headless-scripting#acp); headless inference via `grok -p --output-format json`. Export `ensembly-mcp`; dogfood Grok before Ollama. Never commit `XAI_API_KEY` or `~/.grok/mcp_credentials.json`.
 
 ---
 
@@ -320,3 +320,22 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 **Near-term energy (SN-HUB-1):** wealth-core board/brief lived practice; ensembly `turn` / `runtime status` only as optional status glance; no NotifyPort / wealth-HITL / Bot-bind / Eve / vault-T2 feature work until gates open per spacemap. Kernel/game cards stay in [coming-next.md](arch-design/coming-next.md) but stretch is energy-deferred while wealth primary holds.
 
 **Confidence:** shape 90%; sequence under capacity scarcity 85%.
+
+---
+
+## Crate rename — `peram-*` → `ensembly-*` (2026-09-05)
+
+**Verdict:** Drop the personal `peram-` package prefix. Workspace crates are **`ensembly-kernel`**, **`ensembly-memory`**, **`ensembly-agents`**. CLI primary bin is **`ensembly`** with a one-release **`peram`** alias. MCP primary bin is **`ensembly-mcp`** with a one-release **`peram-mcp`** alias. Do **not** use `actor-`. Domain vocab (pulse / gate / reconcile / wait-snapshot) is unchanged.
+
+| Adopt | Refuse |
+|-------|--------|
+| Package + `crates/` dir rename to `ensembly-*` | Greenfield kernel rewrite to “make the rename cleaner” |
+| Cheap `[[bin]]` aliases + `default-run` | Breaking `cargo run -p ensembly-kernel -- …` by shipping two bins without a default |
+| Fresh defaults `ensembly-ops.sqlite` / `ensembly-memory.json`; discover legacy `peram-*` if that is the only file | Silent in-place rename or copy of the only live DB |
+| Dual-read pack ids; new exports `ensembly-*-v1` | Break import of existing bot/laptop pulse packs |
+| Vault write-side stays `peram-kernel-t2-v1:`; unseal dual-reads | Invalidate existing sealed backups |
+| `ENSEMBLY_*` env primary; `PERAM_*` one-release aliases | Silent env rename that strands existing Grok/Cursor configs |
+| `migrate-local-paths` copy-if-missing + pulse-pack resync | Dual-write ops on laptop and bot |
+
+**Ship path:** [RENAME.md](../RENAME.md) · `cargo test -p ensembly-kernel` · `cargo test -p ensembly-memory` · `cargo build -p ensembly-agents --bin ensembly-mcp`  
+**Law tests preserved:** Issue #12 fixture dogfood + no-G reconcile (`reconcile_fixture_empty_store_does_not_write_g`).
