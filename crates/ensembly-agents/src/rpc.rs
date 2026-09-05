@@ -1,5 +1,5 @@
 //! Sync newline-delimited JSON-RPC 2.0 over stdio.
-//! Shared by the Model Context Protocol server (`peram-mcp`).
+//! Shared by the Model Context Protocol server (`ensembly-mcp`).
 //! No tokio — matches kernel discipline; Grok/Cursor spawn us as a subprocess.
 
 use serde_json::{json, Value};

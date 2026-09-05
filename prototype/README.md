@@ -2,7 +2,7 @@
 
 **Status:** Not source of truth. History preserved; not deleted.
 
-ensembly at repo root is now a **thin operator kernel** (`peram-kernel`, `peram-memory`, `peram-agents`). Everything under `prototype/` is the former **Game of Peram / Node operator theater** — browser game, watch HTML, WASM world sim, and the legacy `swarm.js` CLI stack.
+ensembly at repo root is now a **thin operator kernel** (`ensembly-kernel`, `ensembly-memory`, `ensembly-agents`). Everything under `prototype/` is the former **Game of Peram / Node operator theater** — browser game, watch HTML, WASM world sim, and the legacy `swarm.js` CLI stack.
 
 ## What lives here
 
@@ -21,17 +21,17 @@ ensembly at repo root is now a **thin operator kernel** (`peram-kernel`, `peram-
 ## Control plane (repo root — use this)
 
 ```bash
-cargo test -p peram-kernel
-cargo test -p peram-memory
-cargo build -p peram-agents --bin peram-mcp
+cargo test -p ensembly-kernel
+cargo test -p ensembly-memory
+cargo build -p ensembly-agents --bin ensembly-mcp
 
-cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
-cargo run -p peram-kernel -- runtime status
-cargo run -p peram-kernel -- runtime tick
-cargo run -p peram-kernel -- pulse-pack export --out /tmp/pulse.pulse.json
+cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
+cargo run -p ensembly-kernel -- runtime status
+cargo run -p ensembly-kernel -- runtime tick
+cargo run -p ensembly-kernel -- pulse-pack export --out /tmp/pulse.pulse.json
 ```
 
-HITL/HOOTL, T1 SQLite, privacy, backup, pulse-pack, and `peram-mcp` are **only** maintained at repo root.
+HITL/HOOTL, T1 SQLite, privacy, backup, pulse-pack, and `ensembly-mcp` are **only** maintained at repo root.
 
 ## Running the parked game (optional)
 

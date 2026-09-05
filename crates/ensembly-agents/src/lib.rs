@@ -1,13 +1,13 @@
-//! peram-agents — Eagle satellites for inference, MCP export, Grok ACP helpers.
+//! ensembly-agents — Eagle satellites for inference, MCP export, Grok ACP helpers.
 //!
-//! Kernel (`peram-kernel`) remains control Source of Truth. This crate is the
+//! Kernel (`ensembly-kernel`) remains control Source of Truth. This crate is the
 //! protocol / learning-augmentation satellite: optional InferenceProvider
 //! adapters, sync Model Context Protocol server for Grok/Cursor, and
 //! DelegationBackend stubs for Human-Out-Of-The-Loop digital hands.
 //!
 //! Research bet (2026-07): official xAI docs — register MCP via `grok mcp add`
 //! / `.grok/config.toml`; ACP via `grok agent stdio`; fast inference via
-//! `grok -p --output-format json`. Export `peram-mcp`; never hard-dep Ollama.
+//! `grok -p --output-format json`. Export `ensembly-mcp`; never hard-dep Ollama.
 
 pub mod delegation;
 pub mod grok;
@@ -28,5 +28,5 @@ pub use inference::{
 pub use mcp_server::{serve as serve_mcp, McpServeConfig, PROTOCOL_VERSION};
 
 pub fn agents_version() -> &'static str {
-    "peram-agents 0.1.0 inference-provider mcp-export grok-cli-official"
+    "ensembly-agents 0.1.0 inference-provider mcp-export grok-cli-official"
 }

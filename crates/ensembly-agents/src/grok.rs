@@ -41,7 +41,8 @@ pub fn grok_acp_argv() -> Vec<String> {
 }
 
 /// Project-scoped MCP server entry for `.grok/config.toml` (see xAI MCP docs).
-/// Operator runs: `grok mcp add --scope project peram -- <command>…`
+/// Operator runs: `grok mcp add --scope project ensembly -- <command>…`
+/// Existing `[mcp_servers.peram]` registrations still work with the `peram-mcp` alias.
 pub fn project_mcp_toml_snippet(command: &str, args: &[&str]) -> String {
     let args_lit = args
         .iter()
@@ -51,7 +52,7 @@ pub fn project_mcp_toml_snippet(command: &str, args: &[&str]) -> String {
     // Prefer an absolute PERAM_MEMORY when registering — relative paths create
     // an empty file if Grok's cwd ≠ repo root (MCP now fails closed instead).
     format!(
-        r#"[mcp_servers.peram]
+        r#"[mcp_servers.ensembly]
 command = "{command}"
 args = [{args_lit}]
 env = {{ PERAM_MEMORY = "data/local/peram-memory.json" }}  # use absolute path in practice
@@ -82,11 +83,9 @@ pub fn acp_initialize_params() -> Value {
     })
 }
 
-/// Shell one-liner to register peram-mcp into Grok (project scope).
-pub fn register_mcp_shell_hint(peram_mcp_path: &str) -> String {
-    format!(
-        "grok mcp add --scope project peram -- {peram_mcp_path}"
-    )
+/// Shell one-liner to register ensembly-mcp into Grok (project scope).
+pub fn register_mcp_shell_hint(mcp_path: &str) -> String {
+    format!("grok mcp add --scope project ensembly -- {mcp_path}")
 }
 
 #[cfg(test)]
@@ -108,8 +107,8 @@ mod tests {
 
     #[test]
     fn toml_snippet_has_mcp_servers_table() {
-        let t = project_mcp_toml_snippet("peram-mcp", &[]);
-        assert!(t.contains("[mcp_servers.peram]"));
-        assert!(t.contains("command = \"peram-mcp\""));
+        let t = project_mcp_toml_snippet("ensembly-mcp", &[]);
+        assert!(t.contains("[mcp_servers.ensembly]"));
+        assert!(t.contains("command = \"ensembly-mcp\""));
     }
 }

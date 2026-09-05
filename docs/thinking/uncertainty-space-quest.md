@@ -1,7 +1,7 @@
 # Uncertainty space — quest note
 
 **Date:** 2026-07-30  
-**Repo:** ensembly / Game of Peram · `peram-kernel`  
+**Repo:** ensembly / Game of Peram · `ensembly-kernel`  
 **Status:** Curiosity captured → evaluated → mapped into kernel (`uncertainty_dive`)  
 **Metaphor era:** **Space** is the new-era ocean — navigate epistemic emptiness as void / black hole / launch, not drowning.
 
@@ -129,8 +129,8 @@ ActOrAsk  →  Auth / Physical = HITL only; digital HOOTL only via CP (existing 
 
 | Artifact | Role |
 |----------|------|
-| `crates/peram-kernel/src/uncertainty_dive.rs` | Pure planner: graph + CP → `DiveReport` |
-| `cargo run -p peram-kernel -- runtime dive [--json]` | Operator inspects the dive before ticking |
+| `crates/ensembly-kernel/src/uncertainty_dive.rs` | Pure planner: graph + CP → `DiveReport` |
+| `cargo run -p ensembly-kernel -- runtime dive [--json]` | Operator inspects the dive before ticking |
 | Trauma guards | `probe_budget`, refuse auto on Auth, Claim-via-CP only, one step / tick (existing) |
 
 **Refuse:** LLM as SoT for dive; unbounded probes; auto-approve Auth black holes; memory deciding gates.
@@ -138,9 +138,9 @@ ActOrAsk  →  Auth / Physical = HITL only; digital HOOTL only via CP (existing 
 **Dogfood:**
 
 ```bash
-cargo test -p peram-kernel uncertainty_dive
-cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
-cargo run -p peram-kernel -- runtime dive --json
+cargo test -p ensembly-kernel uncertainty_dive
+cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
+cargo run -p ensembly-kernel -- runtime dive --json
 ```
 
 ---

@@ -8,7 +8,7 @@
 
 | Term | Full text | What it means here |
 |------|-----------|---------------------|
-| **SoT** | Source of Truth | The one place a decision is made and stored. `crates/peram-kernel` is the control Source of Truth; everything else mirrors or advises. |
+| **SoT** | Source of Truth | The one place a decision is made and stored. `crates/ensembly-kernel` is the control Source of Truth; everything else mirrors or advises. |
 | **S** | Life-State | Durable operator state object (graph, regime, metrics, fingerprint) owned by the runtime. |
 | **G** | Dependency Graph (`DepGraph`) | Directed graph of life actions with gates, realms, and dependencies. |
 | **CP** | Critical Path | Longest-path chain through the dependency graph — the sequence that actually gates the day. |
@@ -23,7 +23,7 @@
 | **IR** | Intermediate Representation | Versioned JSON/markdown contracts between pure kernel logic and hosts/agents (turn status IR, wait snapshot IR, graph IR). See MAP.md §4. |
 | **Regime** | Loop Regime | Runtime mode: `Hootl` (agents clear digital work) vs `HitlWait` (blocked on a human gate/beacon). |
 
-## Learning layer (peram-memory)
+## Learning layer (ensembly-memory)
 
 | Term | Full text | What it means here |
 |------|-----------|---------------------|
@@ -34,7 +34,7 @@
 | **Reflect** | Reflection pass | Explicit `runtime reflect`: scores coherence, runs skill synthesis, proposes goals. Never implicit inside a control tick. |
 | **Aux** | Auxiliary | The memory layer's legal status: it records and learns; it never decides gates, critical path, or priorities. |
 | **Judge** | Inference provider (roadmap P2) | Pluggable backend for coherence scoring and reflection summaries. **Default:** deterministic Jaccard (zero network). **Optional adapters:** Ollama HTTP, Grok Model Context Protocol, opencode Agent Client Protocol / Model Context Protocol, pi, others — selected at runtime, never a hard dependency. Unavailable provider warns and falls back to deterministic. |
-| **InferenceProvider** | Inference provider trait | Rust trait in `peram-agents`: score coherence, summarize reflection. Test oracle is always the deterministic implementation. |
+| **InferenceProvider** | Inference provider trait | Rust trait in `ensembly-agents`: score coherence, summarize reflection. Test oracle is always the deterministic implementation. |
 | **DelegationBackend** | Delegation backend trait | Rust trait for Human-Out-Of-The-Loop digital hands. **First adapter:** Grok Agent Client Protocol. Secondary: opencode Agent Client Protocol, pi. |
 
 ## Agents and protocols (roadmap P3–P5)
@@ -45,7 +45,7 @@
 | **pi** | pi (agent runtime) | External agent/toolchain; secondary DelegationBackend adapter when wired. |
 | **Grok ACP** | Grok Agent Client Protocol | Official: `grok agent stdio` — JSON-RPC NDJSON ([docs](https://docs.x.ai/build/cli/headless-scripting#acp)). |
 | **Grok MCP** | Grok Model Context Protocol | Official: `grok mcp add` / `.grok/config.toml` ([docs](https://docs.x.ai/build/features/mcp-servers)). Tools namespaced `server__tool`. |
-| **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Grok, Cursor, opencode, Eve). Live: read-only `peram-mcp` `memory_*` + `swarm_banner`. `kernel_status` deferred. |
+| **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Grok, Cursor, opencode, Eve). Live: read-only `ensembly-mcp` `memory_*` + `swarm_banner`. `kernel_status` deferred. |
 | **ACP** | Agent Client Protocol | Agent-to-agent session protocol (used by `opencode acp`); planned path for delegating HOOTL digital work. |
 | **JSON-RPC** | JSON Remote Procedure Call | Request/response envelope used by MCP and ACP. |
 | **NDJSON** | Newline-Delimited JSON | One JSON value per line; the stdio framing for our protocol plumbing. |

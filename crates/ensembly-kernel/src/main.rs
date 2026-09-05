@@ -1,38 +1,39 @@
-//! `peram` CLI — dogfood entry for the Rust life kernel.
+//! `ensembly` CLI — dogfood entry for the operator kernel.
+//! Compat alias: `peram` (one release; same binary).
 
 use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
-use peram_kernel::approvals::{list_pending, Snapshot};
-use peram_kernel::backup::{
+use ensembly_kernel::approvals::{list_pending, Snapshot};
+use ensembly_kernel::backup::{
     create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
 };
-use peram_kernel::digital_flow::{run_cycle, DigitalFlow};
-use peram_kernel::memory_sink::{MemorySink, DEFAULT_MEMORY_PATH};
-use peram_kernel::pulse_pack::{
+use ensembly_kernel::digital_flow::{run_cycle, DigitalFlow};
+use ensembly_kernel::memory_sink::{MemorySink, DEFAULT_MEMORY_PATH};
+use ensembly_kernel::pulse_pack::{
     export_pulse_pack, import_pulse_pack, local_pulse_status, read_pulse_pack, write_pulse_pack,
     PulseExportOpts, PulseImportOpts, DEFAULT_ARCHIVE_SIDECAR,
 };
-use peram_kernel::msg_bus::ManualCmd;
-use peram_kernel::runtime::Runtime;
-use peram_kernel::store::OpsStore;
-use peram_kernel::channel_pulse::{
+use ensembly_kernel::msg_bus::ManualCmd;
+use ensembly_kernel::runtime::Runtime;
+use ensembly_kernel::store::OpsStore;
+use ensembly_kernel::channel_pulse::{
     project_wait_snapshot, reconcile_channel_pulse, DEFAULT_CHANNEL_PULSE_PATH,
 };
-use peram_kernel::turn::{
+use ensembly_kernel::turn::{
     actions_from_fixture_path, build_channel_ir, context_at, rank_now, Action,
 };
-use peram_kernel::{kernel_version, private_path_patterns};
+use ensembly_kernel::{kernel_version, private_path_patterns};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "peram", about = "Game of Peram life kernel (Rust)")]
+#[command(name = env!("CARGO_BIN_NAME"), about = "ensembly operator kernel (Rust)")]
 struct Cli {
     /// Ops SQLite path (T1). Default: data/local/peram-ops.sqlite under cwd/repo.
     #[arg(long, global = true)]
     db: Option<PathBuf>,
 
-    /// Episodic memory path (peram-memory). Default: data/local/peram-memory.json.
+    /// Episodic memory path (ensembly-memory). Default: data/local/peram-memory.json.
     #[arg(long, global = true)]
     memory: Option<PathBuf>,
 
@@ -249,7 +250,7 @@ enum RuntimeCmd {
     },
     /// UncertaintyDive — Prior→Probe→Simulate→Score→ActOrAsk (inspect only; no mutate)
     Dive {
-        #[arg(long, default_value_t = peram_kernel::DEFAULT_PROBE_BUDGET)]
+        #[arg(long, default_value_t = ensembly_kernel::DEFAULT_PROBE_BUDGET)]
         probe_budget: u32,
         #[arg(long)]
         json: bool,
@@ -276,9 +277,9 @@ enum ChannelPulseCmd {
     /// Weekday reconcile: diff wait-snapshot vs last pulse; write when changed (quiet when not)
     #[command(after_help = "\
 Examples:
-  cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \\
+  cargo run -p ensembly-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \\
     --fixture fixtures/issue-1-runtime.json --out /tmp/channel-pulse.json --json
-  cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \\
+  cargo run -p ensembly-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \\
     --fixture fixtures/issue-1-runtime.json --out /tmp/channel-pulse.json
     # unchanged → exit 0, silent
 ")]
@@ -392,7 +393,7 @@ fn main() -> Result<()> {
         Commands::Version => {
             println!("{}", kernel_version());
             println!("private_paths: {:?}", private_path_patterns());
-            println!("law: Node src/* legacy; peram-kernel is control SoT");
+            println!("law: Node src/* legacy; ensembly-kernel is control SoT");
         }
         Commands::Turn {
             fixture,
@@ -435,7 +436,7 @@ fn main() -> Result<()> {
                 rt.state = life;
                 rt.snapshot = snap.clone();
                 plan = rt.focus_plan(plan);
-            } else if peram_kernel::DepGraph::from_actions(&actions, &Default::default()).is_ok() {
+            } else if ensembly_kernel::DepGraph::from_actions(&actions, &Default::default()).is_ok() {
                 let now = Utc::now();
                 let mut rt = Runtime::new(now);
                 if rt.load_actions(&actions, now).is_ok() {
@@ -537,11 +538,11 @@ fn main() -> Result<()> {
                     .unwrap_or_else(|| Snapshot::empty(now));
                 snap.pending.retain(|p| p.id != approval.id);
                 snap.pending.push(approval.clone());
-                snap.status = peram_kernel::derive_status(&snap.pending);
+                snap.status = ensembly_kernel::derive_status(&snap.pending);
                 snap.phase = match snap.status {
-                    peram_kernel::SnapshotStatus::IdleWaiting => "HITL_WAIT".into(),
-                    peram_kernel::SnapshotStatus::Clear => "CLEAR".into(),
-                    peram_kernel::SnapshotStatus::Partial => "PARTIAL".into(),
+                    ensembly_kernel::SnapshotStatus::IdleWaiting => "HITL_WAIT".into(),
+                    ensembly_kernel::SnapshotStatus::Clear => "CLEAR".into(),
+                    ensembly_kernel::SnapshotStatus::Partial => "PARTIAL".into(),
                 };
                 snap.updated_at = now;
                 store.save_snapshot(&snap)?;
@@ -911,7 +912,7 @@ fn main() -> Result<()> {
                 }
                 RuntimeCmd::Approve { id, json } => {
                     // Normalize: approve uses action id (pay-rent); auth- prefix accepted then stripped.
-                    let action_id = peram_kernel::runtime::action_id_of(&id).to_string();
+                    let action_id = ensembly_kernel::runtime::action_id_of(&id).to_string();
                     rt.enqueue_manual(ManualCmd::Approve { id: action_id.clone() }, now);
                     let report = rt.tick(false, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
@@ -924,7 +925,7 @@ fn main() -> Result<()> {
                     }
                 }
                 RuntimeCmd::Deny { id, json } => {
-                    let action_id = peram_kernel::runtime::action_id_of(&id).to_string();
+                    let action_id = ensembly_kernel::runtime::action_id_of(&id).to_string();
                     rt.enqueue_manual(ManualCmd::Deny { id: action_id.clone() }, now);
                     let report = rt.tick(false, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
@@ -996,8 +997,8 @@ fn main() -> Result<()> {
                     }
                 }
                 RuntimeCmd::Dive { probe_budget, json } => {
-                    use peram_kernel::critical_path::compute_critical_path;
-                    use peram_kernel::plan_dive;
+                    use ensembly_kernel::critical_path::compute_critical_path;
+                    use ensembly_kernel::plan_dive;
                     if rt.state.graph.nodes.is_empty() {
                         bail!("runtime dive needs a loaded graph — run `runtime load --fixture …` first");
                     }
@@ -1086,7 +1087,7 @@ fn main() -> Result<()> {
 }
 
 /// Top-level approve/deny/claim/complete always go through Runtime (G + Snapshot).
-/// Requires durable life_state from `peram runtime load` — no snapshot-only legacy path.
+/// Requires durable life_state from `ensembly runtime load` — no snapshot-only legacy path.
 fn gate_via_runtime(
     db_path: &PathBuf,
     memory_flags: &MemoryFlags,
@@ -1099,7 +1100,7 @@ fn gate_via_runtime(
     let Some(life) = store.load_life_state()? else {
         bail!(
             "no life_state in DB — refuse snapshot-only {decision}. \
-             Run: cargo run -p peram-kernel -- runtime load --fixture <path> \
+             Run: cargo run -p ensembly-kernel -- runtime load --fixture <path> \
              then: peram {decision} {id}  (or peram runtime {decision} {id})"
         );
     };
@@ -1111,10 +1112,10 @@ fn gate_via_runtime(
     attach_memory(&mut rt, memory_flags);
     let cmd = match cmd {
         ManualCmd::Approve { id } => ManualCmd::Approve {
-            id: peram_kernel::runtime::action_id_of(&id).to_string(),
+            id: ensembly_kernel::runtime::action_id_of(&id).to_string(),
         },
         ManualCmd::Deny { id } => ManualCmd::Deny {
-            id: peram_kernel::runtime::action_id_of(&id).to_string(),
+            id: ensembly_kernel::runtime::action_id_of(&id).to_string(),
         },
         other => other,
     };

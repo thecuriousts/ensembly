@@ -1,18 +1,18 @@
-//! `peram-mcp` — read-only Model Context Protocol server for episodic memory.
+//! `ensembly-mcp` — read-only Model Context Protocol server for episodic memory.
 //!
 //! Register with Grok/Cursor. Example:
 //! ```text
-//! cargo run -p peram-agents --bin peram-mcp
-//! # or after install: peram-mcp
+//! cargo run -p ensembly-agents --bin ensembly-mcp
+//! # or after install: ensembly-mcp
 //! ```
 //! Env: `PERAM_MEMORY` (default data/local/peram-memory.json), `PERAM_AGENT_ID`.
 
 use clap::Parser;
-use peram_agents::{serve_mcp, McpServeConfig};
+use ensembly_agents::{serve_mcp, McpServeConfig};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "peram-mcp", about = "peram read-only MCP server (memory tools for Grok/Cursor)")]
+#[command(name = env!("CARGO_BIN_NAME"), about = "ensembly read-only MCP server (memory tools for Grok/Cursor)")]
 struct Cli {
     #[arg(long, env = "PERAM_MEMORY")]
     memory: Option<PathBuf>,

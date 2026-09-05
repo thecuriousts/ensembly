@@ -1,8 +1,8 @@
-# peram-memory
+# ensembly-memory
 
 Episodic learning layer for the ensembly operator kernel: a durable, mergeable memory of **what actually happened** — trajectory, skills, goals — plus a coherence engine that reflects over it.
 
-**Boundary law:** this crate remembers and learns. It never decides. `peram-kernel` remains the control Source of Truth (gates, critical path, priorities); nothing here approves, denies, claims, or reprioritizes. Terms expanded: [docs/GLOSSARY.md](../../docs/GLOSSARY.md).
+**Boundary law:** this crate remembers and learns. It never decides. `ensembly-kernel` remains the control Source of Truth (gates, critical path, priorities); nothing here approves, denies, claims, or reprioritizes. Terms expanded: [docs/GLOSSARY.md](../../docs/GLOSSARY.md).
 
 ## What is inside
 
@@ -15,7 +15,7 @@ Episodic learning layer for the ensembly operator kernel: a durable, mergeable m
 ## Usage — as a library
 
 ```rust
-use peram_memory::{EpisodicMemory, TrajectoryType, reflect, CoherenceConfig};
+use ensembly_memory::{EpisodicMemory, TrajectoryType, reflect, CoherenceConfig};
 
 // Open (or create) a durable memory; identity survives reloads.
 let mut mem = EpisodicMemory::open("data/local/peram-memory.json", "peram-swarm")?;
@@ -41,12 +41,12 @@ You do not drive this crate directly; the kernel records for you:
 
 ```bash
 # Recorded automatically into data/local/peram-memory.json:
-cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
-cargo run -p peram-kernel -- runtime tick
+cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
+cargo run -p ensembly-kernel -- runtime tick
 
 # Reflect over the accumulated trajectory (skips loudly below 5 entries):
-cargo run -p peram-kernel -- runtime reflect          # human-readable
-cargo run -p peram-kernel -- runtime reflect --json   # machine-readable
+cargo run -p ensembly-kernel -- runtime reflect          # human-readable
+cargo run -p ensembly-kernel -- runtime reflect --json   # machine-readable
 ```
 
 Global flags: `--memory <path>` (explicit path; open failure is fatal) · `--no-memory` (disable recording for one invocation).
@@ -62,7 +62,7 @@ Global flags: `--memory <path>` (explicit path; open failure is fatal) · `--no-
 ## Tests
 
 ```bash
-cargo test -p peram-memory    # 9 tests: merge convergence/idempotence, persistence
+cargo test -p ensembly-memory    # 9 tests: merge convergence/idempotence, persistence
                               # roundtrip, concurrent writers, reflection threshold,
                               # durable skill synthesis, report, similarity
 ```

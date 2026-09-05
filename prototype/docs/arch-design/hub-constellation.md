@@ -58,7 +58,7 @@ flowchart TB
 
 | 2036 role | What it is | Why it still wins |
 |-----------|------------|-------------------|
-| **Kernel** | ensembly / peram-kernel — day, turn, privacy, HITL, schedules | One entry for life ops; testable; offline-capable |
+| **Kernel** | ensembly / ensembly-kernel — day, turn, privacy, HITL, schedules | One entry for life ops; testable; offline-capable |
 | **Swarm** | Named Grok Bots + local HOOTL — digital chores, handoffs, routines | Parallel workers; human only for body + auth |
 | **Modules** | Separate binaries + DBs with typed IR edges | Cloud-deployable pieces; blast radius bounded |
 | **Bridge** | NotifyPort + XChat/Eve; redacted only | Swap cockpits; never vault-as-cloud |
@@ -75,7 +75,7 @@ flowchart LR
   subgraph shipped["Shipped A"]
     Bound[boundary law]
     Flow[premflow flow wrapper]
-    Runtime[peram-kernel runtime]
+    Runtime[ensembly-kernel runtime]
     Groxy[groxy inject outbound]
   end
   subgraph open["Next altitude B"]
@@ -94,7 +94,7 @@ flowchart LR
 | Premflow shared capture | A− | One `~/.premflow/` SoT + `swarm flow` | [PREMFLOW-FIT.md](../PREMFLOW-FIT.md), `npm run flow:link` |
 | Clone copilot phase 1 | A− | Propose → PR; no unattended bank | [CLONE-COPILOT.md](../CLONE-COPILOT.md) |
 | HITL digital-flow dry-run | A− | Bank path dry-run default | `src/digital-flow.js`, tests |
-| peram-kernel control | B+ | Runtime S+G+CP; T1 path | `cargo test -p peram-kernel` |
+| ensembly-kernel control | B+ | Runtime S+G+CP; T1 path | `cargo test -p ensembly-kernel` |
 | Eve fit map | B | Channels/HITL/schedules adopt | [EVE-FIT.md](../EVE-FIT.md) |
 | groxy → XChat outbound | B+ | Host notify shipped | `~/arch-machine/docs/groxy.md`, `bin/groxy inject` |
 | **Grok Bot swarm (x.ai)** | C | Product exists; not bound to hub IR yet | [Grok Bot docs](https://docs.x.ai/grok-bot/overview); SN-HUB-7 |

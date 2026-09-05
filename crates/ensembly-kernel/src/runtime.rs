@@ -56,7 +56,7 @@ pub struct Runtime {
     pub bus: MsgBus,
     pub snapshot: Snapshot,
     pub agent: AgentWorker,
-    /// Optional episodic memory sink (peram-memory). Records applied bus
+    /// Optional episodic memory sink (ensembly-memory). Records applied bus
     /// messages, tick reports, and graph loads. Aux audit/learning layer —
     /// never consulted for control decisions. Hosts attach via CLI flags.
     pub memory: Option<MemorySink>,

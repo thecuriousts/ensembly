@@ -2,7 +2,7 @@
 //! Default is deterministic Jaccard. External hosts (Grok MCP/ACP, opencode,
 //! Ollama, pi) plug in as adapters; never hard-depend on them.
 
-use peram_memory::{CrdtDocument, Reflection};
+use ensembly_memory::{CrdtDocument, Reflection};
 use serde::{Deserialize, Serialize};
 
 /// Named backends selectable via `PERAM_INFERENCE`.

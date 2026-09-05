@@ -72,7 +72,7 @@ pub fn project_wait_snapshot(
     upsert_physical(&physical, Some(snap), now)
 }
 
-/// Resolve FocusPlan from durable store (mirrors `peram turn` without persisting).
+/// Resolve FocusPlan from durable store (mirrors `ensembly turn` without persisting).
 /// Empty store + fixture actions → in-memory snapshot only (no SQLite writes).
 pub fn resolve_focus_plan(
     store: &OpsStore,

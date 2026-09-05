@@ -2,7 +2,7 @@
 
 **Status:** Binding product intent  
 **Audience:** Operator, implementers, coding agents  
-**Last updated:** 2026-09-04 (Musk cut)
+**Last updated:** 2026-09-05 (ensembly-* crate rename)
 
 ---
 
@@ -25,7 +25,7 @@ Mass-market agent services optimize **capture at scale**. They cannot be the dur
 | Layer | Role |
 |-------|------|
 | **Grok Bot / Build / Cursor** | Capture, codegen, chat — their surface |
-| **ensembly** | White hole — gates, memory CRDT, pulse-pack, `peram-mcp` read wire |
+| **ensembly** | White hole — gates, memory CRDT, pulse-pack, `ensembly-mcp` read wire |
 | **prototype/** | Parked game/watch — not maintained as product |
 
 **Thesis:** Agent platforms sell inference. ensembly sells the **operator layer underneath**: one pending ledger, HITL honesty, privacy default-deny, pulse sync without dual writers.
@@ -38,7 +38,7 @@ Cut record: [MUSK-CUT-2026-09-04.md](MUSK-CUT-2026-09-04.md).
 
 | Horizon | Signal |
 |---------|--------|
-| **Today** | `cargo run -p peram-kernel -- runtime status` shows honest regime and pending gates |
+| **Today** | `cargo run -p ensembly-kernel -- runtime status` shows honest regime and pending gates |
 | **This week** | Grok session ends with pulse export; laptop import merges memory without ops conflict |
 | **This quarter** | Harness + kernel loop replaces re-explaining pending auth in chat |
 | **This year** | Kernel pure and private; hosts swap; human judgment remains scarce |
@@ -70,7 +70,7 @@ If a feature cannot connect to a row above, defer it.
 
 | Standard | Practice |
 |----------|----------|
-| Dogfood | `cargo test -p peram-kernel` on every change |
+| Dogfood | `cargo test -p ensembly-kernel` on every change |
 | Durability | T1 SQLite + sealed backup paths tested |
 | Loud failure | CLI status lines; no silent gate drift |
 | Single writer | One canonical host for `peram-ops.sqlite` |

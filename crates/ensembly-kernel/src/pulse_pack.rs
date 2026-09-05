@@ -1,14 +1,14 @@
 //! Portable **pulse** pack — memory_traces + archive_events layer.
 //!
 //! This is **not** T1 ops backup. For `peram-ops.sqlite` use existing
-//! `OpsStore::export_bundle` / `BackupPack` (`peram backup`, `peram ops-bundle`).
+//! `OpsStore::export_bundle` / `BackupPack` (`ensembly backup`, `ensembly ops-bundle`).
 //!
 //! Law: **one writer** on `peram-ops.sqlite` (canonical kernel host). Pulse packs
 //! carry episodic learning + archive slices only. Import merges into
 //! `peram-memory.json` via CRDT `merge`; archive rows land in sidecar JSONL.
 
 use chrono::{DateTime, Utc};
-use peram_memory::{CrdtDocument, TrajectoryEntry, TrajectoryType};
+use ensembly_memory::{CrdtDocument, TrajectoryEntry, TrajectoryType};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -29,7 +29,7 @@ pub enum PulsePackError {
     #[error("json: {0}")]
     Json(#[from] serde_json::Error),
     #[error("memory: {0}")]
-    Memory(#[from] peram_memory::MemoryError),
+    Memory(#[from] ensembly_memory::MemoryError),
     #[error("store: {0}")]
     Store(#[from] crate::store::StoreError),
     #[error("pack: {0}")]
@@ -274,7 +274,7 @@ pub fn merge_traces_into(doc: &mut CrdtDocument, traces: &[MemoryTrace]) -> (usi
 }
 
 pub fn export_pulse_pack(opts: &PulseExportOpts) -> Result<PulsePack, PulsePackError> {
-    let persistence = peram_memory::FilePersistence::new(&opts.memory_path);
+    let persistence = ensembly_memory::FilePersistence::new(&opts.memory_path);
     let doc = match persistence.load()? {
         Some(d) => d,
         None => CrdtDocument::new("peram-swarm"),
@@ -381,7 +381,7 @@ pub fn import_pulse_pack(
 ) -> Result<PulseImportReport, PulsePackError> {
     pack.validate_hash()?;
 
-    let persistence = peram_memory::FilePersistence::new(&opts.memory_path);
+    let persistence = ensembly_memory::FilePersistence::new(&opts.memory_path);
     let mut doc = match persistence.load()? {
         Some(d) => d,
         None => CrdtDocument::new("peram-swarm"),
@@ -427,7 +427,7 @@ pub fn local_pulse_status(
     memory_path: &Path,
     archive_sidecar: &Path,
 ) -> Result<PulsePackStatus, PulsePackError> {
-    let persistence = peram_memory::FilePersistence::new(memory_path);
+    let persistence = ensembly_memory::FilePersistence::new(memory_path);
     let doc = persistence.load()?;
     let trace_count = doc.as_ref().map(|d| d.trajectory.len()).unwrap_or(0);
     let mem_hash = doc.as_ref().map(|d| d.hash.clone());
@@ -592,7 +592,7 @@ fn hostname() -> String {
 mod tests {
     use super::*;
     use chrono::TimeZone;
-    use peram_memory::EpisodicMemory;
+    use ensembly_memory::EpisodicMemory;
 
     fn sample_trace(key: &str, ts: DateTime<Utc>, from: &str) -> MemoryTrace {
         MemoryTrace {
@@ -616,7 +616,7 @@ mod tests {
 
         let mut mem = EpisodicMemory::open(&mem_path, "bot").unwrap();
         mem.append(
-            peram_memory::TrajectoryType::Observation,
+            ensembly_memory::TrajectoryType::Observation,
             serde_json::json!({"note": "from-bot"}),
             0.7,
         );
@@ -648,7 +648,7 @@ mod tests {
         assert!(report.ok);
         assert_eq!(report.memory_trajectory_after, 1);
 
-        let laptop = peram_memory::FilePersistence::new(&dest_mem);
+        let laptop = ensembly_memory::FilePersistence::new(&dest_mem);
         let doc = laptop.load().unwrap().unwrap();
         assert_eq!(doc.trajectory.len(), 1);
     }
@@ -662,7 +662,7 @@ mod tests {
 
         let mut bot = EpisodicMemory::open(&bot_mem, "bot").unwrap();
         bot.append(
-            peram_memory::TrajectoryType::Action,
+            ensembly_memory::TrajectoryType::Action,
             serde_json::json!({"from": "bot"}),
             0.6,
         );
@@ -670,7 +670,7 @@ mod tests {
 
         let mut laptop = EpisodicMemory::open(&laptop_mem, "laptop").unwrap();
         laptop.append(
-            peram_memory::TrajectoryType::Observation,
+            ensembly_memory::TrajectoryType::Observation,
             serde_json::json!({"from": "laptop"}),
             0.5,
         );
@@ -713,11 +713,11 @@ mod tests {
         )
         .unwrap();
 
-        let bot_doc = peram_memory::FilePersistence::new(&bot_mem)
+        let bot_doc = ensembly_memory::FilePersistence::new(&bot_mem)
             .load()
             .unwrap()
             .unwrap();
-        let laptop_doc = peram_memory::FilePersistence::new(&laptop_mem)
+        let laptop_doc = ensembly_memory::FilePersistence::new(&laptop_mem)
             .load()
             .unwrap()
             .unwrap();
@@ -771,7 +771,7 @@ mod tests {
         )
         .unwrap();
 
-        let loaded = peram_memory::FilePersistence::new(&mem_path)
+        let loaded = ensembly_memory::FilePersistence::new(&mem_path)
             .load()
             .unwrap()
             .unwrap();

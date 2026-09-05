@@ -1,5 +1,5 @@
 //! MemorySink — bridge from the control plane (Runtime/MsgBus) to the
-//! episodic learning layer (`peram-memory`).
+//! episodic learning layer (`ensembly-memory`).
 //!
 //! Law: the sink **records what actually happened** (applied bus messages,
 //! tick reports, graph loads) so the swarm accumulates trajectory, skills,
@@ -10,7 +10,7 @@
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use peram_memory::{CoherenceConfig, EpisodicMemory, MemoryError, Reflection, TrajectoryType};
+use ensembly_memory::{CoherenceConfig, EpisodicMemory, MemoryError, Reflection, TrajectoryType};
 use serde_json::json;
 
 use crate::msg_bus::{BusMessage, ManualCmd};
@@ -79,7 +79,7 @@ impl MemorySink {
     }
 
     fn append(&mut self, entry_type: TrajectoryType, content: serde_json::Value) {
-        let coherence = peram_memory::compute_coherence(self.memory.doc(), &content);
+        let coherence = ensembly_memory::compute_coherence(self.memory.doc(), &content);
         self.memory.append(entry_type, content, coherence);
     }
 
@@ -130,9 +130,9 @@ impl MemorySink {
     /// and fall back (never fails the control path).
     pub fn reflect(&mut self) -> Option<Reflection> {
         let mut reflection =
-            peram_memory::reflect(self.memory.doc_mut(), &CoherenceConfig::default())?;
-        let backend = peram_agents::InferenceBackend::from_env();
-        let provider = peram_agents::resolve_provider(backend);
+            ensembly_memory::reflect(self.memory.doc_mut(), &CoherenceConfig::default())?;
+        let backend = ensembly_agents::InferenceBackend::from_env();
+        let provider = ensembly_agents::resolve_provider(backend);
         match provider.enrich_summary(self.memory.doc(), &reflection) {
             Ok(Some(summary)) => {
                 // Keep durable Reflection entry in sync with what CLI/JSON returns.
@@ -244,7 +244,7 @@ mod tests {
         use crate::approvals::list_pending;
         use crate::graph::TaskStatus;
         use crate::turn::Action;
-        use peram_memory::{coherence_report, TrajectoryType};
+        use ensembly_memory::{coherence_report, TrajectoryType};
 
         let actions = vec![
             Action {
@@ -300,7 +300,7 @@ mod tests {
         sink.sync_and_save().unwrap();
 
         // Reload from disk: durable, honest trajectory of what happened.
-        let mem = peram_memory::EpisodicMemory::open(&mem_path, "reader").unwrap();
+        let mem = ensembly_memory::EpisodicMemory::open(&mem_path, "reader").unwrap();
         let doc = mem.doc();
         let entries: Vec<_> = doc.trajectory.values().collect();
         assert!(
@@ -337,7 +337,7 @@ mod tests {
         assert!(reflection.trajectory_length >= 5);
         sink2.sync_and_save().unwrap();
 
-        let report = coherence_report(&peram_memory::EpisodicMemory::open(&mem_path, "r2").unwrap().doc());
+        let report = coherence_report(&ensembly_memory::EpisodicMemory::open(&mem_path, "r2").unwrap().doc());
         assert_eq!(report.history.len(), 1, "reflection recorded in history");
     }
 

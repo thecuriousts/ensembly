@@ -2,7 +2,7 @@
 //! Primary consumer: Grok (via `grok mcp add` / `.grok/config.toml` or Cursor MCP config).
 //! Mutating tools are out of scope for P4a — record path stays kernel CLI.
 
-use peram_memory::{coherence_report, propose_goals, EpisodicMemory, TrajectoryType};
+use ensembly_memory::{coherence_report, propose_goals, EpisodicMemory, TrajectoryType};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
@@ -49,7 +49,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "swarm_banner",
-            "description": "peram-agents / peram-memory version banner and paths.",
+            "description": "ensembly-agents / ensembly-memory version banner and paths.",
             "inputSchema": {"type": "object", "properties": {}}
         }
     ])
@@ -116,7 +116,7 @@ pub fn serve(config: McpServeConfig) -> anyhow::Result<()> {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": { "tools": {} },
                 "serverInfo": {
-                    "name": "peram-mcp",
+                    "name": "ensembly-mcp",
                     "version": env!("CARGO_PKG_VERSION"),
                 }
             })),
@@ -157,15 +157,15 @@ fn call_tool(
         "swarm_banner" => Ok(text_content(json!({
             "ok": true,
             "agents": crate::agents_version(),
-            "memory": peram_memory::memory_version(),
+            "memory": ensembly_memory::memory_version(),
             "memoryPath": memory_path,
             "agentId": agent_id,
-            "note": "Control SoT remains peram-kernel; this server is read-only aux. Prefer absolute PERAM_MEMORY.",
+            "note": "Control SoT remains ensembly-kernel; this server is read-only aux. Prefer absolute PERAM_MEMORY.",
             "grok": {
                 "acp": "grok agent stdio",
                 "headless": "grok -p \"…\" --output-format json --no-auto-update",
-                "registerMcp": crate::grok::register_mcp_shell_hint("./target/debug/peram-mcp"),
-                "projectToml": crate::grok::project_mcp_toml_snippet("./target/debug/peram-mcp", &[]),
+                "registerMcp": crate::grok::register_mcp_shell_hint("./target/debug/ensembly-mcp"),
+                "projectToml": crate::grok::project_mcp_toml_snippet("./target/debug/ensembly-mcp", &[]),
                 "docs": [
                     "https://docs.x.ai/build/cli/headless-scripting#acp",
                     "https://docs.x.ai/build/features/mcp-servers"
@@ -250,7 +250,7 @@ fn call_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use peram_memory::TrajectoryType;
+    use ensembly_memory::TrajectoryType;
 
     #[test]
     fn json_numeric_accepts_floats() {

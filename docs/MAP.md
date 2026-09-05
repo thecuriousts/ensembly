@@ -3,7 +3,7 @@
 **Audience:** new readers, agents, operator.  
 **Not this doc:** parked game (`prototype/README.md`), cut rationale (`MUSK-CUT-2026-09-04.md`), privacy law (`PRIVACY.md`).
 
-**Last verified:** 2026-09-04 (Musk cut)
+**Last verified:** 2026-09-05 (ensembly-* crate rename)
 
 ---
 
@@ -12,9 +12,9 @@
 **ensembly** is a **local operator kernel**: Rust control plane for HITL/HOOTL runtime, T1 SQLite, episodic memory, and pulse-pack sync — complementing Grok/Cursor harnesses without pushing private life data.
 
 ```text
-Kernel (peram-kernel)     → gates, MsgBus, ops DB, backup, pulse-pack
-Memory (peram-memory)     → CRDT episodic layer (aux; never decides)
-Agents (peram-agents)     → read-only peram-mcp for harnesses
+Kernel (ensembly-kernel)     → gates, MsgBus, ops DB, backup, pulse-pack
+Memory (ensembly-memory)     → CRDT episodic layer (aux; never decides)
+Agents (ensembly-agents)     → read-only ensembly-mcp for harnesses
 Harness (Grok/Cursor/…)   → capture — calls kernel, never owns vault
 Prototype (parked)        → game/watch/Node — not SoT
 ```
@@ -25,36 +25,36 @@ Prototype (parked)        → game/watch/Node — not SoT
 
 Only features with a **dogfood path** today.
 
-### 1.1 `crates/peram-kernel`
+### 1.1 `crates/ensembly-kernel`
 
 | Capability | Entry | What you get |
 |------------|-------|--------------|
-| **Runtime S+G+CP+P** | `cargo run -p peram-kernel -- runtime load\|status\|tick\|approve\|deny\|claim\|complete` | Life-state **S**, DepGraph **G**, CP+P; MsgBus; HOOTL agents; HITL gates. DB: `data/local/peram-ops.sqlite` |
+| **Runtime S+G+CP+P** | `cargo run -p ensembly-kernel -- runtime load\|status\|tick\|approve\|deny\|claim\|complete` | Life-state **S**, DepGraph **G**, CP+P; MsgBus; HOOTL agents; HITL gates. DB: `data/local/peram-ops.sqlite` |
 | **UncertaintyDive** | `runtime dive [--json]` | Inspect-only epistemic probe over G+CP |
 | **Reflect** | `runtime reflect [--json]` | Coherence + skills + goals over episodic memory |
-| **Turn / rank** | `peram turn [--fixture]` | FocusPlan from critical path |
-| **Digital-flow** | `peram digital-flow cycle` | bill_pay dry-run through HITL gate |
+| **Turn / rank** | `ensembly turn [--fixture]` | FocusPlan from critical path |
+| **Digital-flow** | `ensembly digital-flow cycle` | bill_pay dry-run through HITL gate |
 | **Backup / restore** | `backup`, `restore-dry-run`, `restore-apply` | Sealed T2 pack |
 | **Ops bundle** | `ops-bundle` | Unsealed portable ops snapshot |
 | **Pulse pack** | `pulse-pack export\|import\|status` | `peram-pulse-pack-v1` — **memory only**; no ops dual-write |
 
 Fixture: `fixtures/issue-1-runtime.json`. `--json` appends trailing `RUNTIME_OK …` line.
 
-### 1.2 `crates/peram-memory`
+### 1.2 `crates/ensembly-memory`
 
 | Capability | Entry | What you get |
 |------------|-------|--------------|
 | **CRDT episodic store** | via kernel `memory_sink` | Durable trajectory at `data/local/peram-memory.json` |
-| **Tests** | `cargo test -p peram-memory` | Merge, coherence, persistence |
+| **Tests** | `cargo test -p ensembly-memory` | Merge, coherence, persistence |
 
 Memory is **auxiliary** — kernel never delegates control decisions to it.
 
-### 1.3 `crates/peram-agents`
+### 1.3 `crates/ensembly-agents`
 
 | Capability | Entry | What you get |
 |------------|-------|--------------|
-| **peram-mcp** | `cargo build -p peram-agents --bin peram-mcp` | Read-only MCP tools for Grok/Cursor |
-| **Tests** | `cargo test -p peram-agents` | RPC, inference stubs |
+| **ensembly-mcp** | `cargo build -p ensembly-agents --bin ensembly-mcp` | Read-only MCP tools for Grok/Cursor |
+| **Tests** | `cargo test -p ensembly-agents` | RPC, inference stubs |
 
 ---
 
@@ -67,10 +67,10 @@ Memory is **auxiliary** — kernel never delegates control decisions to it.
 
 ```bash
 # Canonical host — after session
-cargo run -p peram-kernel -- pulse-pack export --out ~/sync/pulse/bot.pulse.json --include-archive
+cargo run -p ensembly-kernel -- pulse-pack export --out ~/sync/pulse/bot.pulse.json --include-archive
 
 # Client — idempotent merge
-cargo run -p peram-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.json
+cargo run -p ensembly-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.json
 ```
 
 **Not live:** Drive automation (next). See [PLAYBOOK.md](PLAYBOOK.md).
@@ -81,9 +81,9 @@ cargo run -p peram-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.jso
 
 | Path | Owns |
 |------|------|
-| `crates/peram-kernel/` | Control SoT: S, G, CP, MsgBus, runtime, store, privacy, backup, pulse-pack |
-| `crates/peram-memory/` | Episodic CRDT, coherence engine |
-| `crates/peram-agents/` | MCP satellite, inference provider trait |
+| `crates/ensembly-kernel/` | Control SoT: S, G, CP, MsgBus, runtime, store, privacy, backup, pulse-pack |
+| `crates/ensembly-memory/` | Episodic CRDT, coherence engine |
+| `crates/ensembly-agents/` | MCP satellite, inference provider trait |
 | `fixtures/` | Committed runtime/turn fixtures |
 | `data/local/` | Operator DB + memory (gitignored) |
 | `prototype/` | **Parked** — game, Node CLI, WASM — not product |
@@ -97,8 +97,8 @@ cargo run -p peram-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.jso
 | IR | Produced by | Notes |
 |----|-------------|-------|
 | Runtime status | `runtime status --json` | Regime, pending gates, CP |
-| Turn / FocusPlan | `peram turn --json` | Next physical + auth from CP |
-| **Channel pulse** | `peram turn --channel` · `channel-pulse reconcile` | Redacted one body + one gate; see [PLAYBOOK.md §5](PLAYBOOK.md#5-channel-pulse-issue-8) |
+| Turn / FocusPlan | `ensembly turn --json` | Next physical + auth from CP |
+| **Channel pulse** | `ensembly turn --channel` · `channel-pulse reconcile` | Redacted one body + one gate; see [PLAYBOOK.md §5](PLAYBOOK.md#5-channel-pulse-issue-8) |
 | Pulse pack | `pulse-pack export` | Portable memory + archive events |
 | Ops bundle | `ops-bundle` | Full ops snapshot (canonical host only) |
 
@@ -109,18 +109,18 @@ Legacy Node turn/graph IR lives in `prototype/` — not maintained at root.
 ## 5. Dogfood commands
 
 ```bash
-cargo test -p peram-kernel
-cargo test -p peram-memory
-cargo build -p peram-agents --bin peram-mcp
+cargo test -p ensembly-kernel
+cargo test -p ensembly-memory
+cargo build -p ensembly-agents --bin ensembly-mcp
 
-cargo run -p peram-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
-cargo run -p peram-kernel -- runtime status
-cargo run -p peram-kernel -- runtime tick
-cargo run -p peram-kernel -- runtime approve pay-rent
-cargo run -p peram-kernel -- runtime reflect
+cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
+cargo run -p ensembly-kernel -- runtime status
+cargo run -p ensembly-kernel -- runtime tick
+cargo run -p ensembly-kernel -- runtime approve pay-rent
+cargo run -p ensembly-kernel -- runtime reflect
 
 # Isolated channel-pulse reconcile (fixtures only; does not write G)
-cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \
+cargo run -p ensembly-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \
   --fixture fixtures/issue-1-runtime.json --out /tmp/channel-pulse.json --json
 ```
 
@@ -136,5 +136,6 @@ cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reco
 | Privacy | [PRIVACY.md](PRIVACY.md) |
 | life-os boundary | [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) |
 | Decisions log | [DECISIONS.md](DECISIONS.md) |
+| Crate rename | [RENAME.md](../RENAME.md) |
 
 **Footer:** If it is not in §1, it is trajectory or prototype until it has a `cargo` path and tests.

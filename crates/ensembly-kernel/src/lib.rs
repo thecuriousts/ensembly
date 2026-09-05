@@ -1,4 +1,4 @@
-//! peram-kernel — Game of Peram life control plane (Rust iron-peak).
+//! ensembly-kernel — Game of Peram life control plane (Rust iron-peak).
 //!
 //! Operator CLI (`bin/swarm.js` + `src/*`) is the live day/turn/graph host.
 //! Control-plane features expand here.
@@ -68,5 +68,5 @@ pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
 
 /// Kernel banner for CLI / hosts.
 pub fn kernel_version() -> &'static str {
-    "peram-kernel 0.5.1 rust-life-control s+g+cp dive msgbus hitl-hootl t1-sqlite t2-seal episodic-memory"
+    "ensembly-kernel 0.5.1 rust-life-control s+g+cp dive msgbus hitl-hootl t1-sqlite t2-seal episodic-memory"
 }

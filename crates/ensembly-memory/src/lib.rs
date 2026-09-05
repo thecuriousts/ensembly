@@ -1,4 +1,4 @@
-//! peram-memory — episodic learning layer for the Game of Peram swarm.
+//! ensembly-memory — episodic learning layer for the Game of Peram swarm.
 //!
 //! Fused from the IntelliArch prototype (local-first CRDT memory + coherence
 //! engine), ported to ensembly's kernel discipline: synchronous, std-only IO,
@@ -6,7 +6,7 @@
 //!
 //! Boundary law: this crate **remembers and learns** — trajectory of what the
 //! swarm did, skills synthesized from repeated patterns, goals proposed.
-//! `peram-kernel` remains the control SoT (S/G/CP, approvals, gates). Nothing
+//! `ensembly-kernel` remains the control SoT (S/G/CP, approvals, gates). Nothing
 //! here approves, denies, claims, or reprioritizes life work.
 
 pub mod coherence;
@@ -26,5 +26,5 @@ pub use memory::{EpisodicMemory, FilePersistence, MemoryError};
 
 /// Crate banner for CLI / hosts.
 pub fn memory_version() -> &'static str {
-    "peram-memory 0.1.0 episodic crdt-trajectory skills goals coherence"
+    "ensembly-memory 0.1.0 episodic crdt-trajectory skills goals coherence"
 }

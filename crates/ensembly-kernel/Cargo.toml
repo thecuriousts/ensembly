@@ -1,10 +1,16 @@
 [package]
-name = "peram-kernel"
+name = "ensembly-kernel"
 version = "0.5.1"
 edition = "2021"
-description = "Game of Peram life kernel — S+G+CP, MsgBus, HITL/HOOTL runtime, privacy, turn, durable store, episodic memory bridge"
+description = "ensembly operator kernel — S+G+CP, MsgBus, HITL/HOOTL runtime, privacy, turn, durable store, episodic memory bridge"
 license = "MIT"
+default-run = "ensembly"
 
+[[bin]]
+name = "ensembly"
+path = "src/main.rs"
+
+# One-release compat alias. Prefer `ensembly` / `cargo run -p ensembly-kernel`.
 [[bin]]
 name = "peram"
 path = "src/main.rs"
@@ -22,8 +28,8 @@ hex = "0.4"
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 regex = "1"
-peram-memory = { path = "../peram-memory" }
-peram-agents = { path = "../peram-agents" }
+ensembly-memory = { path = "../ensembly-memory" }
+ensembly-agents = { path = "../ensembly-agents" }
 
 [dev-dependencies]
 tempfile = "3"
