@@ -68,7 +68,7 @@ pub fn restore_dry_run(pack: &BackupPack, unlock: &[u8]) -> Result<RestoreDryRun
     let plain = unseal(&pack.sealed_ops, unlock)?;
     let bundle: OpsBundle = serde_json::from_slice(&plain)
         .map_err(|e| BackupError::DryRun(format!("bundle parse: {e}")))?;
-    if bundle.format != "peram-ops-bundle-v1" {
+    if !crate::store::is_known_ops_bundle_format(&bundle.format) {
         return Err(BackupError::DryRun(format!(
             "unexpected bundle format {}",
             bundle.format

@@ -41,7 +41,7 @@ cargo run -p ensembly-kernel -- runtime complete grocery-errand
 cargo run -p ensembly-kernel -- runtime reflect
 ```
 
-Default durable DB: `data/local/peram-ops.sqlite` (gitignored). Episodic memory: `data/local/peram-memory.json`. Those filenames are **stable** — do not migrate. Law: [DECISIONS.md](docs/DECISIONS.md) · [RENAME.md](RENAME.md).
+Fresh default DB: `data/local/ensembly-ops.sqlite` (gitignored). Episodic memory: `data/local/ensembly-memory.json`. Existing `peram-ops.sqlite` / `peram-memory.json` are opened in place — no silent migrate. Law: [DECISIONS.md](docs/DECISIONS.md) · [RENAME.md](RENAME.md).
 
 ### Pulse pack (bot ↔ laptop, memory only)
 

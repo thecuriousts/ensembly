@@ -95,12 +95,10 @@ pub struct McpServeConfig {
 impl Default for McpServeConfig {
     fn default() -> Self {
         Self {
-            memory_path: PathBuf::from(
-                std::env::var("PERAM_MEMORY")
-                    .unwrap_or_else(|_| "data/local/peram-memory.json".into()),
-            ),
-            agent_id: std::env::var("PERAM_AGENT_ID")
-                .unwrap_or_else(|_| "peram-swarm".into()),
+            memory_path: crate::env_alias::env_alias("ENSEMBLY_MEMORY", "PERAM_MEMORY")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| crate::env_alias::resolve_memory_path(None)),
+            agent_id: crate::env_alias::resolve_agent_id(None),
         }
     }
 }
@@ -160,7 +158,7 @@ fn call_tool(
             "memory": ensembly_memory::memory_version(),
             "memoryPath": memory_path,
             "agentId": agent_id,
-            "note": "Control SoT remains ensembly-kernel; this server is read-only aux. Prefer absolute PERAM_MEMORY.",
+            "note": "Control SoT remains ensembly-kernel; this server is read-only aux. Prefer absolute ENSEMBLY_MEMORY (alias PERAM_MEMORY).",
             "grok": {
                 "acp": "grok agent stdio",
                 "headless": "grok -p \"…\" --output-format json --no-auto-update",

@@ -6,6 +6,8 @@
 
 Companion: [MAP.md](MAP.md) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [MUSK-CUT-2026-09-04.md](MUSK-CUT-2026-09-04.md) · [PRIVACY.md](PRIVACY.md) · [RENAME.md](../RENAME.md)
 
+**Local path cutover:** `cargo run -p ensembly-kernel -- migrate-local-paths` copies `peram-*` → `ensembly-*` if-missing (never overwrites). Then pulse-pack export on the bot and import on the laptop. Ops stays single-writer. Full sequence: [RENAME.md](../RENAME.md).
+
 Parked game/Node surfaces: [../prototype/README.md](../prototype/README.md) — not covered here.
 
 ---
@@ -59,7 +61,7 @@ cargo run -p ensembly-kernel -- runtime status   # expect Hootl when gates clear
 cargo run -p ensembly-kernel -- runtime reflect
 ```
 
-Durable store: `data/local/peram-ops.sqlite` (gitignored).  
+Durable store: `data/local/ensembly-ops.sqlite` (gitignored). Legacy `data/local/peram-ops.sqlite` is opened in place if that is what already exists.  
 `--json` prints JSON then trailing `RUNTIME_OK …` — strip last line before parsing.
 
 Memory flags: `--memory <path>` (explicit; open failure fatal) · `--no-memory`.
@@ -72,8 +74,8 @@ Memory flags: `--memory <path>` (explicit; open failure fatal) · `--no-memory`.
 
 | Layer | Format | CLI | Laptop may import? |
 |-------|--------|-----|-------------------|
-| **T1 ops** | `peram-backup-pack-v1` / `peram-ops-bundle-v1` | `backup` · `restore-*` · `ops-bundle` | **No** — canonical host only |
-| **Pulse** | `peram-pulse-pack-v1` | `pulse-pack export\|import\|status` | **Yes** — memory CRDT merge only |
+| **T1 ops** | `ensembly-ops-bundle-v1` (still reads `peram-ops-bundle-v1`) | `backup` · `restore-*` · `ops-bundle` | **No** — canonical host only |
+| **Pulse** | `ensembly-pulse-pack-v1` (still reads `peram-pulse-pack-v1`) | `pulse-pack export\|import\|status` | **Yes** — memory CRDT merge only |
 
 **Topology:** Grok Bot = **canonical kernel host** (single writer on ops DB). Laptop = client — imports pulse packs, never dual-writes ops.
 
@@ -96,7 +98,7 @@ cargo run -p ensembly-kernel -- pulse-pack import --pack ~/sync/pulse/bot-*.puls
 cargo run -p ensembly-kernel -- runtime reflect
 ```
 
-Paths (gitignored): `data/local/peram-memory.json`, `data/local/pulse-archive.jsonl`.
+Paths (gitignored): `data/local/ensembly-memory.json` (legacy `peram-memory.json` discovered), `data/local/pulse-archive.jsonl`.
 
 **Next (not automated yet):** Drive/shared-folder staging for `*.pulse.json` — file copy only, no live sync.
 
@@ -119,7 +121,7 @@ Refuse: treating chat history as pending-ledger SoT.
 
 ## 5. Channel pulse (Issue #8)
 
-**Law:** Pulse is admissions-filtered **observation** — it never writes **G**, gates, or priorities. One writer on `data/local/peram-ops.sqlite`.
+**Law:** Pulse is admissions-filtered **observation** — it never writes **G**, gates, or priorities. One writer on the ops sqlite (`ensembly-ops.sqlite`; legacy `peram-ops.sqlite` discovered).
 
 | Surface | Command | Output |
 |---------|---------|--------|
@@ -180,6 +182,9 @@ cargo run -p ensembly-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse r
 
 cargo run -p ensembly-kernel -- pulse-pack export --out /tmp/x.pulse.json
 cargo run -p ensembly-kernel -- pulse-pack import --pack /tmp/x.pulse.json
+
+# Optional: copy-if-missing peram-* → ensembly-* on the canonical host
+cargo run -p ensembly-kernel -- migrate-local-paths --dry-run
 ```
 
 **Footer:** One writer on ops. Pulse for memory. Harness for capture.

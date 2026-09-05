@@ -34,10 +34,20 @@ pub struct SealedBlob {
     pub key_fingerprint: String,
 }
 
+/// Write-side KDF prefix. Kept on the legacy string so existing sealed
+/// backups stay valid. Do not change without a versioned re-seal path.
+const VAULT_KDF_WRITE: &[u8] = b"peram-kernel-t2-v1:";
+const VAULT_KDF_READ: &[&[u8]] = &[b"peram-kernel-t2-v1:", b"ensembly-kernel-t2-v1:"];
+const VAULT_FP_WRITE: &[u8] = b"peram-kernel-fp-v1:";
+
 /// Derive a 32-byte content key from unlock material (passphrase / keyring secret).
 pub fn derive_key(unlock: &[u8]) -> [u8; 32] {
+    derive_key_with(VAULT_KDF_WRITE, unlock)
+}
+
+fn derive_key_with(prefix: &[u8], unlock: &[u8]) -> [u8; 32] {
     let mut hasher = Sha256::new();
-    hasher.update(b"peram-kernel-t2-v1:");
+    hasher.update(prefix);
     hasher.update(unlock);
     let out = hasher.finalize();
     let mut key = [0u8; 32];
@@ -47,7 +57,7 @@ pub fn derive_key(unlock: &[u8]) -> [u8; 32] {
 
 pub fn key_fingerprint(unlock: &[u8]) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(b"peram-kernel-fp-v1:");
+    hasher.update(VAULT_FP_WRITE);
     hasher.update(unlock);
     hex::encode(hasher.finalize())[..16].to_string()
 }
@@ -74,21 +84,28 @@ pub fn seal(plaintext: &[u8], unlock: &[u8]) -> Result<SealedBlob, VaultError> {
 }
 
 /// Unseal. Wrong or empty key → UnlockDenied (stolen disk without key stays sealed).
+/// Dual-read: try write-side prefix first, then the ensembly-named prefix.
 pub fn unseal(blob: &SealedBlob, unlock: &[u8]) -> Result<Vec<u8>, VaultError> {
     if unlock.is_empty() {
         return Err(VaultError::UnlockDenied);
     }
-    let key = derive_key(unlock);
-    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| VaultError::Crypto(e.to_string()))?;
     let nonce_bytes = hex::decode(&blob.nonce_hex).map_err(|_| VaultError::Malformed)?;
     let ct = hex::decode(&blob.ciphertext_hex).map_err(|_| VaultError::Malformed)?;
     if nonce_bytes.len() != 12 {
         return Err(VaultError::Malformed);
     }
     let nonce = Nonce::from_slice(&nonce_bytes);
-    cipher
-        .decrypt(nonce, ct.as_ref())
-        .map_err(|_| VaultError::UnlockDenied)
+    let mut last_crypto: Option<VaultError> = None;
+    for prefix in VAULT_KDF_READ {
+        let key = derive_key_with(prefix, unlock);
+        let cipher =
+            Aes256Gcm::new_from_slice(&key).map_err(|e| VaultError::Crypto(e.to_string()))?;
+        match cipher.decrypt(nonce, ct.as_ref()) {
+            Ok(pt) => return Ok(pt),
+            Err(_) => last_crypto = Some(VaultError::UnlockDenied),
+        }
+    }
+    Err(last_crypto.unwrap_or(VaultError::UnlockDenied))
 }
 
 /// Export-deny classifier for finance/medical/identity class (share IR).
@@ -131,5 +148,26 @@ mod tests {
     fn finance_export_denied() {
         assert!(export_denied_for_class("Finance"));
         assert!(!export_denied_for_class("Systems"));
+    }
+
+    fn seal_with_prefix(prefix: &[u8], plaintext: &[u8], unlock: &[u8]) -> SealedBlob {
+        let key = derive_key_with(prefix, unlock);
+        let cipher = Aes256Gcm::new_from_slice(&key).unwrap();
+        let mut nonce_bytes = [0u8; 12];
+        rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut nonce_bytes);
+        let nonce = Nonce::from_slice(&nonce_bytes);
+        let ct = cipher.encrypt(nonce, plaintext).unwrap();
+        SealedBlob {
+            suite: VAULT_SUITE.into(),
+            nonce_hex: hex::encode(nonce_bytes),
+            ciphertext_hex: hex::encode(ct),
+            key_fingerprint: key_fingerprint(unlock),
+        }
+    }
+
+    #[test]
+    fn unseal_accepts_ensembly_named_kdf_prefix() {
+        let blob = seal_with_prefix(b"ensembly-kernel-t2-v1:", b"alt-seal", b"k");
+        assert_eq!(unseal(&blob, b"k").unwrap(), b"alt-seal");
     }
 }

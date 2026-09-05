@@ -8,8 +8,8 @@ Official Grok (xAI) docs:
 
 | Module | Role |
 |--------|------|
-| `inference` | `InferenceProvider` trait; `PERAM_INFERENCE=deterministic\|grok-mcp\|…` |
-| `delegation` | `DelegationBackend`; `PERAM_DELEGATE=none\|grok-acp\|…` |
+| `inference` | `InferenceProvider` trait; `ENSEMBLY_INFERENCE` (alias `PERAM_INFERENCE`) `=deterministic\|grok-mcp\|…` |
+| `delegation` | `DelegationBackend`; `ENSEMBLY_DELEGATE` (alias `PERAM_DELEGATE`) `=none\|grok-acp\|…` |
 | `mcp_server` / `ensembly-mcp` | Read-only MCP tools (sync NDJSON stdio) |
 | `grok` | Official CLI argv helpers + project MCP TOML snippet |
 | `rpc` | Sync JSON-RPC 2.0 NDJSON |
@@ -20,13 +20,13 @@ Official Grok (xAI) docs:
 # Build the server
 cargo build -p ensembly-agents --bin ensembly-mcp
 
-# Project scope (writes .grok/config.toml — gitignored; use absolute PERAM_MEMORY)
+# Project scope (writes .grok/config.toml — gitignored; use absolute ENSEMBLY_MEMORY)
 grok mcp add --scope project ensembly -- ./target/debug/ensembly-mcp
 
 # Or paste into .grok/config.toml with an absolute memory path:
 # [mcp_servers.ensembly]
 # command = "./target/debug/ensembly-mcp"
-# env = { PERAM_MEMORY = "/ABS/PATH/to/ensembly/data/local/peram-memory.json" }
+# env = { ENSEMBLY_MEMORY = "/ABS/PATH/to/ensembly/data/local/ensembly-memory.json" }
 
 grok mcp list --json
 grok mcp doctor ensembly

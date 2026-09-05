@@ -47,7 +47,7 @@ It must be:
 | Refuse | Why |
 |--------|-----|
 | Prototype theater at root | No half-wired game/watch as primary product surface |
-| Dual live writers | Cloud or laptop must not dual-write `peram-ops.sqlite` |
+| Dual live writers | Cloud or laptop must not dual-write the ops sqlite (`ensembly-ops.sqlite` / legacy `peram-ops.sqlite`) |
 | Second chat OS | No competing capture/inbox — complement Grok |
 | Kernel rewrite thrash | Simplify by deletion, not greenfield rewrite of working Rust |
 | Privacy laziness | Never commit or push `private/`, vaults, secrets |

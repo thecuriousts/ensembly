@@ -5,7 +5,7 @@
 use ensembly_memory::{CrdtDocument, Reflection};
 use serde::{Deserialize, Serialize};
 
-/// Named backends selectable via `PERAM_INFERENCE`.
+/// Named backends selectable via `ENSEMBLY_INFERENCE` (alias `PERAM_INFERENCE`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum InferenceBackend {
@@ -29,7 +29,7 @@ impl InferenceBackend {
     }
 
     pub fn from_env() -> Self {
-        std::env::var("PERAM_INFERENCE")
+        crate::env_alias::env_alias("ENSEMBLY_INFERENCE", "PERAM_INFERENCE")
             .map(|v| Self::parse(&v))
             .unwrap_or_default()
     }

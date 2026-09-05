@@ -5,7 +5,8 @@
 //! cargo run -p ensembly-agents --bin ensembly-mcp
 //! # or after install: ensembly-mcp
 //! ```
-//! Env: `PERAM_MEMORY` (default data/local/peram-memory.json), `PERAM_AGENT_ID`.
+//! Env: `ENSEMBLY_MEMORY` / `PERAM_MEMORY` (fresh default data/local/ensembly-memory.json),
+//! `ENSEMBLY_AGENT_ID` / `PERAM_AGENT_ID` (new stores: ensembly-swarm).
 
 use clap::Parser;
 use ensembly_agents::{serve_mcp, McpServeConfig};
@@ -14,21 +15,23 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = env!("CARGO_BIN_NAME"), about = "ensembly read-only MCP server (memory tools for Grok/Cursor)")]
 struct Cli {
-    #[arg(long, env = "PERAM_MEMORY")]
+    #[arg(long)]
     memory: Option<PathBuf>,
-    #[arg(long, env = "PERAM_AGENT_ID", default_value = "peram-swarm")]
-    agent_id: String,
+    #[arg(long)]
+    agent_id: Option<String>,
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let mut config = McpServeConfig::default();
-    if let Some(p) = cli.memory {
+    if let Some(p) = cli.memory.or_else(|| {
+        ensembly_agents::env_alias::env_alias("ENSEMBLY_MEMORY", "PERAM_MEMORY").map(PathBuf::from)
+    }) {
         config.memory_path = p;
     }
-    config.agent_id = cli.agent_id;
+    config.agent_id = ensembly_agents::env_alias::resolve_agent_id(cli.agent_id);
     eprintln!(
-        "PERAM_MCP listening stdio memory={:?} agent={}",
+        "ensembly-mcp listening stdio memory={:?} agent={}",
         config.memory_path, config.agent_id
     );
     serve_mcp(config)

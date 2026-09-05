@@ -1,11 +1,11 @@
 //! Portable **pulse** pack — memory_traces + archive_events layer.
 //!
-//! This is **not** T1 ops backup. For `peram-ops.sqlite` use existing
+//! This is **not** T1 ops backup. For the ops sqlite use existing
 //! `OpsStore::export_bundle` / `BackupPack` (`ensembly backup`, `ensembly ops-bundle`).
 //!
-//! Law: **one writer** on `peram-ops.sqlite` (canonical kernel host). Pulse packs
+//! Law: **one writer** on the ops sqlite (canonical kernel host). Pulse packs
 //! carry episodic learning + archive slices only. Import merges into
-//! `peram-memory.json` via CRDT `merge`; archive rows land in sidecar JSONL.
+//! episodic memory via CRDT `merge`; archive rows land in sidecar JSONL.
 
 use chrono::{DateTime, Utc};
 use ensembly_memory::{CrdtDocument, TrajectoryEntry, TrajectoryType};
@@ -19,7 +19,12 @@ use thiserror::Error;
 
 use crate::store::OpsStore;
 
-pub const PULSE_PACK_FORMAT: &str = "peram-pulse-pack-v1";
+pub const PULSE_PACK_FORMAT: &str = "ensembly-pulse-pack-v1";
+pub const PULSE_PACK_FORMAT_LEGACY: &str = "peram-pulse-pack-v1";
+
+pub fn is_known_pulse_pack_format(format: &str) -> bool {
+    format == PULSE_PACK_FORMAT || format == PULSE_PACK_FORMAT_LEGACY
+}
 pub const DEFAULT_ARCHIVE_SIDECAR: &str = "data/local/pulse-archive.jsonl";
 
 #[derive(Debug, Error)]
@@ -163,7 +168,7 @@ impl PulsePack {
                 self.pack_hash
             )));
         }
-        if self.format != PULSE_PACK_FORMAT {
+        if !is_known_pulse_pack_format(&self.format) {
             return Err(PulsePackError::Pack(format!(
                 "unexpected format {}",
                 self.format
@@ -277,7 +282,7 @@ pub fn export_pulse_pack(opts: &PulseExportOpts) -> Result<PulsePack, PulsePackE
     let persistence = ensembly_memory::FilePersistence::new(&opts.memory_path);
     let doc = match persistence.load()? {
         Some(d) => d,
-        None => CrdtDocument::new("peram-swarm"),
+        None => CrdtDocument::new(crate::paths::DEFAULT_AGENT_ID),
     };
 
     let mut archive = load_archive_sidecar(&opts.archive_sidecar)?;
@@ -384,7 +389,7 @@ pub fn import_pulse_pack(
     let persistence = ensembly_memory::FilePersistence::new(&opts.memory_path);
     let mut doc = match persistence.load()? {
         Some(d) => d,
-        None => CrdtDocument::new("peram-swarm"),
+        None => CrdtDocument::new(crate::paths::DEFAULT_AGENT_ID),
     };
     let before = doc.trajectory.len();
 
@@ -827,5 +832,52 @@ mod tests {
         let mut tampered = pack.clone();
         tampered.pack_hash = "00".repeat(32);
         assert!(tampered.validate_hash().is_err());
+    }
+
+    #[test]
+    fn new_export_writes_ensembly_format_id() {
+        let pack = PulsePack::from_memory(&CrdtDocument::new("x"), vec![], "host");
+        assert_eq!(pack.format, PULSE_PACK_FORMAT);
+        assert_eq!(pack.format, "ensembly-pulse-pack-v1");
+        pack.validate_hash().unwrap();
+    }
+
+    #[test]
+    fn import_accepts_legacy_and_new_pulse_format_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("archive.jsonl");
+        let mut pack = PulsePack::from_memory(&CrdtDocument::new("bot"), vec![], "bot");
+        pack.validate_hash().unwrap();
+
+        pack.format = PULSE_PACK_FORMAT_LEGACY.into();
+        pack.validate_hash().unwrap();
+        let dest_legacy = dir.path().join("legacy-mem.json");
+        let report = import_pulse_pack(
+            &pack,
+            &PulseImportOpts {
+                memory_path: dest_legacy,
+                archive_sidecar: archive.clone(),
+                dry_run: false,
+            },
+        )
+        .unwrap();
+        assert!(report.ok);
+
+        pack.format = PULSE_PACK_FORMAT.into();
+        pack.validate_hash().unwrap();
+        let dest_new = dir.path().join("new-mem.json");
+        let report = import_pulse_pack(
+            &pack,
+            &PulseImportOpts {
+                memory_path: dest_new,
+                archive_sidecar: archive,
+                dry_run: false,
+            },
+        )
+        .unwrap();
+        assert!(report.ok);
+
+        pack.format = "unknown-pulse-pack-v9".into();
+        assert!(pack.validate_hash().is_err());
     }
 }

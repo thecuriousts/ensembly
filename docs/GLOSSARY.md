@@ -18,7 +18,7 @@
 | **HITL** | Human-In-The-Loop | Work that waits for an explicit human decision (approve/deny gates, physical claims). |
 | **HOOTL** | Human-Out-Of-The-Loop | Digital thrash agents may clear autonomously because it is safe to do so. |
 | **Digital thrash** | — | Low-value digital chores (triage, drafts) that clutter the critical path; HOOTL agents claim these. |
-| **T1** | Tier 1 storage | Local ops SQLite (`data/local/peram-ops.sqlite`) — durable, gitignored, never pushed. |
+| **T1** | Tier 1 storage | Local ops SQLite (`data/local/ensembly-ops.sqlite`; legacy `peram-ops.sqlite` discovered) — durable, gitignored, never pushed. |
 | **T2** | Tier 2 storage | Sealed/encrypted tier: vault bridge, backup packs (AES-GCM sealed blobs). |
 | **IR** | Intermediate Representation | Versioned JSON/markdown contracts between pure kernel logic and hosts/agents (turn status IR, wait snapshot IR, graph IR). See MAP.md §4. |
 | **Regime** | Loop Regime | Runtime mode: `Hootl` (agents clear digital work) vs `HitlWait` (blocked on a human gate/beacon). |

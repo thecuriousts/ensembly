@@ -93,7 +93,7 @@ impl EpisodicMemory {
                 return Err(MemoryError::Io(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!(
-                        "memory file missing at {} — set PERAM_MEMORY to an absolute path and run runtime load/tick first",
+                        "memory file missing at {} — set ENSEMBLY_MEMORY (alias PERAM_MEMORY) to an absolute path and run runtime load/tick first",
                         path.display()
                     ),
                 )));

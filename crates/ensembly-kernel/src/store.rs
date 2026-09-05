@@ -9,6 +9,13 @@ use thiserror::Error;
 use crate::approvals::Snapshot;
 use crate::digital_flow::DigitalFlow;
 
+pub const OPS_BUNDLE_FORMAT: &str = "ensembly-ops-bundle-v1";
+pub const OPS_BUNDLE_FORMAT_LEGACY: &str = "peram-ops-bundle-v1";
+
+pub fn is_known_ops_bundle_format(format: &str) -> bool {
+    format == OPS_BUNDLE_FORMAT || format == OPS_BUNDLE_FORMAT_LEGACY
+}
+
 #[derive(Debug, Error)]
 pub enum StoreError {
     #[error("sqlite: {0}")]
@@ -243,7 +250,7 @@ impl OpsStore {
             )
             .unwrap_or(0);
         Ok(OpsBundle {
-            format: "peram-ops-bundle-v1".into(),
+            format: OPS_BUNDLE_FORMAT.into(),
             schema_version: version,
             exported_at: Utc::now(),
             kv,
@@ -278,7 +285,7 @@ impl OpsStore {
     pub fn read_bundle_file(path: impl AsRef<Path>) -> Result<OpsBundle, StoreError> {
         let raw = std::fs::read_to_string(path)?;
         let bundle: OpsBundle = serde_json::from_str(&raw)?;
-        if bundle.format != "peram-ops-bundle-v1" {
+        if !is_known_ops_bundle_format(&bundle.format) {
             return Err(StoreError::Bundle(format!(
                 "unexpected bundle format {}",
                 bundle.format
@@ -330,7 +337,7 @@ mod tests {
         let now = Utc.with_ymd_and_hms(2026, 7, 15, 12, 0, 0).unwrap();
         a.save_snapshot(&Snapshot::empty(now)).unwrap();
         let bundle = a.export_bundle().unwrap();
-        assert_eq!(bundle.format, "peram-ops-bundle-v1");
+        assert_eq!(bundle.format, OPS_BUNDLE_FORMAT);
         let b = OpsStore::open_in_memory().unwrap();
         b.import_bundle(&bundle).unwrap();
         assert!(b.load_snapshot().unwrap().is_some());
@@ -346,6 +353,23 @@ mod tests {
         let bundle = a.export_bundle().unwrap();
         OpsStore::write_bundle_file(&path, &bundle).unwrap();
         let read = OpsStore::read_bundle_file(&path).unwrap();
+        let b = OpsStore::open_in_memory().unwrap();
+        b.import_bundle(&read).unwrap();
+        assert!(b.load_snapshot().unwrap().is_some());
+    }
+
+    #[test]
+    fn bundle_file_accepts_legacy_format_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ops-bundle.json");
+        let a = OpsStore::open_in_memory().unwrap();
+        let now = Utc.with_ymd_and_hms(2026, 7, 15, 12, 0, 0).unwrap();
+        a.save_snapshot(&Snapshot::empty(now)).unwrap();
+        let mut bundle = a.export_bundle().unwrap();
+        bundle.format = OPS_BUNDLE_FORMAT_LEGACY.into();
+        OpsStore::write_bundle_file(&path, &bundle).unwrap();
+        let read = OpsStore::read_bundle_file(&path).unwrap();
+        assert_eq!(read.format, OPS_BUNDLE_FORMAT_LEGACY);
         let b = OpsStore::open_in_memory().unwrap();
         b.import_bundle(&read).unwrap();
         assert!(b.load_snapshot().unwrap().is_some());

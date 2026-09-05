@@ -29,14 +29,14 @@ Only features with a **dogfood path** today.
 
 | Capability | Entry | What you get |
 |------------|-------|--------------|
-| **Runtime S+G+CP+P** | `cargo run -p ensembly-kernel -- runtime load\|status\|tick\|approve\|deny\|claim\|complete` | Life-state **S**, DepGraph **G**, CP+P; MsgBus; HOOTL agents; HITL gates. DB: `data/local/peram-ops.sqlite` |
+| **Runtime S+G+CP+P** | `cargo run -p ensembly-kernel -- runtime load\|status\|tick\|approve\|deny\|claim\|complete` | Life-state **S**, DepGraph **G**, CP+P; MsgBus; HOOTL agents; HITL gates. DB: `data/local/ensembly-ops.sqlite` (legacy `peram-ops.sqlite` discovered if present) |
 | **UncertaintyDive** | `runtime dive [--json]` | Inspect-only epistemic probe over G+CP |
 | **Reflect** | `runtime reflect [--json]` | Coherence + skills + goals over episodic memory |
 | **Turn / rank** | `ensembly turn [--fixture]` | FocusPlan from critical path |
 | **Digital-flow** | `ensembly digital-flow cycle` | bill_pay dry-run through HITL gate |
 | **Backup / restore** | `backup`, `restore-dry-run`, `restore-apply` | Sealed T2 pack |
 | **Ops bundle** | `ops-bundle` | Unsealed portable ops snapshot |
-| **Pulse pack** | `pulse-pack export\|import\|status` | `peram-pulse-pack-v1` — **memory only**; no ops dual-write |
+| **Pulse pack** | `pulse-pack export\|import\|status` | New writes `ensembly-pulse-pack-v1`; still imports `peram-pulse-pack-v1` — **memory only**; no ops dual-write |
 
 Fixture: `fixtures/issue-1-runtime.json`. `--json` appends trailing `RUNTIME_OK …` line.
 
@@ -44,7 +44,7 @@ Fixture: `fixtures/issue-1-runtime.json`. `--json` appends trailing `RUNTIME_OK 
 
 | Capability | Entry | What you get |
 |------------|-------|--------------|
-| **CRDT episodic store** | via kernel `memory_sink` | Durable trajectory at `data/local/peram-memory.json` |
+| **CRDT episodic store** | via kernel `memory_sink` | Durable trajectory at `data/local/ensembly-memory.json` (legacy `peram-memory.json` discovered if present) |
 | **Tests** | `cargo test -p ensembly-memory` | Merge, coherence, persistence |
 
 Memory is **auxiliary** — kernel never delegates control decisions to it.
@@ -62,7 +62,7 @@ Memory is **auxiliary** — kernel never delegates control decisions to it.
 
 | Host | Role | Writable |
 |------|------|----------|
-| **Grok Bot** (canonical) | Kernel SoT, runtime tick, sealed backup | `peram-ops.sqlite`, `peram-memory.json` |
+| **Grok Bot** (canonical) | Kernel SoT, runtime tick, sealed backup | `ensembly-ops.sqlite` / `ensembly-memory.json` (legacy `peram-*` discovered) |
 | **Laptop** (client) | Offline reflect, harness dev | Import pulse → CRDT merge only |
 
 ```bash

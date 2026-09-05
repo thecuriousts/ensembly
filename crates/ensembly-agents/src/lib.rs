@@ -9,6 +9,7 @@
 //! / `.grok/config.toml`; ACP via `grok agent stdio`; fast inference via
 //! `grok -p --output-format json`. Export `ensembly-mcp`; never hard-dep Ollama.
 
+pub mod env_alias;
 pub mod delegation;
 pub mod grok;
 pub mod inference;

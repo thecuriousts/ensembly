@@ -331,8 +331,11 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 |-------|--------|
 | Package + `crates/` dir rename to `ensembly-*` | Greenfield kernel rewrite to “make the rename cleaner” |
 | Cheap `[[bin]]` aliases + `default-run` | Breaking `cargo run -p ensembly-kernel -- …` by shipping two bins without a default |
-| Keep on-disk `peram-ops.sqlite`, `peram-memory.json`, `peram-pulse-pack-v1`, vault domain separators, `peram-swarm` | Force-migrate operator DBs, pulse packs, or T2 seals |
-| Keep `PERAM_*` env vars | Silent env rename that strands existing Grok/Cursor configs |
+| Fresh defaults `ensembly-ops.sqlite` / `ensembly-memory.json`; discover legacy `peram-*` if that is the only file | Silent in-place rename or copy of the only live DB |
+| Dual-read pack ids; new exports `ensembly-*-v1` | Break import of existing bot/laptop pulse packs |
+| Vault write-side stays `peram-kernel-t2-v1:`; unseal dual-reads | Invalidate existing sealed backups |
+| `ENSEMBLY_*` env primary; `PERAM_*` one-release aliases | Silent env rename that strands existing Grok/Cursor configs |
+| `migrate-local-paths` copy-if-missing + pulse-pack resync | Dual-write ops on laptop and bot |
 
 **Ship path:** [RENAME.md](../RENAME.md) · `cargo test -p ensembly-kernel` · `cargo test -p ensembly-memory` · `cargo build -p ensembly-agents --bin ensembly-mcp`  
 **Law tests preserved:** Issue #12 fixture dogfood + no-G reconcile (`reconcile_fixture_empty_store_does_not_write_g`).

@@ -18,7 +18,7 @@ Episodic learning layer for the ensembly operator kernel: a durable, mergeable m
 use ensembly_memory::{EpisodicMemory, TrajectoryType, reflect, CoherenceConfig};
 
 // Open (or create) a durable memory; identity survives reloads.
-let mut mem = EpisodicMemory::open("data/local/peram-memory.json", "peram-swarm")?;
+let mut mem = EpisodicMemory::open("data/local/ensembly-memory.json", "ensembly-swarm")?;
 
 // Record what happened (the kernel's memory_sink does this for you).
 mem.append(TrajectoryType::Action, serde_json::json!({
@@ -40,7 +40,7 @@ mem.sync_and_save()?;
 You do not drive this crate directly; the kernel records for you:
 
 ```bash
-# Recorded automatically into data/local/peram-memory.json:
+# Recorded automatically into data/local/ensembly-memory.json (legacy peram-memory.json discovered):
 cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
 cargo run -p ensembly-kernel -- runtime tick
 

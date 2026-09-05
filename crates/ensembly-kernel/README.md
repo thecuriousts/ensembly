@@ -36,11 +36,11 @@ Notes:
 
 ## Episodic memory bridge (`memory_sink`)
 
-Every `runtime` command records **applied** bus messages, tick reports, and loads into a durable Conflict-free Replicated Data Type document at `data/local/peram-memory.json` (gitignored). Memory is auxiliary — it records what happened and is never consulted for control decisions.
+Every `runtime` command records **applied** bus messages, tick reports, and loads into a durable Conflict-free Replicated Data Type document at `data/local/ensembly-memory.json` (gitignored; legacy `peram-memory.json` is opened if that file already exists). Memory is auxiliary — it records what happened and is never consulted for control decisions.
 
 | Flag | Behavior |
 |------|----------|
-| *(default)* | Record into `data/local/peram-memory.json`; open failure warns, command continues |
+| *(default)* | Record into `data/local/ensembly-memory.json` (or existing `peram-memory.json`); open failure warns, command continues |
 | `--memory <path>` | Explicit path; open failure is **fatal** (exit 2) |
 | `--no-memory` | Recording disabled for this invocation |
 
@@ -57,10 +57,10 @@ See [../ensembly-memory/README.md](../ensembly-memory/README.md) for the learnin
 |---------|--------------|
 | `ensembly turn [--fixture f]` | FocusPlan: next physical beacon + next auth gate, coached from the critical path |
 | `ensembly digital-flow cycle` | bill_pay dry-run through a Human-In-The-Loop finance gate |
-| `ensembly backup --out pack.bin --unlock …` | Sealed Tier-2 backup pack (or `PERAM_UNLOCK` env) |
+| `ensembly backup --out pack.bin --unlock …` | Sealed Tier-2 backup pack (or `ENSEMBLY_UNLOCK` / `PERAM_UNLOCK` env) |
 | `ensembly restore-dry-run --pack pack.bin --unlock …` | Verify a pack without touching the primary database |
 
-Default database: `data/local/peram-ops.sqlite` (gitignored) — override with `--db`.
+Default database: `data/local/ensembly-ops.sqlite` (gitignored). Existing `peram-ops.sqlite` is opened in place. Override with `--db`.
 
 ## Library map
 

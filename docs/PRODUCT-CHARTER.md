@@ -73,7 +73,7 @@ If a feature cannot connect to a row above, defer it.
 | Dogfood | `cargo test -p ensembly-kernel` on every change |
 | Durability | T1 SQLite + sealed backup paths tested |
 | Loud failure | CLI status lines; no silent gate drift |
-| Single writer | One canonical host for `peram-ops.sqlite` |
+| Single writer | One canonical host for the ops sqlite (`ensembly-ops.sqlite`; legacy `peram-ops.sqlite` discovered) |
 
 ---
 

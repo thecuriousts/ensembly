@@ -16,11 +16,7 @@ use serde_json::json;
 use crate::msg_bus::{BusMessage, ManualCmd};
 use crate::runtime::TickReport;
 
-/// Durable memory lives next to the T1 ops DB (gitignored, local-only).
-pub const DEFAULT_MEMORY_PATH: &str = "data/local/peram-memory.json";
-/// Identity of the swarm's shared episodic document. Survives reloads;
-/// peers (P2P later) namespace their own replicas.
-pub const DEFAULT_AGENT_ID: &str = "peram-swarm";
+pub use crate::paths::{DEFAULT_AGENT_ID, DEFAULT_MEMORY_PATH, LEGACY_AGENT_ID, LEGACY_MEMORY_PATH};
 
 pub struct MemorySink {
     pub memory: EpisodicMemory,
@@ -125,7 +121,7 @@ impl MemorySink {
         );
     }
 
-    /// Explicit reflection pass. Uses `PERAM_INFERENCE` when set: deterministic
+    /// Explicit reflection pass. Uses `ENSEMBLY_INFERENCE` / `PERAM_INFERENCE` when set: deterministic
     /// always runs first; optional providers may enrich the summary, or warn
     /// and fall back (never fails the control path).
     pub fn reflect(&mut self) -> Option<Reflection> {

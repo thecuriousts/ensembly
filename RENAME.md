@@ -38,21 +38,68 @@ cargo build -p ensembly-agents --bin ensembly-mcp
 Grok register (new): `grok mcp add --scope project ensembly -- ./target/debug/ensembly-mcp`.  
 Existing `[mcp_servers.peram]` + `peram-mcp` still work via the alias.
 
-## On-disk paths — document, do not migrate
+## On-disk paths — discover + fresh default (no silent migrate)
 
-Local operator files and wire formats keep their historical names so existing DBs, backups, and pulse packs stay valid. **Do not force-rename or migrate user data.**
+**Law:** fresh installs create generic `ensembly-*` files. Existing dogfood trees that already have `peram-*` files keep working. The kernel **never** rewrites or renames the only live file in place.
 
-| Kind | Stable identifier |
-|------|-------------------|
-| T1 ops DB | `data/local/peram-ops.sqlite` (also `private/state/peram-ops.sqlite`) |
-| Episodic memory | `data/local/peram-memory.json` |
-| Ops bundle format | `peram-ops-bundle-v1` |
-| Pulse-pack format | `peram-pulse-pack-v1` |
-| T2 vault domain separators | `peram-kernel-t2-v1:` · `peram-kernel-fp-v1:` |
-| CRDT replica id | `peram-swarm` |
-| Env vars | `PERAM_MEMORY` · `PERAM_AGENT_ID` · `PERAM_INFERENCE` · `PERAM_DELEGATE` · `PERAM_UNLOCK` |
+### Discover (no `--db` / `--memory`)
 
-Override paths with `--db` / `--memory` if you want different filenames. The kernel will not rewrite a live `peram-ops.sqlite` to a new name.
+1. Prefer an existing `ensembly-*` file if present.
+2. Else if a legacy `peram-*` file exists, **open that**.
+3. Else create/use the new `ensembly-*` default.
+
+`--db` and `--memory` always win.
+
+| Role | Fresh default (create) | Legacy discover (open only) |
+|------|------------------------|-----------------------------|
+| T1 ops DB | `data/local/ensembly-ops.sqlite` (also `private/state/ensembly-ops.sqlite` if that parent exists) | `data/local/peram-ops.sqlite`, `private/state/peram-ops.sqlite` |
+| Episodic memory | `data/local/ensembly-memory.json` | `data/local/peram-memory.json` |
+| New CRDT replica id | `ensembly-swarm` | existing docs keep `peram-swarm` |
+| Env | `ENSEMBLY_MEMORY` · `ENSEMBLY_AGENT_ID` · `ENSEMBLY_INFERENCE` · `ENSEMBLY_DELEGATE` · `ENSEMBLY_UNLOCK` | `PERAM_*` one-release aliases |
+
+### Wire formats — dual-read; new writes generic
+
+| Kind | New export | Still imports |
+|------|------------|---------------|
+| Pulse pack | `ensembly-pulse-pack-v1` | `peram-pulse-pack-v1` |
+| Ops bundle | `ensembly-ops-bundle-v1` | `peram-ops-bundle-v1` |
+
+**Vault domain separators:** write-side stays `peram-kernel-t2-v1:` / `peram-kernel-fp-v1:` so existing sealed backups stay valid. Unseal dual-reads the `ensembly-kernel-t2-v1:` prefix if a blob was sealed that way. Do not change write-side without a versioned re-seal path.
+
+### One-shot operator copy (then resync)
+
+Do this on the **canonical host** (Grok Bot computer / ops writer) when you want the new filenames. Copy, smoke, then pulse-pack resync. **Do not dual-write ops.**
+
+```bash
+# Preview
+cargo run -p ensembly-kernel -- migrate-local-paths --dry-run
+
+# Copy-if-missing (keeps peram-* until you delete them)
+cargo run -p ensembly-kernel -- migrate-local-paths
+```
+
+Manual equivalent:
+
+```bash
+cp data/local/peram-ops.sqlite data/local/ensembly-ops.sqlite
+# if in use: cp private/state/peram-ops.sqlite private/state/ensembly-ops.sqlite
+cp data/local/peram-memory.json data/local/ensembly-memory.json
+```
+
+Then:
+
+1. Smoke on the canonical host: `cargo run -p ensembly-kernel -- runtime status` (defaults now prefer `ensembly-*` because those files exist).
+2. **Resync memory** bot → laptop via existing pulse-pack (ops stays on the canonical host only):
+
+```bash
+# bot
+cargo run -p ensembly-kernel -- pulse-pack export --out ~/sync/pulse/bot.pulse.json --include-archive
+
+# laptop (after migrate-local-paths or after the first import creates ensembly-memory.json)
+cargo run -p ensembly-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.json
+```
+
+3. After verify, operator may delete the legacy copies. Discover-fallback stays for one release so un-migrated trees still open.
 
 ## Historical prose
 

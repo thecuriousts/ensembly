@@ -9,7 +9,10 @@ use ensembly_kernel::backup::{
     create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
 };
 use ensembly_kernel::digital_flow::{run_cycle, DigitalFlow};
-use ensembly_kernel::memory_sink::{MemorySink, DEFAULT_MEMORY_PATH};
+use ensembly_kernel::memory_sink::MemorySink;
+use ensembly_kernel::paths::{
+    env_alias, migrate_local_paths_at, resolve_memory_path, resolve_ops_db, DEFAULT_MEMORY_PATH,
+};
 use ensembly_kernel::pulse_pack::{
     export_pulse_pack, import_pulse_pack, local_pulse_status, read_pulse_pack, write_pulse_pack,
     PulseExportOpts, PulseImportOpts, DEFAULT_ARCHIVE_SIDECAR,
@@ -29,11 +32,11 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = env!("CARGO_BIN_NAME"), about = "ensembly operator kernel (Rust)")]
 struct Cli {
-    /// Ops SQLite path (T1). Default: data/local/peram-ops.sqlite under cwd/repo.
+    /// Ops SQLite path (T1). Fresh default: data/local/ensembly-ops.sqlite (legacy peram-ops.sqlite discovered if present).
     #[arg(long, global = true)]
     db: Option<PathBuf>,
 
-    /// Episodic memory path (ensembly-memory). Default: data/local/peram-memory.json.
+    /// Episodic memory path. Fresh default: data/local/ensembly-memory.json (legacy peram-memory.json discovered if present).
     #[arg(long, global = true)]
     memory: Option<PathBuf>,
 
@@ -89,7 +92,7 @@ enum Commands {
     Backup {
         #[arg(long)]
         out: PathBuf,
-        /// Unlock material (demo CLI; production → keyring). Env PERAM_UNLOCK overrides.
+        /// Unlock material (demo CLI; production → keyring). Env ENSEMBLY_UNLOCK / PERAM_UNLOCK overrides.
         #[arg(long)]
         unlock: Option<String>,
     },
@@ -108,11 +111,11 @@ enum Commands {
         pack: PathBuf,
         #[arg(long)]
         unlock: Option<String>,
-        /// Required — destructive write to peram-ops.sqlite
+        /// Required — destructive write to the ops sqlite
         #[arg(long)]
         i_understand: bool,
     },
-    /// Unsealed T1 ops bundle export/import (peram-ops-bundle-v1 — not pulse)
+    /// Unsealed T1 ops bundle export/import (ensembly-ops-bundle-v1 — not pulse)
     #[command(name = "ops-bundle")]
     OpsBundle {
         #[command(subcommand)]
@@ -135,11 +138,23 @@ enum Commands {
         #[command(subcommand)]
         sub: ChannelPulseCmd,
     },
+    /// One-shot copy-if-missing: peram-* local files → ensembly-* (never overwrite, never delete)
+    #[command(name = "migrate-local-paths")]
+    MigrateLocalPaths {
+        /// Print planned copies without writing
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+        /// Root for relative data/local paths (default: cwd)
+        #[arg(long)]
+        root: Option<PathBuf>,
+        #[arg(long, default_value_t = false)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
 enum OpsBundleCmd {
-    /// Export unsealed ops bundle JSON from peram-ops.sqlite
+    /// Export unsealed ops bundle JSON from the ops sqlite
     Export {
         #[arg(long)]
         out: PathBuf,
@@ -302,20 +317,6 @@ Examples:
     },
 }
 
-fn default_db() -> PathBuf {
-    // Prefer repo data/local when present
-    let candidates = [
-        PathBuf::from("data/local/peram-ops.sqlite"),
-        PathBuf::from("private/state/peram-ops.sqlite"),
-    ];
-    for c in candidates {
-        if c.parent().map(|p| p.exists()).unwrap_or(false) || c.exists() {
-            return c;
-        }
-    }
-    PathBuf::from("data/local/peram-ops.sqlite")
-}
-
 /// Memory flags lifted out of Cli before `match cli.cmd` moves the subcommand.
 struct MemoryFlags {
     memory: Option<PathBuf>,
@@ -330,10 +331,7 @@ fn attach_memory(rt: &mut Runtime, flags: &MemoryFlags) {
         return;
     }
     let explicit = flags.memory.is_some();
-    let path = flags
-        .memory
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_MEMORY_PATH));
+    let path = resolve_memory_path(flags.memory.clone());
     match MemorySink::open(&path) {
         Ok(sink) => rt.memory = Some(sink),
         Err(e) => {
@@ -358,15 +356,13 @@ fn save_memory(rt: &mut Runtime) {
 }
 
 fn unlock_material(cli: &Option<String>) -> Result<Vec<u8>> {
-    if let Ok(v) = std::env::var("PERAM_UNLOCK") {
-        if !v.is_empty() {
-            return Ok(v.into_bytes());
-        }
+    if let Some(v) = env_alias("ENSEMBLY_UNLOCK", "PERAM_UNLOCK") {
+        return Ok(v.into_bytes());
     }
     if let Some(u) = cli {
         return Ok(u.clone().into_bytes());
     }
-    bail!("unlock required: pass --unlock or set PERAM_UNLOCK (keyring later)");
+    bail!("unlock required: pass --unlock or set ENSEMBLY_UNLOCK (alias PERAM_UNLOCK; keyring later)");
 }
 
 fn load_actions_from_fixture(path: &PathBuf) -> Result<Vec<Action>> {
@@ -383,7 +379,7 @@ fn ensure_snap(store: &OpsStore, actions: &[Action]) -> Result<Snapshot> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let db_path = cli.db.clone().unwrap_or_else(default_db);
+    let db_path = resolve_ops_db(cli.db.clone());
     let memory_flags = MemoryFlags {
         memory: cli.memory.clone(),
         no_memory: cli.no_memory,
@@ -394,6 +390,42 @@ fn main() -> Result<()> {
             println!("{}", kernel_version());
             println!("private_paths: {:?}", private_path_patterns());
             println!("law: Node src/* legacy; ensembly-kernel is control SoT");
+        }
+        Commands::MigrateLocalPaths {
+            dry_run,
+            root,
+            json,
+        } => {
+            let root = root.unwrap_or_else(|| PathBuf::from("."));
+            let report = migrate_local_paths_at(&root, dry_run)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                if report.copied.is_empty() && report.skipped_dest_exists.is_empty() {
+                    println!("MIGRATE_LOCAL no legacy peram-* files to copy under {}", root.display());
+                }
+                for a in &report.copied {
+                    let verb = if report.dry_run { "would-copy" } else { "copied" };
+                    println!("MIGRATE_LOCAL {verb} {} → {}", a.from.display(), a.to.display());
+                }
+                for a in &report.skipped_dest_exists {
+                    println!(
+                        "MIGRATE_LOCAL skip-dest-exists {} (left {})",
+                        a.to.display(),
+                        a.from.display()
+                    );
+                }
+                println!(
+                    "MIGRATE_LOCAL_OK copied={} skipped_dest={} skipped_missing={} dry_run={}",
+                    report.copied.len(),
+                    report.skipped_dest_exists.len(),
+                    report.skipped_src_missing.len(),
+                    report.dry_run
+                );
+                println!(
+                    "next (canonical host only): smoke runtime status on the new ops path, then\n  cargo run -p ensembly-kernel -- pulse-pack export --out ~/sync/pulse/bot.pulse.json --include-archive\n  # laptop: pulse-pack import that pack (defaults prefer ensembly-memory.json once present)\nKeep legacy copies until smoke passes. Do not dual-write ops. After verify, you may delete peram-* files."
+                );
+            }
         }
         Commands::Turn {
             fixture,
@@ -686,10 +718,7 @@ fn main() -> Result<()> {
             }
         },
         Commands::PulsePack { sub } => {
-            let memory_path = cli
-                .memory
-                .clone()
-                .unwrap_or_else(|| PathBuf::from(DEFAULT_MEMORY_PATH));
+            let memory_path = resolve_memory_path(cli.memory.clone());
             let archive_sidecar = PathBuf::from(DEFAULT_ARCHIVE_SIDECAR);
             match sub {
                 PulsePackCmd::Export {
