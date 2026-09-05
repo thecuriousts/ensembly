@@ -1,11 +1,9 @@
 //! `peram` CLI — dogfood entry for the Rust life kernel.
 
-use anyhow::{bail, Context, Result};
-use chrono::{DateTime, Utc};
+use anyhow::{bail, Result};
+use chrono::Utc;
 use clap::{Parser, Subcommand};
-use peram_kernel::approvals::{
-    list_pending, upsert_pending_from_actions, upsert_physical, Snapshot,
-};
+use peram_kernel::approvals::{list_pending, Snapshot};
 use peram_kernel::backup::{
     create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
 };
@@ -18,8 +16,12 @@ use peram_kernel::pulse_pack::{
 use peram_kernel::msg_bus::ManualCmd;
 use peram_kernel::runtime::Runtime;
 use peram_kernel::store::OpsStore;
-use peram_kernel::channel_pulse::{reconcile_channel_pulse, DEFAULT_CHANNEL_PULSE_PATH};
-use peram_kernel::turn::{build_channel_ir, context_at, rank_now, Action};
+use peram_kernel::channel_pulse::{
+    project_wait_snapshot, reconcile_channel_pulse, DEFAULT_CHANNEL_PULSE_PATH,
+};
+use peram_kernel::turn::{
+    actions_from_fixture_path, build_channel_ir, context_at, rank_now, Action,
+};
 use peram_kernel::{kernel_version, private_path_patterns};
 use std::path::PathBuf;
 
@@ -272,11 +274,19 @@ enum DfCmd {
 #[derive(Subcommand)]
 enum ChannelPulseCmd {
     /// Weekday reconcile: diff wait-snapshot vs last pulse; write when changed (quiet when not)
+    #[command(after_help = "\
+Examples:
+  cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \\
+    --fixture fixtures/issue-1-runtime.json --out /tmp/channel-pulse.json --json
+  cargo run -p peram-kernel -- --db /tmp/peram-ops-smoke.sqlite channel-pulse reconcile \\
+    --fixture fixtures/issue-1-runtime.json --out /tmp/channel-pulse.json
+    # unchanged → exit 0, silent
+")]
     Reconcile {
         /// Redacted pulse output path (default data/local/channel-pulse.json)
         #[arg(long)]
         out: Option<PathBuf>,
-        /// JSON fixture for actions when no runtime graph is loaded
+        /// JSON fixture for actions when no wait-snapshot is in the ops DB
         #[arg(long)]
         fixture: Option<PathBuf>,
         /// location_label: home|travel|office
@@ -359,95 +369,13 @@ fn unlock_material(cli: &Option<String>) -> Result<Vec<u8>> {
 }
 
 fn load_actions_from_fixture(path: &PathBuf) -> Result<Vec<Action>> {
-    let raw = std::fs::read_to_string(path).with_context(|| format!("read {path:?}"))?;
-    let v: serde_json::Value = serde_json::from_str(&raw)?;
-    let mut actions = vec![];
-    if let Some(arr) = v.get("extra_candidates").and_then(|x| x.as_array()) {
-        for item in arr {
-            actions.push(Action {
-                id: item
-                    .get("id")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("unknown")
-                    .into(),
-                title: item
-                    .get("title")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("")
-                    .into(),
-                area: item
-                    .get("area")
-                    .and_then(|x| x.as_str())
-                    .map(str::to_string),
-                kind: item
-                    .get("kind")
-                    .and_then(|x| x.as_str())
-                    .map(str::to_string),
-                realm: item
-                    .get("realm")
-                    .and_then(|x| x.as_str())
-                    .map(str::to_string),
-                urgency: item.get("urgency").and_then(|x| x.as_i64()).unwrap_or(2) as i32,
-                importance: item
-                    .get("importance")
-                    .and_then(|x| x.as_i64())
-                    .unwrap_or(2) as i32,
-                tags: item
-                    .get("tags")
-                    .and_then(|x| x.as_array())
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|t| t.as_str().map(str::to_string))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                public: item.get("public").and_then(|x| x.as_bool()),
-                depends_on: item.get("depends_on").and_then(|x| x.as_array()).map(|a| {
-                    a.iter()
-                        .filter_map(|t| t.as_str().map(str::to_string))
-                        .collect()
-                }),
-                deadline_at: item
-                    .get("deadline_at")
-                    .and_then(|x| x.as_str())
-                    .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
-                    .map(|d| d.with_timezone(&Utc)),
-            });
-        }
-    }
-    Ok(actions)
+    actions_from_fixture_path(path).map_err(|e| anyhow::anyhow!("{e}"))
 }
 
 fn ensure_snap(store: &OpsStore, actions: &[Action]) -> Result<Snapshot> {
     let now = Utc::now();
     let existing = store.load_snapshot()?;
-    let hitl: Vec<_> = actions
-        .iter()
-        .map(|a| {
-            let hitl = matches!(
-                a.kind.as_deref(),
-                Some("job_application_submit")
-                    | Some("finance_transfer")
-                    | Some("external_email_send")
-                    | Some("calendar_mutate")
-                    | Some("git_push_shared")
-                    | Some("publish_private_data")
-            ) || a.area.as_deref() == Some("Finance");
-            (
-                a.id.clone(),
-                a.title.clone(),
-                a.kind.clone().unwrap_or_else(|| "hitl".into()),
-                hitl,
-            )
-        })
-        .collect();
-    let mut snap = upsert_pending_from_actions(&hitl, existing, now);
-    let physical: Vec<_> = actions
-        .iter()
-        .filter(|a| a.realm.as_deref() == Some("physical") || a.kind.as_deref() == Some("physical_errand") || a.kind.as_deref() == Some("outdoor"))
-        .map(|a| (a.id.clone(), a.title.clone()))
-        .collect();
-    snap = upsert_physical(&physical, Some(snap), now);
+    let snap = project_wait_snapshot(actions, existing, now);
     store.save_snapshot(&snap)?;
     Ok(snap)
 }

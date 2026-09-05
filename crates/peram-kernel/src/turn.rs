@@ -3,6 +3,7 @@
 
 use chrono::{DateTime, NaiveTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 use sha2::{Digest, Sha256};
 
@@ -30,6 +31,24 @@ pub struct Action {
     pub depends_on: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline_at: Option<DateTime<Utc>>,
+}
+
+/// Load `extra_candidates` from a committed fixture JSON (Issue #1 / #8 dogfood).
+pub fn actions_from_fixture_path(path: &Path) -> Result<Vec<Action>, String> {
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("read {path:?}: {e}"))?;
+    actions_from_fixture_json(&raw)
+}
+
+/// Parse fixture JSON; unknown top-level keys ignored. Missing `extra_candidates` → empty.
+pub fn actions_from_fixture_json(raw: &str) -> Result<Vec<Action>, String> {
+    #[derive(Deserialize)]
+    struct FixtureFile {
+        #[serde(default)]
+        extra_candidates: Vec<Action>,
+    }
+    let f: FixtureFile =
+        serde_json::from_str(raw).map_err(|e| format!("parse fixture JSON: {e}"))?;
+    Ok(f.extra_candidates)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
