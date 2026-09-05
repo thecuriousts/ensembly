@@ -10,7 +10,7 @@ default-run = "ensembly-mcp"
 name = "ensembly-mcp"
 path = "src/bin/ensembly_mcp.rs"
 
-# One-release compat alias. Prefer `ensembly-mcp` / `cargo build -p ensembly-agents --bin ensembly-mcp`.
+# One-release compat alias (same source; cargo warns, harmless). Prefer `ensembly-mcp`.
 [[bin]]
 name = "peram-mcp"
 path = "src/bin/ensembly_mcp.rs"

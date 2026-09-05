@@ -20,7 +20,7 @@ Parked `prototype/crates/peram-core` stays as historical Game-of-Peram WASM — 
 
 ## Compat aliases (one release)
 
-Cheap Cargo `[[bin]]` aliases, same source, `default-run` keeps `cargo run -p …` unambiguous:
+Cheap Cargo `[[bin]]` aliases, same source, `default-run` keeps `cargo run -p …` unambiguous. Cargo may warn that one file is present in multiple bin targets — expected, one-release only.
 
 | Primary | Alias |
 |---------|-------|

@@ -10,7 +10,7 @@ default-run = "ensembly"
 name = "ensembly"
 path = "src/main.rs"
 
-# One-release compat alias. Prefer `ensembly` / `cargo run -p ensembly-kernel`.
+# One-release compat alias (same source; cargo warns, harmless). Prefer `ensembly`.
 [[bin]]
 name = "peram"
 path = "src/main.rs"
