@@ -117,13 +117,40 @@ Refuse: treating chat history as pending-ledger SoT.
 
 ---
 
-## 5. Remote / channels (trajectory)
+## 5. Channel pulse (Issue #8)
+
+**Law:** Pulse is admissions-filtered **observation** — it never writes **G**, gates, or priorities. One writer on `data/local/peram-ops.sqlite`.
+
+| Surface | Command | Output |
+|---------|---------|--------|
+| **Channel IR** (stdout) | `cargo run -p peram-kernel -- turn --channel [--fixture …] [--location home\|travel\|office]` | Versioned JSON: `next_body`, `next_gate`, optional `where`/`when`, `snapshot_fingerprint`. No `TURN_OK` stderr banner. |
+| **Weekday reconcile** | `cargo run -p peram-kernel -- channel-pulse reconcile [--fixture …] [--out data/local/channel-pulse.json]` | Diff wait-snapshot vs last pulse file. **Unchanged → exit 0, silent.** Changed → write gitignored `data/local/channel-pulse.json`. |
+
+```bash
+# Emit channel IR for a harness (parse stdout only)
+cargo run -p peram-kernel -- turn --channel --fixture fixtures/issue-1-runtime.json
+
+# Weekday reconcile (cron-friendly: quiet when nothing new)
+cargo run -p peram-kernel -- channel-pulse reconcile --fixture fixtures/issue-1-runtime.json
+cargo run -p peram-kernel -- channel-pulse reconcile --fixture fixtures/issue-1-runtime.json  # silent exit 0
+
+# Inspect reconcile outcome explicitly
+cargo run -p peram-kernel -- channel-pulse reconcile --json --verbose
+```
+
+**Channel pulse JSON shape (v1):** `{ version, generated_at, next_body?, next_gate?, where?, when?, snapshot_fingerprint }`. Private/finance titles are redacted via the kernel classifier; gate ids remain for HITL approve/deny on the canonical host.
+
+**Not this:** `pulse-pack` (episodic memory CRDT) · prototype `turn-status.json` · MCP write tools.
+
+---
+
+## 6. Remote / channels (trajectory)
 
 Eve or Slack digests would call kernel with **redacted** JSON only. Not shipped at root. See [EVE-FIT.md](EVE-FIT.md).
 
 ---
 
-## 6. Privacy checkpoint
+## 7. Privacy checkpoint
 
 Before any export or pulse copy:
 
@@ -133,7 +160,7 @@ Before any export or pulse copy:
 
 ---
 
-## 7. Quick reference
+## 8. Quick reference
 
 ```bash
 cargo test -p peram-kernel && cargo test -p peram-memory
@@ -143,6 +170,9 @@ cargo run -p peram-kernel -- runtime approve <action-id>
 cargo run -p peram-kernel -- runtime deny <action-id>
 cargo run -p peram-kernel -- runtime claim <beacon-id>
 cargo run -p peram-kernel -- runtime complete <beacon-id>
+
+cargo run -p peram-kernel -- turn --channel --fixture fixtures/issue-1-runtime.json
+cargo run -p peram-kernel -- channel-pulse reconcile --fixture fixtures/issue-1-runtime.json
 
 cargo run -p peram-kernel -- pulse-pack export --out /tmp/x.pulse.json
 cargo run -p peram-kernel -- pulse-pack import --pack /tmp/x.pulse.json

@@ -98,6 +98,7 @@ cargo run -p peram-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.jso
 |----|-------------|-------|
 | Runtime status | `runtime status --json` | Regime, pending gates, CP |
 | Turn / FocusPlan | `peram turn --json` | Next physical + auth from CP |
+| **Channel pulse** | `peram turn --channel` · `channel-pulse reconcile` | Redacted one body + one gate; see [PLAYBOOK.md §5](PLAYBOOK.md#5-channel-pulse-issue-8) |
 | Pulse pack | `pulse-pack export` | Portable memory + archive events |
 | Ops bundle | `ops-bundle` | Full ops snapshot (canonical host only) |
 

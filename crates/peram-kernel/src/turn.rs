@@ -4,9 +4,15 @@
 use chrono::{DateTime, NaiveTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 
+use sha2::{Digest, Sha256};
+
 use crate::approvals::{list_pending, ApprovalStatus, PhysicalStatus, Snapshot};
-use crate::privacy::{classify_item, Classifiable};
+use crate::privacy::{classify_item, Classifiable, Visibility};
 use crate::realm::{classify_realm, Realm};
+use crate::vault::export_denied_for_class;
+
+/// Channel IR version — stable contract for harnesses (Issue #8).
+pub const CHANNEL_IR_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
@@ -65,6 +71,134 @@ pub struct FocusPlan {
     pub coach_line: String,
     pub physical_count: usize,
     pub pending_count: usize,
+}
+
+/// Redacted next-act surface for channel bots (one body + one gate).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelAct {
+    pub id: String,
+    pub title: String,
+    pub kind: String,
+}
+
+/// Versioned channel pulse IR — no coach_line, places, or queue dumps.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChannelPulseIr {
+    pub version: u32,
+    pub generated_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_body: Option<ChannelAct>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_gate: Option<ChannelAct>,
+    #[serde(rename = "where", skip_serializing_if = "Option::is_none")]
+    pub where_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub when: Option<DateTime<Utc>>,
+    /// Fingerprint of durable wait-snapshot rows (reconcile diff key).
+    pub snapshot_fingerprint: String,
+}
+
+fn redact_channel_act(item: &FocusItem, area: Option<&str>) -> ChannelAct {
+    let classifiable = Classifiable {
+        id: Some(item.id.clone()),
+        title: Some(item.title.clone()),
+        area: area.map(str::to_string),
+        kind: Some(item.kind.clone()),
+        ..Default::default()
+    };
+    let c = classify_item(&classifiable);
+    let area_denied = area.map(export_denied_for_class).unwrap_or(false);
+    let title = if c.pushable && !area_denied && c.visibility == Visibility::Public {
+        item.title.clone()
+    } else if c.visibility == Visibility::Private || !c.pushable || area_denied {
+        format!("[redacted:{}]", c.reason.split(':').next().unwrap_or("private"))
+    } else {
+        item.title.clone()
+    };
+    ChannelAct {
+        id: item.id.clone(),
+        title,
+        kind: item.kind.clone(),
+    }
+}
+
+/// Build redacted channel IR from FocusPlan + wait snapshot (pure; no graph writes).
+pub fn build_channel_ir(plan: &FocusPlan, snap: &Snapshot, now: DateTime<Utc>) -> ChannelPulseIr {
+    let body_area = plan
+        .primary_physical
+        .as_ref()
+        .and_then(|p| snap.physical.iter().find(|r| r.id == p.id))
+        .and_then(|r| r.area.as_deref());
+    let gate_area = plan
+        .primary_auth
+        .as_ref()
+        .and_then(|a| {
+            snap.pending
+                .iter()
+                .find(|p| p.id == a.id)
+                .and_then(|p| p.area.as_deref())
+        });
+    ChannelPulseIr {
+        version: CHANNEL_IR_VERSION,
+        generated_at: now,
+        next_body: plan
+            .primary_physical
+            .as_ref()
+            .map(|p| redact_channel_act(p, body_area)),
+        next_gate: plan
+            .primary_auth
+            .as_ref()
+            .map(|a| redact_channel_act(a, gate_area)),
+        where_label: plan.location_label.clone(),
+        when: Some(plan.at),
+        snapshot_fingerprint: snapshot_channel_fingerprint(snap),
+    }
+}
+
+/// Stable hash of wait-snapshot rows relevant to channel reconcile.
+pub fn snapshot_channel_fingerprint(snap: &Snapshot) -> String {
+    let mut h = Sha256::new();
+    h.update(snap.updated_at.to_rfc3339().as_bytes());
+    h.update(snap.phase.as_bytes());
+    h.update(format!("{:?}", snap.status).as_bytes());
+
+    let mut pending: Vec<_> = snap
+        .pending
+        .iter()
+        .map(|p| (p.id.as_str(), format!("{:?}", p.status)))
+        .collect();
+    pending.sort_by_key(|(id, _)| *id);
+    for (id, st) in pending {
+        h.update(id.as_bytes());
+        h.update(st.as_bytes());
+    }
+
+    let mut physical: Vec<_> = snap
+        .physical
+        .iter()
+        .map(|p| (p.id.as_str(), format!("{:?}", p.status)))
+        .collect();
+    physical.sort_by_key(|(id, _)| *id);
+    for (id, st) in physical {
+        h.update(id.as_bytes());
+        h.update(st.as_bytes());
+    }
+
+    hex::encode(h.finalize())
+}
+
+/// Content hash for reconcile (excludes volatile `generated_at` and `when`).
+pub fn channel_pulse_content_hash(ir: &ChannelPulseIr) -> String {
+    let comparable = serde_json::json!({
+        "version": ir.version,
+        "next_body": ir.next_body,
+        "next_gate": ir.next_gate,
+        "where": ir.where_label,
+        "snapshot_fingerprint": ir.snapshot_fingerprint,
+    });
+    let mut h = Sha256::new();
+    h.update(comparable.to_string().as_bytes());
+    hex::encode(h.finalize())
 }
 
 fn parse_hm(s: &str) -> Option<u32> {
@@ -390,5 +524,70 @@ mod tests {
         assert!(plan.primary_physical.is_none());
         assert!(plan.primary_auth.is_none());
         assert!(plan.biome.contains("night") || plan.biome.contains("desk"));
+    }
+
+    #[test]
+    fn channel_ir_shape_versioned_one_body_one_gate() {
+        let now = Utc.with_ymd_and_hms(2026, 7, 15, 12, 0, 0).unwrap();
+        let actions = vec![Action {
+            id: "grocery-errand".into(),
+            title: "Grocery errand".into(),
+            area: Some("Health".into()),
+            kind: Some("physical_errand".into()),
+            realm: Some("physical".into()),
+            urgency: 4,
+            importance: 4,
+            tags: vec!["physical".into()],
+            public: Some(false),
+            depends_on: None,
+            deadline_at: None,
+        }];
+        let snap = upsert_pending_from_actions(
+            &[(
+                "apply-high-signal".into(),
+                "Prepare FT application".into(),
+                "job_application_submit".into(),
+                true,
+            )],
+            None,
+            now,
+        );
+        let plan = rank_now(&context_at(now, Some("home")), &actions, &[], &snap);
+        let ir = build_channel_ir(&plan, &snap, now);
+        assert_eq!(ir.version, CHANNEL_IR_VERSION);
+        assert!(ir.next_body.is_some());
+        assert!(ir.next_gate.is_some());
+        assert_eq!(ir.where_label.as_deref(), Some("home"));
+        assert!(!ir.snapshot_fingerprint.is_empty());
+        let json = serde_json::to_value(&ir).unwrap();
+        assert!(json.get("coach_line").is_none());
+        assert!(json.get("places").is_none());
+        assert!(json.get("next_body").is_some());
+        assert!(json.get("next_gate").is_some());
+    }
+
+    #[test]
+    fn channel_ir_redacts_private_finance_title() {
+        let item = FocusItem {
+            id: "auth-pay-rent".into(),
+            title: "Pay rent wire transfer".into(),
+            kind: "finance_transfer".into(),
+            reason: "hitl".into(),
+        };
+        let act = redact_channel_act(&item, Some("Finance"));
+        assert!(act.title.starts_with("[redacted:"));
+        assert_eq!(act.id, "auth-pay-rent");
+    }
+
+    #[test]
+    fn channel_pulse_content_hash_ignores_generated_at() {
+        let now = Utc.with_ymd_and_hms(2026, 7, 15, 12, 0, 0).unwrap();
+        let snap = Snapshot::empty(now);
+        let plan = rank_now(&context_at(now, None), &[], &[], &snap);
+        let mut a = build_channel_ir(&plan, &snap, now);
+        let h1 = channel_pulse_content_hash(&a);
+        a.generated_at = now + chrono::Duration::hours(1);
+        let h2 = channel_pulse_content_hash(&a);
+        assert_eq!(h1, h2);
     }
 }
