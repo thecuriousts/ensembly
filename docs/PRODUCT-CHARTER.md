@@ -12,7 +12,7 @@ Provide a **durable operator kernel** under external harnesses (Grok Bot, Grok B
 
 Remove **digital friction** so scarce human energy goes to **physical presence** and **judgment (approvals)**. This is **serious life infrastructure**. Not a joke. Not a hobby demo.
 
-**Not the vault:** Portfolio memory lives in **`~/life-os`**. ensembly is the **kernel** the clone runs locally. Boundary: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md).
+**Not the vault:** Portfolio memory lives in the **life-os vault** (`$LIFEOS`). ensembly is the **kernel** the clone runs locally. Boundary: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md).
 
 **Not a game product (at root):** Game of Peram browser client is **parked** in [`prototype/`](../prototype/README.md) — optional experiment, not SoT.
 

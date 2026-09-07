@@ -3,7 +3,9 @@
 **Status:** Product law for agents and operator  
 **Date:** 2026-07-13  
 **Lenses:** higher-order-decision-architect · fusion-sage  
-**Audience:** Every coding agent session on ensembly; any agent that touches `~/life-os`
+**Audience:** Every coding agent session on ensembly; any agent that touches the life-os vault
+
+**Path conventions (portable):** `$LIFEOS` = operator vault root (portfolio wiki; conventionally `~/life-os`). `$WORK_PERSONAL` = personal code repos root (conventionally `~/Work/personal`). Set in shell profile or per-session; docs do not assume a fixed home layout.
 
 ---
 
@@ -11,7 +13,7 @@
 
 | System | What it is |
 |--------|------------|
-| **`~/life-os`** | The **clustered Projects / Areas vault** — human + agent wiki of what was **started one after another and organized over time**. Portfolio memory, Eisenhower cards, energy logging, Archives, schema-driven Obsidian structure. **Not** the always-on digital self. |
+| **life-os vault** (`$LIFEOS`) | The **clustered Projects / Areas vault** — human + agent wiki of what was **started one after another and organized over time**. Portfolio memory, Eisenhower cards, energy logging, Archives, schema-driven Obsidian structure. **Not** the always-on digital self. |
 | **ensembly** (this repo) | A **digital clone / continuous life swarm**: knows current life from **local data**, aims for **automated event hooks and connectors** running **continuously or most frequently**, and **sincerely optimizes / removes digital friction** so the human can join as a **pair when available** (physical world + HITL judgment) — not as the full-time operator of every digital step. |
 
 **Pair model:** The clone does digital work in the virtual layer that applies to the digital world; the human pairs in for body-world acts and authorizations. Experiment with new satellite projects freely; **archive** them when they stop earning capacity.
@@ -72,7 +74,7 @@ Continuous connectors and frequent event hooks are **ensembly trajectory**, not 
 
 | Layer | Iron-peak | Lives in |
 |-------|-----------|----------|
-| Portfolio memory | Areas + Projects schema, Eisenhower, energy, Archives | `~/life-os` |
+| Portfolio memory | Areas + Projects schema, Eisenhower, energy, Archives | `$LIFEOS` |
 | Day / privacy / realm / approvals / turn status | Pure modules + durable snapshot | **ensembly** `src/` |
 | Hosts | CLI, game, later Eve channels | **ensembly** hosts / bridges |
 | Satellites | Experiment → prove → archive | Separate repos; **cards** in life-os |
@@ -85,7 +87,7 @@ Continuous connectors and frequent event hooks are **ensembly trajectory**, not 
 |------|----------------|
 | Update project `next_action`, energy, portfolio MOC, area notes | **life-os** |
 | Operator turn, next physical / next auth, claim/complete, day plan, privacy classify, graph watch, game focus | **ensembly** |
-| Fleeting note, inbox task dump, pomo focus clock, evening micro-review | **premflow** (`~/.premflow/`) — not ensembly turn; portfolio card only at `~/life-os/Projects/premflow/` — see [PREMFLOW-FIT.md](PREMFLOW-FIT.md) |
+| Fleeting note, inbox task dump, pomo focus clock, evening micro-review | **premflow** (`~/.premflow/`) — not ensembly turn; portfolio card only at `$LIFEOS/Projects/premflow/` — see [PREMFLOW-FIT.md](PREMFLOW-FIT.md) |
 | Copilot implement on a portfolio code repo (proposal → PR) | **That repo** + life-os card/session update; law in [CLONE-COPILOT.md](CLONE-COPILOT.md) |
 | Open a satellite, read shared local SoT, gated cross-write | **Cluster** — [SATELLITE-CLUSTER.md](SATELLITE-CLUSTER.md) |
 | Clone’s own ideas / working schedule | **ensembly** `private/clone/` (local only) |
@@ -122,4 +124,4 @@ life-os **continues** as the clustered human+agent wiki. Autonomous vault agents
 
 - ensembly law: [../AGENTS.md](../AGENTS.md) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md) · [DECISIONS.md](DECISIONS.md) · [PRIVACY.md](PRIVACY.md)
 - Premflow + terminal loop: [PREMFLOW-FIT.md](PREMFLOW-FIT.md)
-- life-os vault (outside this repo): `~/life-os/README.md`, `~/life-os/AGENTS.md`
+- life-os vault (outside this repo): `$LIFEOS/README.md`, `$LIFEOS/AGENTS.md`

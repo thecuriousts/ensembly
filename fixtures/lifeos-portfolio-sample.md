@@ -13,5 +13,5 @@ tags: [ensembly, life-swarm]
 
 # sample portfolio card (fixture)
 
-Redacted shape of `~/life-os/Projects/*/README.md` for unit tests.
+Redacted shape of `$LIFEOS/Projects/*/README.md` for unit tests.
 Does not contain private finance or family PII.

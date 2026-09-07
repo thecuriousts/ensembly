@@ -82,7 +82,7 @@ Binding: [AGENTS.md](../AGENTS.md) · [PRODUCT-CHARTER.md](PRODUCT-CHARTER.md)
 
 ## life-os vs ensembly boundary (2026-07-13)
 
-**Verdict:** **`~/life-os`** is the **clustered Projects/Areas vault** (started-and-organized portfolio memory). **ensembly** is the **digital clone / continuous friction swarm** (data, hooks/connectors trajectory, human as intermittent **pair** for physical + HITL). **Refuse** merging vault into product git; **refuse** treating life-os as runtime clone. Continuous connectors = ensembly trajectory, not vault duty. Experiment/archive satellites freely.
+**Verdict:** The **life-os vault** (`$LIFEOS`) is the **clustered Projects/Areas vault** (started-and-organized portfolio memory). **ensembly** is the **digital clone / continuous friction swarm** (data, hooks/connectors trajectory, human as intermittent **pair** for physical + HITL). **Refuse** merging vault into product git; **refuse** treating life-os as runtime clone. Continuous connectors = ensembly trajectory, not vault duty. Experiment/archive satellites freely.
 
 Full law: [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · Binding entry: [../AGENTS.md](../AGENTS.md)
 
