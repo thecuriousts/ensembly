@@ -3,20 +3,21 @@
 **Audience:** new readers, agents, operator.  
 **Not this doc:** parked game (`prototype/README.md`), cut rationale (`MUSK-CUT-2026-09-04.md`), privacy law (`PRIVACY.md`).
 
-**Last verified:** 2026-09-05 (ensembly-* crate rename)
+**Last verified:** 2026-09-08 (participatory-mesh value + proactive wording)
 
 ---
 
 ## 0. One sentence
 
-**ensembly** is a **local operator kernel**: Rust control plane for HITL/HOOTL runtime, T1 SQLite, episodic memory, and pulse-pack sync — complementing Grok/Cursor harnesses without pushing private life data.
+**ensembly** is a **local operator kernel**: Rust control plane for HITL/HOOTL runtime, T1 SQLite, episodic memory, and pulse-pack sync — complementing Grok/Cursor harnesses without pushing private life data. Optional peer: [participatory-mesh](https://github.com/thecuriousts/participatory-mesh) for allowlisted acts on another device after authorize/claim.
 
 ```text
-Kernel (ensembly-kernel)     → gates, MsgBus, ops DB, backup, pulse-pack
+Kernel (ensembly-kernel)     → authorize/claim/complete, MsgBus, ops DB, backup, pulse-pack
 Memory (ensembly-memory)     → CRDT episodic layer (aux; never decides)
 Agents (ensembly-agents)     → read-only ensembly-mcp for harnesses
-Harness (Grok/Cursor/…)   → capture — calls kernel, never owns vault
-Prototype (parked)        → game/watch/Node — not SoT
+Harness (Grok/Cursor/…)      → capture — proposes; never owns vault
+participatory-mesh (external)→ CommandFabric — dispatches allowlisted peer acts
+Prototype (parked)           → game/watch/Node — not SoT
 ```
 
 ---
@@ -84,7 +85,7 @@ cargo run -p ensembly-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.
 | `crates/ensembly-kernel/` | Control SoT: S, G, CP, MsgBus, runtime, store, privacy, backup, pulse-pack |
 | `crates/ensembly-memory/` | Episodic CRDT, coherence engine |
 | `crates/ensembly-agents/` | MCP satellite, inference provider trait |
-| **external: mesh** | Allowlisted machine mutates across private-network peers (CommandFabric). Bot→ensembly authorize→mesh execute on another participant. Not life SoT — [thinking/mesh-bridge-2026-09-08.md](thinking/mesh-bridge-2026-09-08.md) |
+| **external: [participatory-mesh](https://github.com/thecuriousts/participatory-mesh)** | Multi-device CommandFabric: after ensembly authorizes/claims, dispatch allowlisted work onto another participant. Raises execution reach; not life SoT — [thinking/mesh-bridge-2026-09-08.md](thinking/mesh-bridge-2026-09-08.md) |
 
 
 ---
