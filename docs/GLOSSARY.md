@@ -35,7 +35,7 @@
 | **Aux** | Auxiliary | The memory layer's legal status: it records and learns; it never decides gates, critical path, or priorities. |
 | **Judge** | Inference provider (roadmap P2) | Pluggable backend for coherence scoring and reflection summaries. **Default:** deterministic Jaccard (zero network). **Optional adapters:** Ollama HTTP, Grok Model Context Protocol, opencode Agent Client Protocol / Model Context Protocol, pi, others — selected at runtime, never a hard dependency. Unavailable provider warns and falls back to deterministic. |
 | **InferenceProvider** | Inference provider trait | Rust trait in `ensembly-agents`: score coherence, summarize reflection. Test oracle is always the deterministic implementation. |
-| **DelegationBackend** | Delegation backend trait | Rust trait for Human-Out-Of-The-Loop digital hands. **First adapter:** Grok Agent Client Protocol. Secondary: opencode Agent Client Protocol, pi. |
+| **DelegationBackend** | Delegation backend trait | Rust trait for Human-Out-Of-The-Loop digital hands. **First adapter:** Grok Agent Client Protocol. Secondary: opencode / pi. **Roadmap hand:** mesh CommandFabric (`bin/mesh` / HTTP) for allowlisted acts on **another participant node** — ensembly still claims/completes; mesh never owns life gates. See [thinking/mesh-bridge-2026-09-08.md](thinking/mesh-bridge-2026-09-08.md). |
 
 ## Agents and protocols (roadmap P3–P5)
 
@@ -47,6 +47,7 @@
 | **Grok MCP** | Grok Model Context Protocol | Official: `grok mcp add` / `.grok/config.toml` ([docs](https://docs.x.ai/build/features/mcp-servers)). Tools namespaced `server__tool`. |
 | **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Grok, Cursor, opencode, Eve). Live: read-only `ensembly-mcp` `memory_*` + `swarm_banner`. `kernel_status` deferred. |
 | **ACP** | Agent Client Protocol | Agent-to-agent session protocol (used by `opencode acp`); planned path for delegating HOOTL digital work. |
+| **mesh** | participatory-mess / mesh lab | Private Tailscale OTP cluster with **CommandFabric** allowlist. Cross-participant mutate hand under ensembly — not a second life ledger. |
 | **JSON-RPC** | JSON Remote Procedure Call | Request/response envelope used by MCP and ACP. |
 | **NDJSON** | Newline-Delimited JSON | One JSON value per line; the stdio framing for our protocol plumbing. |
 | **P2P** | Peer-to-Peer | Direct replica sync between machines; the CRDT merge is ready, transport is undecided (needs a product decision). |
