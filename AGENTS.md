@@ -22,7 +22,7 @@ Full cut: [docs/MUSK-CUT-2026-09-04.md](docs/MUSK-CUT-2026-09-04.md).
 
 ### life-os vs this repo (do not confuse)
 
-| | **`~/life-os`** | **ensembly (this repo)** |
+| | **life-os vault** (`$LIFEOS`) | **ensembly (this repo)** |
 |--|-----------------|---------------------------|
 | Role | Clustered **Projects/Areas vault** | **Operator kernel** — gates, memory, pulse sync |
 | Not | Always-on connector runtime | Game client or second chat inbox |

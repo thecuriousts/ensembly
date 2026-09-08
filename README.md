@@ -6,7 +6,7 @@ Product law: [PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) · [AGENTS.md](AGENTS
 
 **New here?** [docs/MAP.md](docs/MAP.md) — live crates, CLI surfaces, pulse sync. Acronyms: [docs/GLOSSARY.md](docs/GLOSSARY.md). Crate rename: [RENAME.md](RENAME.md).
 
-**life-os vs this repo:** `~/life-os` is the clustered Projects/Areas **vault**. **ensembly** is the **digital clone kernel** — local gates and memory you own. See [LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md).
+**life-os vs this repo:** The **life-os vault** (`$LIFEOS`) is the clustered Projects/Areas portfolio. **ensembly** is the **digital clone kernel** — local gates and memory you own. See [LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md).
 
 **Parked prototype:** Game of Peram browser client, Node `swarm.js` stack, WASM world sim → [`prototype/`](prototype/README.md) (not SoT).
 

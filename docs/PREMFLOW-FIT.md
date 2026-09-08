@@ -17,9 +17,9 @@ You already run **three surfaces** by habit:
 
 | System | What you feel it is |
 |--------|---------------------|
-| **life-os** (`~/life-os`) | Portfolio wiki — projects started, clustered, energy, Archives |
+| **life-os** (`$LIFEOS`) | Portfolio wiki — projects started, clustered, energy, Archives |
 | **ensembly** (this repo) | Day clone — next body, next auth, day plan, dashboard, game |
-| **premflow** (code `~/Work/personal/premflow`, data `~/.premflow/`, **portfolio card** `~/life-os/Projects/premflow/`) | Terminal micro-capture — note, task dump, pomo, review |
+| **premflow** (code `$WORK_PERSONAL/premflow` or [premflow repo](https://github.com/thecuriousts/premflow), data `~/.premflow/`, **portfolio card** `$LIFEOS/Projects/premflow/`) | Terminal micro-capture — note, task dump, pomo, review |
 
 Without an explicit SoT, the same intention gets written three times (premflow todo + ensembly physical + life-os `next_action`). That is the thrash ensembly was built to remove.
 
@@ -49,7 +49,7 @@ Without an explicit SoT, the same intention gets written three times (premflow t
 
 | Concern | **Primary SoT (bytes / invent)** | Views (same data or none) | Do **not** invent here |
 |---------|----------------------------------|---------------------------|-------------------------|
-| **Notes / tasks / journal / pomo log** (micro-capture) | **`~/.premflow/`** files (premflow format) | `premflow …` · `node bin/swarm.js flow …` · `~/life-os/Projects/premflow/capture/` (symlink) | A second `todo.txt` under ensembly or a vault-only task list |
+| **Notes / tasks / journal / pomo log** (micro-capture) | **`~/.premflow/`** files (premflow format) | `premflow …` · `node bin/swarm.js flow …` · `$LIFEOS/Projects/premflow/capture/` (symlink) | A second `todo.txt` under ensembly or a vault-only task list |
 | **Portfolio / project memory** (Eisenhower card, energy, Archive) | **life-os** vault card frontmatter + sessions | — | Putting portfolio status only in premflow todos |
 | **Day next-act + HITL** | **ensembly** kernel + wait snapshot | turn / dashboard / game | premflow as day planner |
 | **Clone internal schedule** | **ensembly** `private/clone/` | — | premflow as clone mind |
@@ -61,7 +61,7 @@ Without an explicit SoT, the same intention gets written three times (premflow t
 |------|------|
 | `~/.premflow/` | **Byte SoT** — premflow C binary already uses this (`DATA_DIR`) |
 | `node bin/swarm.js flow …` | **Wrapper** — same invent/list/review; one mental entry from ensembly |
-| `~/life-os/Projects/premflow/capture` → `~/.premflow` | **Vault view** — same tree in Obsidian; not a copy |
+| `$LIFEOS/Projects/premflow/capture` → `~/.premflow` | **Vault view** — same tree in Obsidian; not a copy |
 | `npm run flow:link` / `node bin/swarm.js flow link` | Create/repair the life-os symlink |
 
 **Rule of invention:**
@@ -107,8 +107,8 @@ Without an explicit SoT, the same intention gets written three times (premflow t
 
 **Data home (one):** `~/.premflow/` (`todo.txt`, `log.txt`, `journal/`, `config.txt`).
 
-**life-os portfolio card:** `~/life-os/Projects/premflow/README.md` + `sessions/` for the *product*.  
-**life-os capture view:** `~/life-os/Projects/premflow/capture` → symlink to `~/.premflow` (same inodes).
+**life-os portfolio card:** `$LIFEOS/Projects/premflow/README.md` + `sessions/` for the *product*.  
+**life-os capture view:** `$LIFEOS/Projects/premflow/capture` → symlink to `~/.premflow` (same inodes).
 
 | What the card is | What the card is **not** |
 |------------------|---------------------------|
@@ -145,9 +145,9 @@ Designed for **laptop + TUI day** (Grok Build, Cursor, shell). Keep it under fiv
 ### Morning (or cold start)
 
 ```bash
-cd ~/Work/personal/ensembly
+cd "$WORK_PERSONAL/ensembly"   # or clone: https://github.com/thecuriousts/ensembly
 # 0) once per machine: vault sees same capture tree
-npm run flow:link           # → ~/life-os/Projects/premflow/capture -> ~/.premflow
+npm run flow:link           # → $LIFEOS/Projects/premflow/capture -> ~/.premflow
 
 # 1) Day truth — invent next body + next auth here
 npm run swarm:turn
@@ -255,8 +255,8 @@ Ship: `src/premflow/redact.js` (`classifyCaptureLine`, `redactCaptureLine`, `pro
 | Path | Git / push |
 |------|------------|
 | `~/.premflow/` | **Local only** — never commit into ensembly |
-| `~/life-os/Projects/premflow/capture` | **gitignore** in life-os; symlink pointer only if ever tracked by mistake |
-| `~/life-os` other private notes | Vault rules |
+| `$LIFEOS/Projects/premflow/capture` | **gitignore** in life-os; symlink pointer only if ever tracked by mistake |
+| `$LIFEOS` other private notes | Vault rules |
 | ensembly `private/`, `data/local/` | gitignored; default-deny |
 
 ---
@@ -283,7 +283,7 @@ Ship: `src/premflow/redact.js` (`classifyCaptureLine`, `redactCaptureLine`, `pro
 | Map | [MAP.md](MAP.md) |
 | Decisions | [DECISIONS.md](DECISIONS.md) |
 | Privacy | [PRIVACY.md](PRIVACY.md) |
-| **life-os card** | `~/life-os/Projects/premflow/README.md` · `sessions/` |
-| **life-os capture** | `~/life-os/Projects/premflow/capture` → `~/.premflow` |
-| **premflow code + README cross-ref** | `~/Work/personal/premflow/README.md` |
+| **life-os card** | `$LIFEOS/Projects/premflow/README.md` · `sessions/` |
+| **life-os capture** | `$LIFEOS/Projects/premflow/capture` → `~/.premflow` |
+| **premflow code + README cross-ref** | `$WORK_PERSONAL/premflow/README.md` · [github.com/thecuriousts/premflow](https://github.com/thecuriousts/premflow) |
 | **Wrapper** | `src/premflow/*` · `node bin/swarm.js flow` |

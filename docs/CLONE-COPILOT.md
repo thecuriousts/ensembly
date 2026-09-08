@@ -3,7 +3,7 @@
 **Status:** Product law · phase 1 (supervised)  
 **Date:** 2026-07-13  
 **Audience:** Digital clone agents (ensembly sessions, Grok/Cursor on portfolio repos), operator  
-**Related:** [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · [PRIVACY.md](PRIVACY.md) · `~/life-os/AGENTS.md`
+**Related:** [LIFE-OS-BOUNDARY.md](LIFE-OS-BOUNDARY.md) · [PRIVACY.md](PRIVACY.md) · `$LIFEOS/AGENTS.md`
 
 ---
 
@@ -21,7 +21,7 @@ The digital clone is **free to work on life-os portfolio projects as a copilot**
 
 ## Phase 1 — supervised (now)
 
-1. **Scope free:** Any project listed under `~/life-os/Projects/*/README.md` whose code path is known (and not Archived) is in-bounds for *proposal + implementation*, subject to that repo’s AGENTS.md.
+1. **Scope free:** Any project listed under `$LIFEOS/Projects/*/README.md` whose code path is known (and not Archived) is in-bounds for *proposal + implementation*, subject to that repo’s AGENTS.md.
 2. **Internal first:** Clone keeps **ideas** and **its own schedule** in local-only storage (see Internal ledger). Not every thought is a vault note or PR.
 3. **Propose then PR:**
    - Write a short **proposal** (goal, why, repos, risk, test plan) the human can skim.
@@ -59,7 +59,7 @@ Create these on first use. They are the clone’s **internal** mind — not port
 ```markdown
 ## Proposal: <title>
 - **Why (friction / growth):** …
-- **Repos:** list of paths under ~/Work/personal/… or ~/.config/…
+- **Repos:** list of paths under `$WORK_PERSONAL/…` or `~/.config/…` (or GitHub URLs)
 - **Out of scope:** …
 - **Risk:** privacy / break dogfood / energy cost
 - **Test / dogfood:** …
