@@ -7,7 +7,7 @@ Scope: **topology + trust boundary**. No crate merge. Mesh does not become a sec
 
 ## One sentence
 
-**Bot → ensembly (authorize on this node) → mesh CommandFabric (allowlisted mutate) → another participant node gets the act done.**
+**Bot/harness proposes → ensembly authorizes/claims on this node → mesh CommandFabric dispatches → another participant executes.**
 
 Ensembly owns *whether* and *why*. Mesh owns *which verb may run where* on the private network.
 
@@ -37,7 +37,7 @@ Ensembly owns *whether* and *why*. Mesh owns *which verb may run where* on the p
 └─────────────────────────────┘
 ```
 
-Cross-participant work is **normal**: the Bot need not be on the machine that executes. Ensembly on the canonical (or claiming) host still records the gate outcome; mesh carries the allowlisted RPC to the peer.
+Cross-participant work is **normal**: the Bot need not be on the machine that executes. Ensembly on the canonical (or claiming) host still records authorize/claim/complete; mesh dispatches the allowlisted RPC to the peer.
 
 ## Layer map
 
@@ -57,7 +57,7 @@ Cross-participant work is **normal**: the Bot need not be on the machine that ex
 ## Refuse
 
 - Folding mesh OTP into `ensembly-kernel`
-- Mesh authorizing life gates (or ensembly bypassing CommandFabric for shell)
+- Mesh deciding life authorize/deny (or ensembly bypassing CommandFabric for shell)
 - Treating Syncthing / Sunshine / VNC as ensembly product surface
 - “Harmony across participants” as an excuse for a second chat OS
 
@@ -71,4 +71,4 @@ Cross-participant work is **normal**: the Bot need not be on the machine that ex
 
 ## Public voice (participatory-mess)
 
-State product truth: allowlisted cross-node acts under an operator gate. Do not publish Steward coach notes or life-slot chat meta on the GitHub dump.
+State product truth: bots/harnesses propose; ensembly authorizes/claims; mesh dispatches allowlisted peer acts. Do not publish Steward coach notes or life-slot chat meta on the GitHub dump.
