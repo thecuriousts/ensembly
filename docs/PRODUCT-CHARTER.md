@@ -2,7 +2,7 @@
 
 **Status:** Binding product intent  
 **Audience:** Operator, implementers, coding agents  
-**Last updated:** 2026-09-05 (ensembly-* crate rename)
+**Last updated:** 2026-09-08 (mesh bridge)
 
 ---
 
@@ -26,6 +26,7 @@ Mass-market agent services optimize **capture at scale**. They cannot be the dur
 |-------|------|
 | **Grok Bot / Build / Cursor** | Capture, codegen, chat — their surface |
 | **ensembly** | White hole — gates, memory CRDT, pulse-pack, `ensembly-mcp` read wire |
+| **mesh** (participatory-mess) | Private-network **CommandFabric** — allowlisted mutates on peer nodes; not life SoT. Bridge: [thinking/mesh-bridge-2026-09-08.md](thinking/mesh-bridge-2026-09-08.md) |
 | **prototype/** | Parked game/watch — not maintained as product |
 
 **Thesis:** Agent platforms sell inference. ensembly sells the **operator layer underneath**: one pending ledger, HITL honesty, privacy default-deny, pulse sync without dual writers.

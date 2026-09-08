@@ -84,9 +84,8 @@ cargo run -p ensembly-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.
 | `crates/ensembly-kernel/` | Control SoT: S, G, CP, MsgBus, runtime, store, privacy, backup, pulse-pack |
 | `crates/ensembly-memory/` | Episodic CRDT, coherence engine |
 | `crates/ensembly-agents/` | MCP satellite, inference provider trait |
-| `fixtures/` | Committed runtime/turn fixtures |
-| `data/local/` | Operator DB + memory (gitignored) |
-| `prototype/` | **Parked** — game, Node CLI, WASM — not product |
+| **external: mesh** | Allowlisted machine mutates across private-network peers (CommandFabric). Bot→ensembly authorize→mesh execute on another participant. Not life SoT — [thinking/mesh-bridge-2026-09-08.md](thinking/mesh-bridge-2026-09-08.md) |
+
 
 ---
 
