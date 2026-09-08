@@ -2,13 +2,13 @@
 
 **Status:** Binding product intent  
 **Audience:** Operator, implementers, coding agents  
-**Last updated:** 2026-09-08 (mesh bridge)
+**Last updated:** 2026-09-08 (proactive wording + participatory-mesh value)
 
 ---
 
 ## Mission
 
-Provide a **durable operator kernel** under external harnesses (Grok Bot, Grok Build, Cursor): **done / pending / denied** as data you own — gates, episodic memory, pulse sync — so capture tools do not re-litigate the same HITL state every session.
+Provide a **durable operator kernel** under external harnesses (Grok Bot, Grok Build, Cursor): **done / pending / denied** as data you own — authorize/claim/complete, episodic memory, pulse sync — so capture tools do not re-litigate the same HITL state every session.
 
 Remove **digital friction** so scarce human energy goes to **physical presence** and **judgment (approvals)**. This is **serious life infrastructure**. Not a joke. Not a hobby demo.
 
@@ -20,16 +20,16 @@ Remove **digital friction** so scarce human energy goes to **physical presence**
 
 ## Market position
 
-Mass-market agent services optimize **capture at scale**. They cannot be the durable ledger for one operator's pending gates, learned workflows, and episodic traces.
+Mass-market agent services optimize **capture at scale**. They cannot be the durable ledger for one operator's pending authorize/claim state, learned workflows, and episodic traces.
 
 | Layer | Role |
 |-------|------|
-| **Grok Bot / Build / Cursor** | Capture, codegen, chat — their surface |
-| **ensembly** | White hole — gates, memory CRDT, pulse-pack, `ensembly-mcp` read wire |
-| **mesh** (participatory-mesh) | Private-network **CommandFabric** — allowlisted mutates on peer nodes; not life SoT. Bridge: [thinking/mesh-bridge-2026-09-08.md](thinking/mesh-bridge-2026-09-08.md) |
+| **Grok Bot / Build / Cursor** | Capture, codegen, chat — they propose |
+| **ensembly** | White hole — authorize/claim/complete, memory CRDT, pulse-pack, `ensembly-mcp` read wire |
+| **[participatory-mesh](https://github.com/thecuriousts/participatory-mesh)** | Multi-device **CommandFabric** — allowlisted task dispatch across participants; raises ensembly's reach without owning life SoT. Bridge: [thinking/mesh-bridge-2026-09-08.md](thinking/mesh-bridge-2026-09-08.md) |
 | **prototype/** | Parked game/watch — not maintained as product |
 
-**Thesis:** Agent platforms sell inference. ensembly sells the **operator layer underneath**: one pending ledger, HITL honesty, privacy default-deny, pulse sync without dual writers.
+**Thesis:** Agent platforms sell inference. ensembly sells the **operator layer underneath**: one pending ledger, HITL honesty, privacy default-deny, pulse sync without dual writers. **participatory-mesh** sells the complementary hand: the same approved work can execute on another device in the private mesh — shared capacity under allowlist governance, not a second chat OS.
 
 Cut record: [MUSK-CUT-2026-09-04.md](MUSK-CUT-2026-09-04.md).
 
@@ -39,7 +39,7 @@ Cut record: [MUSK-CUT-2026-09-04.md](MUSK-CUT-2026-09-04.md).
 
 | Horizon | Signal |
 |---------|--------|
-| **Today** | `cargo run -p ensembly-kernel -- runtime status` shows honest regime and pending gates |
+| **Today** | `cargo run -p ensembly-kernel -- runtime status` shows honest regime and pending authorize/claim state |
 | **This week** | Grok session ends with pulse export; laptop import merges memory without ops conflict |
 | **This quarter** | Harness + kernel loop replaces re-explaining pending auth in chat |
 | **This year** | Kernel pure and private; hosts swap; human judgment remains scarce |
@@ -53,7 +53,7 @@ If a feature cannot connect to a row above, defer it.
 ### 1. Impact (life)
 
 - **Physical first** — Kernel surfaces physical beacons; agents do not cosplay errands.
-- **Authorization honest** — Auth gates are durable, resumable state in T1 SQLite.
+- **Authorization honest** — Pending approvals (`AuthGate`) are durable, resumable state in T1 SQLite.
 - **Privacy default-deny** — Useful locally; shareable only when classified public.
 
 ### 2. Complementary (harness fit)
@@ -61,6 +61,7 @@ If a feature cannot connect to a row above, defer it.
 - **Kernel under capture** — Grok proposes; kernel records outcomes.
 - **Read-only MCP** — Agents query memory; they do not own ops DB.
 - **Pulse not dual-write** — Portable memory sync; canonical host holds ops.
+- **Multi-device dispatch** — Optional [participatory-mesh](https://github.com/thecuriousts/participatory-mesh): after ensembly claims, CommandFabric can run an allowlisted act on a peer. Value is reach; truth stays here.
 
 ### 3. Growth (ascent)
 
@@ -73,7 +74,7 @@ If a feature cannot connect to a row above, defer it.
 |----------|----------|
 | Dogfood | `cargo test -p ensembly-kernel` on every change |
 | Durability | T1 SQLite + sealed backup paths tested |
-| Loud failure | CLI status lines; no silent gate drift |
+| Loud failure | CLI status lines; no silent pending-state drift |
 | Single writer | One canonical host for the ops sqlite (`ensembly-ops.sqlite`; legacy `peram-ops.sqlite` discovered) |
 
 ---
@@ -99,4 +100,4 @@ See `prototype/` for preserved experiments.
 | [PRIVACY.md](PRIVACY.md) | Push boundary |
 | [DECISIONS.md](DECISIONS.md) | Architecture log |
 
-**Footer:** Complement the harness. Own the gates.
+**Footer:** Complement the harness. Own authorize/claim/complete. Dispatch peers via participatory-mesh.

@@ -48,6 +48,14 @@ Cross-participant work is **normal**: the Bot need not be on the machine that ex
 | Capture / ADE / coding workers | Grok Bot, Orca, OpenCode, … |
 | Portfolio vault | `~/life-os` |
 
+
+## Why this raises ensembly value (honest)
+
+Without mesh, ensembly's approve/claim truth still stops at **this host's** hands. With [participatory-mesh](https://github.com/thecuriousts/participatory-mesh), the same ledger can **dispatch** an allowlisted act onto another participant — health checks, service restarts, other CommandFabric verbs — while ensembly keeps **whether** and **why**.
+
+What we claim: multi-device reach under allowlist governance; Bot need not sit on the executing machine.  
+What we do **not** claim: mesh as intelligence layer, life SoT, or unattended shell across the LAN.
+
 ## Keep
 
 - Mesh as a **DelegationBackend-shaped hand**: ensembly claims → fabric executes only allowlisted commands on a target peer.
