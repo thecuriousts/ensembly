@@ -1,22 +1,40 @@
-# ensembly — operator kernel
+# ensembly
 
-**ensembly** is a **thin, complementary operator kernel**: durable HITL/HOOTL authorize/claim/complete, a T1 SQLite ledger, episodic memory, and pulse-pack sync — designed to sit **under** Grok Bot, Grok Build, Cursor, and other capture harnesses. Not a second chat OS.
+Thin operator kernel under capture harnesses — not a second chat OS.
 
-Product law: [PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) · [AGENTS.md](AGENTS.md) · cut record: [MUSK-CUT-2026-09-04.md](docs/MUSK-CUT-2026-09-04.md)
+Bots and harnesses **propose**. ensembly **authorizes, claims, and completes**. Pulse-pack syncs memory. One SQLite writer owns the ledger.
 
-**New here?** [docs/MAP.md](docs/MAP.md) — live crates, CLI surfaces, pulse sync. Acronyms: [docs/GLOSSARY.md](docs/GLOSSARY.md). Crate rename: [RENAME.md](RENAME.md).
+| | |
+|--|--|
+| **Law** | [PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) · [AGENTS.md](AGENTS.md) |
+| **Map** | [docs/MAP.md](docs/MAP.md) · [GLOSSARY.md](docs/GLOSSARY.md) |
+| **Cut** | [Musk algorithm](docs/MUSK-CUT-2026-09-04.md) — question, delete, simplify, accelerate, automate |
 
-**life-os vs this repo:** The **life-os vault** (`$LIFEOS`) is the clustered Projects/Areas portfolio. **ensembly** is the **digital clone kernel** — local authorize/claim state and memory you own. See [LIFE-OS-BOUNDARY.md](docs/LIFE-OS-BOUNDARY.md).
+---
 
-**Multi-device hand:** Pair with [participatory-mesh](https://github.com/thecuriousts/participatory-mesh) when an allowlisted machine act should run on **another participant**. Bots/harnesses propose here; ensembly authorizes and claims; CommandFabric dispatches across the private mesh. Honest scope: mesh does not own the life ledger — it multiplies where ensembly-approved work can execute. Bridge: [docs/thinking/mesh-bridge-2026-09-08.md](docs/thinking/mesh-bridge-2026-09-08.md).
+## What it owns
 
-**Parked prototype:** Game of Peram browser client, Node `swarm.js` stack, WASM world sim → [`prototype/`](prototype/README.md) (not SoT).
+- **Authorize / claim / complete** — durable HITL/HOOTL state you own
+- **T1 SQLite ledger** — one writer; no dual ops DB
+- **Episodic memory** — CRDT aux; never decides
+- **Pulse-pack** — portable memory sync between hosts
+
+## What sits beside it
+
+| Piece | Role |
+|-------|------|
+| **Grok Bot / Build / Cursor / …** | Capture — propose work |
+| **[participatory-mesh](https://github.com/thecuriousts/participatory-mesh)** | Multi-device hand — after claim, CommandFabric **dispatches** an allowlisted act onto another participant |
+| **life-os vault** (`$LIFEOS`) | Portfolio cards — not this repo ([boundary](docs/LIFE-OS-BOUNDARY.md)) |
+| **`prototype/`** | Parked game / watch / Node — not SoT |
+
+Honest mesh scope: multiplies *where* approved work can run. Does **not** own the life ledger. Bridge: [mesh-bridge](docs/thinking/mesh-bridge-2026-09-08.md).
 
 ---
 
 ## Drop in
 
-**Prereq:** Rust toolchain (`cargo`) only.
+Prereq: Rust (`cargo`) only.
 
 ```bash
 cargo test -p ensembly-kernel
@@ -24,42 +42,35 @@ cargo test -p ensembly-memory
 cargo build -p ensembly-agents --bin ensembly-mcp
 ```
 
-### Runtime dogfood (Issue #1 SoT)
+### Runtime
 
 ```bash
 cargo run -p ensembly-kernel -- runtime load --fixture fixtures/issue-1-runtime.json
 cargo run -p ensembly-kernel -- runtime status
-
-# One HOOTL step per tick (claim *or* complete)
-cargo run -p ensembly-kernel -- runtime tick
-cargo run -p ensembly-kernel -- runtime tick
-cargo run -p ensembly-kernel -- runtime tick
-cargo run -p ensembly-kernel -- runtime tick
-
-# HITL: action id (pay-rent), not auth- prefix
+cargo run -p ensembly-kernel -- runtime tick          # one HOOTL step
 cargo run -p ensembly-kernel -- runtime approve pay-rent
 cargo run -p ensembly-kernel -- runtime claim grocery-errand
 cargo run -p ensembly-kernel -- runtime complete grocery-errand
 cargo run -p ensembly-kernel -- runtime reflect
 ```
 
-Fresh default DB: `data/local/ensembly-ops.sqlite` (gitignored). Episodic memory: `data/local/ensembly-memory.json`. Existing `peram-ops.sqlite` / `peram-memory.json` are opened in place — no silent migrate. Law: [DECISIONS.md](docs/DECISIONS.md) · [RENAME.md](RENAME.md).
+DB: `data/local/ensembly-ops.sqlite` · memory: `data/local/ensembly-memory.json`  
+(Legacy `peram-*` opens in place — [RENAME.md](RENAME.md) · [DECISIONS.md](docs/DECISIONS.md))
 
-### Pulse pack (bot ↔ laptop, memory only)
+### Pulse pack (memory only)
 
 ```bash
 cargo run -p ensembly-kernel -- pulse-pack export --out /tmp/session.pulse.json
-cargo run -p ensembly-kernel -- pulse-pack status --pack /tmp/session.pulse.json
 cargo run -p ensembly-kernel -- pulse-pack import --pack /tmp/session.pulse.json
 ```
 
-Topology: **Grok Bot = canonical kernel host** (single writer on ops DB). Laptop imports pulse packs — no dual-write. Recipe: [PLAYBOOK.md](docs/PLAYBOOK.md).
+Canonical host = single ops writer. Laptop imports packs — no dual-write. [PLAYBOOK.md](docs/PLAYBOOK.md)
 
 ### Agent wire (read-only)
 
 ```bash
 cargo build -p ensembly-agents --bin ensembly-mcp
-# Register with Grok: grok mcp add --scope project ensembly -- cargo run -p ensembly-agents --bin ensembly-mcp
+# grok mcp add --scope project ensembly -- cargo run -p ensembly-agents --bin ensembly-mcp
 ```
 
 ---
@@ -67,31 +78,21 @@ cargo build -p ensembly-agents --bin ensembly-mcp
 ## Repo map
 
 ```text
-crates/ensembly-kernel/   control SoT: life-state S · DepGraph G · CP+P · MsgBus · HITL/HOOTL · T1 SQLite · backup · pulse-pack
-crates/ensembly-memory/   episodic CRDT (aux learning; kernel never delegates control)
-crates/ensembly-agents/   ensembly-mcp read-only satellite for Grok/Cursor
-fixtures/              issue-1-runtime.json · state-sample.json · …
-docs/                  charter · MAP · PLAYBOOK · privacy · decisions · mesh bridge
-prototype/             parked game/watch/Node stack (not maintained as product)
-# companion (external): participatory-mesh — CommandFabric across private-network peers
+crates/ensembly-kernel/   authorize/claim · MsgBus · SQLite · pulse-pack
+crates/ensembly-memory/   episodic CRDT (aux)
+crates/ensembly-agents/   ensembly-mcp (read-only)
+docs/                     charter · MAP · PLAYBOOK · mesh bridge
+prototype/                parked — not product
 ```
 
----
-
-## Operator playbook
-
-Full dogfood guide: **[docs/PLAYBOOK.md](docs/PLAYBOOK.md)** — runtime HITL/HOOTL, pulse sync, harness fit. Multi-device dispatch: **[participatory-mesh](https://github.com/thecuriousts/participatory-mesh)** + [mesh bridge](docs/thinking/mesh-bridge-2026-09-08.md).
+External companion: [participatory-mesh](https://github.com/thecuriousts/participatory-mesh)
 
 ---
 
-## Privacy
+## Privacy · license
 
-Never push: `private/`, `data/`, secrets. Rules: [PRIVACY.md](docs/PRIVACY.md).
+Never push `private/`, `data/`, or secrets — [PRIVACY.md](docs/PRIVACY.md).
 
----
-
-## License
-
-MIT ([LICENSE.md](LICENSE.md)). Your private life data is not part of the grant.
+MIT ([LICENSE.md](LICENSE.md)). Private life data is not part of the grant.
 
 **Rule:** automate the digital · surface the physical · wait only for permission · complement the harness.
