@@ -1,7 +1,7 @@
 # Mesh × ensembly bridge (2026-09-08)
 
 Lab: Cursor Origin [`persathyamz0z/mesh`](https://cursor.com/codebase/persathyamz0z/mesh)  
-Public dump: [`thecuriousts/participatory-mess`](https://github.com/thecuriousts/participatory-mess)
+Public dump: [`thecuriousts/participatory-mesh`](https://github.com/thecuriousts/participatory-mesh)
 
 Scope: **topology + trust boundary**. No crate merge. Mesh does not become a second life SoT.
 
@@ -66,9 +66,9 @@ Cross-participant work is **normal**: the Bot need not be on the machine that ex
 | Slice | Done when |
 |-------|-----------|
 | A. This note + glossary/MAP cross-links | Docs PR |
-| B. Mesh public + Origin docs state the same topology | participatory-mess republish |
+| B. Mesh public + Origin docs state the same topology | participatory-mesh republish |
 | C. Optional later: `DelegationBackend` adapter calling `bin/mesh` / HTTP `:47989` | Allowlisted verbs only; HITL still owns claim/complete |
 
-## Public voice (participatory-mess)
+## Public voice (participatory-mesh)
 
 State product truth: bots/harnesses propose; ensembly authorizes/claims; mesh dispatches allowlisted peer acts. Do not publish Steward coach notes or life-slot chat meta on the GitHub dump.

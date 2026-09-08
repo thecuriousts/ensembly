@@ -47,7 +47,7 @@
 | **Grok MCP** | Grok Model Context Protocol | Official: `grok mcp add` / `.grok/config.toml` ([docs](https://docs.x.ai/build/features/mcp-servers)). Tools namespaced `server__tool`. |
 | **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Grok, Cursor, opencode, Eve). Live: read-only `ensembly-mcp` `memory_*` + `swarm_banner`. `kernel_status` deferred. |
 | **ACP** | Agent Client Protocol | Agent-to-agent session protocol (used by `opencode acp`); planned path for delegating HOOTL digital work. |
-| **mesh** | participatory-mess / mesh lab | Private Tailscale OTP cluster with **CommandFabric** allowlist. Cross-participant mutate hand under ensembly — not a second life ledger. |
+| **mesh** | participatory-mesh / mesh lab | Private Tailscale OTP cluster with **CommandFabric** allowlist. Cross-participant mutate hand under ensembly — not a second life ledger. |
 | **JSON-RPC** | JSON Remote Procedure Call | Request/response envelope used by MCP and ACP. |
 | **NDJSON** | Newline-Delimited JSON | One JSON value per line; the stdio framing for our protocol plumbing. |
 | **P2P** | Peer-to-Peer | Direct replica sync between machines; the CRDT merge is ready, transport is undecided (needs a product decision). |
