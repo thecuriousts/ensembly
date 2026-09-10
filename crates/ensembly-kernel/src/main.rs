@@ -21,7 +21,8 @@ use ensembly_kernel::msg_bus::ManualCmd;
 use ensembly_kernel::runtime::Runtime;
 use ensembly_kernel::store::OpsStore;
 use ensembly_kernel::channel_pulse::{
-    project_wait_snapshot, reconcile_channel_pulse, DEFAULT_CHANNEL_PULSE_PATH,
+    project_wait_snapshot, reconcile_channel_pulse, seed_live_channel_actions,
+    DEFAULT_CHANNEL_PULSE_PATH,
 };
 use ensembly_kernel::turn::{
     actions_from_fixture_path, build_channel_ir, context_at, rank_now, Action,
@@ -302,7 +303,7 @@ Examples:
         /// Redacted pulse output path (default data/local/channel-pulse.json)
         #[arg(long)]
         out: Option<PathBuf>,
-        /// JSON fixture for actions when no wait-snapshot is in the ops DB
+        /// CI dogfood only — never the live SoT path (prefer durable ops seed)
         #[arg(long)]
         fixture: Option<PathBuf>,
         /// location_label: home|travel|office
@@ -434,25 +435,12 @@ fn main() -> Result<()> {
             location,
         } => {
             let store = OpsStore::open(&db_path)?;
+            // Live seed from ops life-state / wait-snapshot; --fixture is CI dogfood only.
+            // Fail-closed (CHANNEL_IR_FAIL) when empty — never silent grocery/rent SoT.
             let actions = if let Some(f) = fixture {
                 load_actions_from_fixture(&f)?
             } else {
-                // minimal defaults if no fixture
-                vec![
-                    Action {
-                        id: "healthy-self-energy".into(),
-                        title: "Healthy Self Energy foundation".into(),
-                        area: Some("Health".into()),
-                        kind: Some("health_body".into()),
-                        realm: Some("physical".into()),
-                        urgency: 3,
-                        importance: 4,
-                        tags: vec!["physical".into()],
-                        public: Some(false),
-                        depends_on: None,
-                        deadline_at: None,
-                    },
-                ]
+                seed_live_channel_actions(&store)?
             };
             let snap = ensure_snap(&store, &actions)?;
             let mut plan = rank_now(
@@ -1089,10 +1077,12 @@ fn main() -> Result<()> {
                 verbose,
             } => {
                 let store = OpsStore::open(&db_path)?;
+                // Prefer durable live seed; --fixture only for isolated CI dogfood.
+                // Empty ops → CHANNEL_IR_FAIL (non-zero), never silent grocery projection.
                 let actions = if let Some(f) = fixture {
                     load_actions_from_fixture(&f)?
                 } else {
-                    vec![]
+                    seed_live_channel_actions(&store)?
                 };
                 let pulse_path = out.unwrap_or_else(|| PathBuf::from(DEFAULT_CHANNEL_PULSE_PATH));
                 let report = reconcile_channel_pulse(

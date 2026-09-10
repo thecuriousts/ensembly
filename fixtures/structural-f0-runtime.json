@@ -1,0 +1,54 @@
+{
+  "meta": {
+    "purpose": "F0 structural life-state seed — charter cash G + civic Risk (not grocery/rent demo)",
+    "note": "Box writer SoT for Foundation slice. Never promote issue-1 grocery/pay-rent fixture as life admissions."
+  },
+  "extra_candidates": [
+    {
+      "id": "cash-career-prep",
+      "title": "Cash/career hiring-loop prep (charter slot)",
+      "area": "Career",
+      "kind": "chore",
+      "realm": "digital",
+      "urgency": 4,
+      "importance": 5,
+      "tags": ["digital", "cash", "charter"],
+      "public": true
+    },
+    {
+      "id": "cash-hiring-submit",
+      "title": "Cash/career high-signal submit (HITL)",
+      "area": "Career",
+      "kind": "job_application_submit",
+      "realm": "digital",
+      "urgency": 5,
+      "importance": 5,
+      "tags": ["digital", "cash", "hitl"],
+      "public": true,
+      "depends_on": ["cash-career-prep"]
+    },
+    {
+      "id": "af-civic-risk",
+      "title": "AF synpunkter / Sweden window civic Risk (HITL)",
+      "area": "Systems",
+      "kind": "external_email_send",
+      "realm": "digital",
+      "urgency": 5,
+      "importance": 5,
+      "tags": ["digital", "civic", "risk", "hitl"],
+      "public": false,
+      "depends_on": ["cash-career-prep"]
+    },
+    {
+      "id": "healthy-self-energy",
+      "title": "Healthy Self Energy foundation",
+      "area": "Health",
+      "kind": "health_body",
+      "realm": "physical",
+      "urgency": 3,
+      "importance": 4,
+      "tags": ["physical"],
+      "public": false
+    }
+  ]
+}

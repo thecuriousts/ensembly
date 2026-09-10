@@ -51,6 +51,93 @@ pub fn actions_from_fixture_json(raw: &str) -> Result<Vec<Action>, String> {
     Ok(f.extra_candidates)
 }
 
+/// Rebuild turn Actions from durable DepGraph nodes (live Channel IR seed).
+pub fn actions_from_dep_graph(graph: &crate::graph::DepGraph) -> Vec<Action> {
+    use crate::graph::TaskRealm;
+    let mut ids: Vec<_> = graph.nodes.keys().cloned().collect();
+    ids.sort();
+    ids.into_iter()
+        .filter_map(|id| {
+            let n = graph.nodes.get(&id)?;
+            Some(Action {
+                id: n.id.clone(),
+                title: n.title.clone(),
+                area: n.area.clone(),
+                kind: n.kind.clone(),
+                realm: Some(match n.realm {
+                    TaskRealm::Physical => "physical".into(),
+                    TaskRealm::Digital => "digital".into(),
+                }),
+                urgency: n.urgency,
+                importance: n.importance,
+                tags: match n.realm {
+                    TaskRealm::Physical => vec!["physical".into()],
+                    TaskRealm::Digital => vec!["digital".into()],
+                },
+                public: None,
+                depends_on: if n.depends_on.is_empty() {
+                    None
+                } else {
+                    Some(n.depends_on.clone())
+                },
+                deadline_at: n.deadline_at,
+            })
+        })
+        .collect()
+}
+
+/// Fallback Channel IR seed from wait-snapshot rows (no life_state graph).
+pub fn actions_from_snapshot(snap: &Snapshot) -> Vec<Action> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for p in &snap.physical {
+        if p.status == PhysicalStatus::Completed {
+            continue;
+        }
+        if !seen.insert(p.id.clone()) {
+            continue;
+        }
+        out.push(Action {
+            id: p.id.clone(),
+            title: p.title.clone(),
+            area: p.area.clone(),
+            kind: Some("physical_errand".into()),
+            realm: Some("physical".into()),
+            urgency: 3,
+            importance: 3,
+            tags: vec!["physical".into()],
+            public: Some(false),
+            depends_on: None,
+            deadline_at: None,
+        });
+    }
+
+    for a in list_pending(snap) {
+        let action_id = a
+            .action_id
+            .clone()
+            .unwrap_or_else(|| a.id.strip_prefix("auth-").unwrap_or(&a.id).to_string());
+        if !seen.insert(action_id.clone()) {
+            continue;
+        }
+        out.push(Action {
+            id: action_id,
+            title: a.title.clone(),
+            area: a.area.clone(),
+            kind: Some(a.kind.clone()),
+            realm: a.realm.clone().or_else(|| Some("digital".into())),
+            urgency: 4,
+            importance: 4,
+            tags: vec!["digital".into()],
+            public: None,
+            depends_on: None,
+            deadline_at: None,
+        });
+    }
+    out
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScheduleSlot {
     pub start: String,

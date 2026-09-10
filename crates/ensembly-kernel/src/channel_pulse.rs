@@ -12,8 +12,8 @@ use crate::approvals::{upsert_pending_from_actions, upsert_physical, Snapshot};
 use crate::runtime::Runtime;
 use crate::store::OpsStore;
 use crate::turn::{
-    build_channel_ir, channel_pulse_content_hash, context_at, rank_now, Action, ChannelPulseIr,
-    FocusPlan,
+    actions_from_dep_graph, actions_from_snapshot, build_channel_ir, channel_pulse_content_hash,
+    context_at, rank_now, Action, ChannelPulseIr, FocusPlan,
 };
 
 /// Default gitignored path for the redacted channel pulse artifact.
@@ -70,6 +70,28 @@ pub fn project_wait_snapshot(
         .map(|a| (a.id.clone(), a.title.clone()))
         .collect();
     upsert_physical(&physical, Some(snap), now)
+}
+
+
+/// Live Channel IR seed from ops life-state / wait-snapshot.
+/// Fail-closed when empty — never silently inject grocery/rent fixture candidates.
+pub fn seed_live_channel_actions(store: &OpsStore) -> Result<Vec<Action>> {
+    if let Some(life) = store.load_life_state()? {
+        let actions = actions_from_dep_graph(&life.graph);
+        if !actions.is_empty() {
+            return Ok(actions);
+        }
+    }
+    if let Some(snap) = store.load_snapshot()? {
+        let actions = actions_from_snapshot(&snap);
+        if !actions.is_empty() {
+            return Ok(actions);
+        }
+    }
+    anyhow::bail!(
+        "CHANNEL_IR_FAIL no live seed in ops DB {:?} — empty life_state/graph and wait_snapshot. Refuse silent grocery/rent fixture. Run `runtime load`/`tick` on the canonical host, or pass --fixture only for isolated CI dogfood.",
+        store.path()
+    )
 }
 
 /// Resolve FocusPlan from durable store (mirrors `ensembly turn` without persisting).
@@ -336,4 +358,74 @@ mod tests {
         assert!(!second.wrote);
         assert!(store.load_life_state().unwrap().is_none());
     }
+
+    #[test]
+    fn seed_live_from_life_state_fail_closed_when_empty() {
+        let store = OpsStore::open_in_memory().unwrap();
+        let err = seed_live_channel_actions(&store).unwrap_err().to_string();
+        assert!(
+            err.contains("CHANNEL_IR_FAIL"),
+            "expected fail-closed CHANNEL_IR_FAIL, got {err}"
+        );
+        assert!(
+            err.contains("Refuse silent grocery"),
+            "error must refuse silent grocery fixture, got {err}"
+        );
+    }
+
+    #[test]
+    fn live_seed_fingerprint_differs_from_fixture_empty_projection() {
+        let dir = tempdir().unwrap();
+        let live_db = dir.path().join("live.sqlite");
+        let empty_db = dir.path().join("empty.sqlite");
+        let live = OpsStore::open(&live_db).unwrap();
+        let empty = OpsStore::open(&empty_db).unwrap();
+        let fixture = crate::turn::actions_from_fixture_path(&issue_1_fixture_path()).unwrap();
+
+        let now = Utc.with_ymd_and_hms(2026, 9, 5, 12, 0, 0).unwrap();
+        let mut rt = Runtime::new(now);
+        // Live graph: drop grocery, add a different physical beacon so ≠ issue-1 fixture.
+        let mut live_actions = fixture
+            .iter()
+            .filter(|a| a.id != "grocery-errand")
+            .cloned()
+            .collect::<Vec<_>>();
+        live_actions.push(Action {
+            id: "evening-outdoor".into(),
+            title: "Evening outdoor".into(),
+            area: Some("Health".into()),
+            kind: Some("outdoor".into()),
+            realm: Some("physical".into()),
+            urgency: 3,
+            importance: 3,
+            tags: vec!["physical".into()],
+            public: Some(false),
+            depends_on: None,
+            deadline_at: None,
+        });
+        rt.load_actions(&live_actions, now).unwrap();
+        live.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
+
+        let seeded = seed_live_channel_actions(&live).unwrap();
+        assert!(
+            seeded.iter().any(|a| a.id == "evening-outdoor"),
+            "live seed must surface ops beacon"
+        );
+        assert!(
+            seeded.iter().all(|a| a.id != "grocery-errand"),
+            "live seed must not re-inject grocery when absent from ops"
+        );
+
+        let (live_plan, live_snap) = resolve_focus_plan(&live, &seeded, Some("home")).unwrap();
+        let live_ir = build_channel_ir(&live_plan, &live_snap, now);
+
+        let (fx_plan, fx_snap) = resolve_focus_plan(&empty, &fixture, Some("home")).unwrap();
+        let fx_ir = build_channel_ir(&fx_plan, &fx_snap, now);
+
+        assert_ne!(
+            live_ir.snapshot_fingerprint, fx_ir.snapshot_fingerprint,
+            "live ops fingerprint must differ from empty-store fixture projection"
+        );
+    }
+
 }
