@@ -62,14 +62,14 @@ pub use store::{
     is_known_ops_bundle_format, OpsBundle, OpsStore, OPS_BUNDLE_FORMAT, OPS_BUNDLE_FORMAT_LEGACY,
 };
 pub use turn::{
-    actions_from_fixture_json, actions_from_fixture_path, build_channel_ir,
-    channel_pulse_content_hash, context_at, rank_now, select_next_auth, select_next_physical,
-    snapshot_channel_fingerprint, Action, ChannelAct, ChannelPulseIr, ContextFrame, FocusItem,
-    FocusPlan, ScheduleSlot, CHANNEL_IR_VERSION,
+    actions_from_dep_graph, actions_from_fixture_json, actions_from_fixture_path,
+    actions_from_snapshot, build_channel_ir, channel_pulse_content_hash, context_at, rank_now,
+    select_next_auth, select_next_physical, snapshot_channel_fingerprint, Action, ChannelAct,
+    ChannelPulseIr, ContextFrame, FocusItem, FocusPlan, ScheduleSlot, CHANNEL_IR_VERSION,
 };
 pub use channel_pulse::{
     project_wait_snapshot, reconcile_channel_pulse, read_channel_pulse, resolve_focus_plan,
-    write_channel_pulse, ReconcileReport, DEFAULT_CHANNEL_PULSE_PATH,
+    seed_live_channel_actions, write_channel_pulse, ReconcileReport, DEFAULT_CHANNEL_PULSE_PATH,
 };
 pub use uncertainty_dive::{plan_dive, DiveReport, DEFAULT_PROBE_BUDGET, DIVE_IR_VERSION};
 pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
