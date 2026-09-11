@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable
+
+      - uses: Swatinem/rust-cache@63fed3e2fecf6f7b51dc6f043341b79ef82a9ae7  # v2.9.2
+
+      - name: Test live crates
+        run: |
+          cargo test --locked -p ensembly-memory
+          cargo test --locked -p ensembly-kernel
+          cargo test --locked -p ensembly-agents
+
+      - name: Build agent wire binary
+        run: cargo build --locked -p ensembly-agents --bin ensembly-mcp
