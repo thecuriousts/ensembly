@@ -54,7 +54,7 @@ Monopoly sentence (unchanged): ensembly owns **coherent state across scatter**, 
 
 | Orca component | Ensembly mapping | Keep? |
 |----------------|------------------|-------|
-| Parallel git worktrees + multi-agent fan-out | Fleet parallel dogfood on mzapan; Steward/OpenCode already | **Keep** as ADE |
+| Parallel git worktrees + multi-agent fan-out | Fleet parallel dogfood on laptop-1; Steward/OpenCode already | **Keep** as ADE |
 | Agent roster (OpenCode, Grok, Cursor, Pi, …) | L3 harness menu — Orca picks runner, kernel does not | **Keep** |
 | Mobile companion / notifications | Operator away-from-desk steer (not a gate) | **Keep** (HITL still clears auth) |
 | `orca` CLI (`worktree`, snapshot, click) | Scripted ADE; may feed evidence into pulse later | **Keep** as client tooling |
@@ -89,7 +89,7 @@ Monopoly sentence (unchanged): ensembly owns **coherent state across scatter**, 
 | Host | Role |
 |------|------|
 | **Grok Bot computer** | Canonical L1 writer (`ensembly-ops.sqlite`); pulse export |
-| **mzapan** | L4 Orca + L3 workers (OpenCode / Grok Build / optional prime-agent); pulse import client; dogfood only |
+| **laptop-1** | L4 Orca + L3 workers (OpenCode / Grok Build / optional prime-agent); pulse import client; dogfood only |
 | **Neither** | Dual-write ops; tunnel leader sockets as SoT |
 
 ## Integrate (local-only slices)
@@ -98,7 +98,7 @@ Monopoly sentence (unchanged): ensembly owns **coherent state across scatter**, 
 |-------|-----------|
 | A. This note committed | Docs PR; Tools/harnesses: OpenCode/local (Steward) |
 | B. Fleet WHERE one-liner: Orca = L4 ADE, not kernel | WHERE / playbook link |
-| C. Optional mzapan smoke: `prime-agent` as *one more* L3 under Orca | Runs; no ensembly crate dep |
+| C. Optional laptop-1 smoke: `prime-agent` as *one more* L3 under Orca | Runs; no ensembly crate dep |
 | D. Prefer promote path: harness refine → life-os note or `runtime reflect` | Human-visible; no silent ops write |
 
 ## Refuse (Odysseus)
