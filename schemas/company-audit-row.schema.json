@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/thecuriousts/ensembly/schemas/company-audit-row.schema.json",
+  "title": "Ensembly company audit row",
+  "description": "One JSONL line. Append-only; last row per canonical domain wins. The verdict is derived from the checks (block if any block; flag if any flag or any of apply_domain/domain_age/funding_ownership is unknown; else pass) and the Rust validator refuses a disagreeing verdict, exactly-once check ids and personal data in notes, which JSON Schema cannot express. Mirrors crates/ensembly-kernel/src/company_audit.rs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["company", "domain", "verdict", "checks", "audited_at", "audited_by"],
+  "properties": {
+    "company": { "type": "string", "pattern": "\\S" },
+    "domain": { "description": "Canonical host: lowercase, no scheme, www., path or trailing dot.", "type": "string", "pattern": "^[a-z0-9-]+(\\.[a-z0-9-]+)+$" },
+    "apply_url": { "type": "string", "pattern": "^https://\\S+$" },
+    "verdict": { "enum": ["pass", "flag", "block"] },
+    "checks": { "type": "array", "minItems": 8, "maxItems": 8, "items": { "$ref": "#/$defs/check" } },
+    "audited_at": { "description": "RFC 3339 with seconds and the Europe/Stockholm offset.", "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\+0[12]:00$" },
+    "audited_by": { "type": "string", "pattern": "\\S" }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "result", "note", "sources"],
+      "properties": {
+        "id": { "enum": ["apply_domain", "domain_age", "funding_ownership", "headcount", "reviews_news", "duplicate_ghost", "payment_id_ask", "agency_repost"] },
+        "result": { "enum": ["pass", "flag", "block", "unknown"] },
+        "note": { "type": "string", "pattern": "\\S" },
+        "sources": { "type": "array", "items": { "type": "string", "pattern": "^https://\\S+$" } }
+      },
+      "if": { "properties": { "result": { "enum": ["pass", "flag", "block"] } } },
+      "then": { "properties": { "sources": { "minItems": 1 } } }
+    }
+  }
+}
