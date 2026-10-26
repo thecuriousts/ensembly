@@ -366,8 +366,12 @@ enum AppsCmd {
         company: String,
         #[arg(long)]
         role: String,
+        /// Canonical posting URL (not the form URL)
         #[arg(long)]
         link: String,
+        /// Optional application-form URL (e.g. …/application)
+        #[arg(long)]
+        apply_url: Option<String>,
         /// prepared|submitted|interview|rejected|withdrawn|silent-closed
         #[arg(long)]
         status: String,
@@ -1281,10 +1285,10 @@ fn main() -> Result<()> {
                         al::current_rows(&rows).len()
                     );
                 }
-                AppsCmd::Append { company, role, link, status, submit_time, cv_version } => {
+                AppsCmd::Append { company, role, link, apply_url, status, submit_time, cv_version } => {
                     let status: al::Status = serde_json::from_value(serde_json::Value::String(status))
                         .map_err(|e| anyhow::anyhow!("status: {e}"))?;
-                    let row = al::Row { company, role, link, status, submit_time, cv_version };
+                    let row = al::Row { company, role, link, apply_url, status, submit_time, cv_version };
                     al::append_row(&ledger, &row)?;
                     println!("appended: {} ({})", row.link, row.status.as_str());
                 }
