@@ -12,6 +12,7 @@ pub mod application_ledger;
 pub mod approvals;
 pub mod backup;
 pub mod channel_pulse;
+pub mod company_audit;
 pub mod pulse_pack;
 pub mod pulse_core;
 pub mod critical_path;

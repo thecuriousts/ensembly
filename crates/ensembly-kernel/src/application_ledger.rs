@@ -53,7 +53,7 @@ impl Status {
 
 /// Europe/Stockholm is +01:00 (CET) or +02:00 (CEST). `Z` and other offsets are refused
 /// so every row reads in the operator's zone without conversion.
-fn check_submit_time(t: &str) -> anyhow::Result<()> {
+pub(crate) fn check_submit_time(t: &str) -> anyhow::Result<()> {
     chrono::DateTime::parse_from_rfc3339(t)
         .map_err(|e| anyhow::anyhow!("submit_time {t:?} is not RFC 3339 with offset: {e}"))?;
     if !(t.ends_with("+01:00") || t.ends_with("+02:00")) {
