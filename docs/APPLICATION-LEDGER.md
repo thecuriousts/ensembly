@@ -17,6 +17,7 @@ Code: `crates/ensembly-kernel/src/application_ledger.rs`.
 | `apply_url` | Optional `https://` application-form URL (for example the posting URL plus `/application`). Omitted from the JSON when absent. |
 | `status` | `prepared`, `submitted`, `interview`, `rejected`, `withdrawn`, `silent-closed`. |
 | `submit_time` | RFC 3339 / ISO 8601 with the Europe/Stockholm offset (`+01:00` or `+02:00`). `null` only for `prepared`, and for `withdrawn` when the application was dropped before sending (operator decision, 26 Oct 2026). Exports show it empty (CSV) or `—` (markdown) and list such rows after timed rows. |
+| `submit_time_unknown` | Optional, only `true`. Says the application was sent but its time was never recorded (legacy records); `submit_time` is then null. Allowed only for `submitted`, `interview`, `rejected`, `silent-closed`, the statuses that otherwise need a time, so no one has to invent one. `prepared` and `withdrawn` already accept a null time. Exports show `unknown`. |
 | `cv_version` | Non-blank label of the CV that was sent. `legacy-unknown` is the one explicit marker for rows migrated from records that never noted the CV (operator decision, 26 Oct 2026); ad-hoc markers such as `unknown`, `n/a`, `tbd` are refused. |
 
 Unknown fields are refused, so personal details (phone, address) cannot ride along.
