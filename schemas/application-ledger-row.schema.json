@@ -5,21 +5,70 @@
   "description": "One JSONL line. Append-only: a later row with the same link supersedes earlier ones. Mirrors crates/ensembly-kernel/src/application_ledger.rs.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["company", "role", "link", "status", "submit_time", "cv_version"],
+  "required": [
+    "company",
+    "role",
+    "link",
+    "status",
+    "submit_time",
+    "cv_version"
+  ],
   "properties": {
-    "company": { "type": "string", "pattern": "\\S" },
-    "role": { "type": "string", "pattern": "\\S" },
-    "link": { "type": "string", "pattern": "^https://.+" },
+    "company": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "role": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "link": {
+      "type": "string",
+      "pattern": "^https://.+",
+      "description": "Canonical posting URL (identity key; a trailing /application is ignored when matching so older rows are superseded). New rows must not end in /application."
+    },
+    "apply_url": {
+      "description": "Optional application-form URL (e.g. .../application).",
+      "type": "string",
+      "pattern": "^https://.+"
+    },
     "status": {
-      "enum": ["prepared", "submitted", "interview", "rejected", "withdrawn", "silent-closed"]
+      "enum": [
+        "prepared",
+        "submitted",
+        "interview",
+        "rejected",
+        "withdrawn",
+        "silent-closed"
+      ]
     },
     "submit_time": {
       "description": "RFC 3339 / ISO 8601 with Europe/Stockholm offset (+01:00 or +02:00). null only when status is prepared.",
-      "type": ["string", "null"],
+      "type": [
+        "string",
+        "null"
+      ],
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?\\+0[12]:00$"
     },
-    "cv_version": { "type": "string", "pattern": "\\S" }
+    "cv_version": {
+      "type": "string",
+      "pattern": "\\S"
+    }
   },
-  "if": { "properties": { "status": { "not": { "const": "prepared" } } } },
-  "then": { "properties": { "submit_time": { "type": "string" } } }
+  "if": {
+    "properties": {
+      "status": {
+        "not": {
+          "const": "prepared"
+        }
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "submit_time": {
+        "type": "string"
+      }
+    }
+  }
 }

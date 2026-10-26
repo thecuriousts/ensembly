@@ -24,6 +24,9 @@ pub struct Row {
     pub company: String,
     pub role: String,
     pub link: String,
+    /// Optional application-form URL (e.g. `…/application`); `link` stays the canonical posting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apply_url: Option<String>,
     pub status: Status,
     pub submit_time: Option<String>,
     pub cv_version: String,
@@ -68,12 +71,25 @@ pub fn validate_row(r: &Row) -> anyhow::Result<()> {
     if !r.link.starts_with("https://") || r.link.len() <= "https://".len() {
         anyhow::bail!("link must be an https URL");
     }
+    if let Some(u) = &r.apply_url {
+        if !u.starts_with("https://") || u.len() <= "https://".len() {
+            anyhow::bail!("apply_url must be an https URL");
+        }
+    }
     match (&r.submit_time, r.status) {
         (None, Status::Prepared) => {}
         (None, s) => anyhow::bail!("submit_time is required when status is {}", s.as_str()),
         (Some(t), _) => check_submit_time(t)?,
     }
     Ok(())
+}
+
+/// Identity key of an application: the posting URL without a trailing `/application`
+/// (ATS form suffix) or `/`. Lets a corrected row with the canonical `link`
+/// supersede an older row that stored the form URL, without editing history.
+pub fn link_key(link: &str) -> &str {
+    let l = link.trim_end_matches('/');
+    l.strip_suffix("/application").unwrap_or(l)
 }
 
 /// Parse JSONL (blank lines ignored). Errors name the 1-based line.
@@ -95,7 +111,7 @@ pub fn parse_ledger(text: &str) -> anyhow::Result<Vec<Row>> {
 pub fn current_rows(rows: &[Row]) -> Vec<Row> {
     let mut latest: std::collections::BTreeMap<&str, &Row> = std::collections::BTreeMap::new();
     for r in rows {
-        latest.insert(r.link.as_str(), r);
+        latest.insert(link_key(&r.link), r);
     }
     let mut v: Vec<Row> = latest.into_values().cloned().collect();
     v.sort_by(|a, b| {
@@ -121,12 +137,13 @@ fn csv_field(s: &str) -> String {
 }
 
 pub fn export_csv(rows: &[Row]) -> String {
-    let mut s = String::from("company,role,link,status,submit_time,cv_version\n");
+    let mut s = String::from("company,role,link,apply_url,status,submit_time,cv_version\n");
     for r in current_rows(rows) {
         let f = [
             r.company.as_str(),
             r.role.as_str(),
             r.link.as_str(),
+            r.apply_url.as_deref().unwrap_or(""),
             r.status.as_str(),
             r.submit_time.as_deref().unwrap_or(""),
             r.cv_version.as_str(),
@@ -143,17 +160,18 @@ fn md_cell(s: &str) -> String {
 
 pub fn export_markdown(rows: &[Row]) -> String {
     let mut s = String::from(
-        "| Company | Role | Status | Submitted | CV version | Link |\n|---|---|---|---|---|---|\n",
+        "| Company | Role | Status | Submitted | CV version | Link | Apply |\n|---|---|---|---|---|---|---|\n",
     );
     for r in current_rows(rows) {
         s.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} |\n",
             md_cell(&r.company),
             md_cell(&r.role),
             r.status.as_str(),
             md_cell(r.submit_time.as_deref().unwrap_or("—")),
             md_cell(&r.cv_version),
             md_cell(&r.link),
+            md_cell(r.apply_url.as_deref().unwrap_or("—")),
         ));
     }
     s
@@ -164,6 +182,9 @@ pub fn export_markdown(rows: &[Row]) -> String {
 pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
     use std::io::Write;
     validate_row(r)?;
+    if link_key(&r.link) != r.link.trim_end_matches('/') {
+        anyhow::bail!("link must be the canonical posting URL; put the form URL in apply_url");
+    }
     let existing = match std::fs::read_to_string(path) {
         Ok(t) => parse_ledger(&t)?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
@@ -300,10 +321,71 @@ mod tests {
     }
 
     #[test]
+    fn apply_url_is_optional_and_must_be_https() {
+        let with = r#"{"company":"A","role":"R","link":"https://x.test/j/1","apply_url":"https://x.test/j/1/application","status":"prepared","submit_time":null,"cv_version":"v"}"#;
+        let rows = parse_ledger(with).unwrap();
+        assert_eq!(
+            rows[0].apply_url.as_deref(),
+            Some("https://x.test/j/1/application")
+        );
+        let bad = with.replace("\"apply_url\":\"https://", "\"apply_url\":\"http://");
+        assert!(parse_ledger(&bad).is_err());
+        // absent apply_url is not serialised, so pre-apply_url rows round-trip byte-for-byte
+        let line = row("https://example.test/j/1", "prepared", None);
+        let r = &parse_ledger(&line).unwrap()[0];
+        assert_eq!(serde_json::to_string(r).unwrap(), line);
+    }
+
+    #[test]
+    fn application_suffix_row_is_superseded_by_canonical_link_row() {
+        let text = format!(
+            "{}\n{}\n",
+            row(
+                "https://jobs.example.test/acme/1/application",
+                "submitted",
+                Some("2026-10-26T18:59:00+01:00")
+            ),
+            r#"{"company":"Acme Fictional","role":"Engineer, Widgets","link":"https://jobs.example.test/acme/1","apply_url":"https://jobs.example.test/acme/1/application","status":"submitted","submit_time":"2026-10-26T18:59:00+01:00","cv_version":"cv-sample-1"}"#
+        );
+        let cur = current_rows(&parse_ledger(&text).unwrap());
+        assert_eq!(cur.len(), 1, "{cur:?}");
+        assert_eq!(cur[0].link, "https://jobs.example.test/acme/1");
+        assert!(cur[0].apply_url.is_some());
+    }
+
+    #[test]
+    fn append_refuses_application_suffix_in_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let r: Row = serde_json::from_str(&row(
+            "https://example.test/j/9/application",
+            "submitted",
+            Some("2026-10-26T20:08:00+01:00"),
+        ))
+        .unwrap();
+        let err = append_row(&dir.path().join("l.jsonl"), &r).unwrap_err();
+        assert!(err.to_string().contains("apply_url"), "{err}");
+    }
+
+    #[test]
+    fn exports_carry_apply_url_column() {
+        let rows = parse_ledger(SAMPLE).unwrap();
+        let csv = export_csv(&rows);
+        assert!(
+            csv.starts_with("company,role,link,apply_url,status,submit_time,cv_version\n"),
+            "{csv}"
+        );
+        assert!(csv.contains("https://jobs.example.test/northwind/1001/apply"));
+        let md = export_markdown(&rows);
+        assert!(
+            md.contains("| Company | Role | Status | Submitted | CV version | Link | Apply |"),
+            "{md}"
+        );
+    }
+
+    #[test]
     fn csv_export_has_header_and_rows_and_escapes() {
         let rows = parse_ledger(SAMPLE).unwrap();
         let csv = export_csv(&rows);
-        assert!(csv.starts_with("company,role,link,status,submit_time,cv_version\n"));
         assert!(csv.contains("\"Engineer, Widgets\""), "{csv}");
         assert!(csv.lines().count() > 1, "header-only export must fail");
     }
@@ -311,7 +393,6 @@ mod tests {
     #[test]
     fn markdown_export_has_table_rows_and_escapes_pipes() {
         let md = export_markdown(&parse_ledger(SAMPLE).unwrap());
-        assert!(md.contains("| Company | Role | Status | Submitted | CV version | Link |"));
         assert!(md.contains("Platform \\| Infra"), "{md}");
         assert!(md.lines().filter(|l| l.starts_with("| ")).count() >= 4);
     }
