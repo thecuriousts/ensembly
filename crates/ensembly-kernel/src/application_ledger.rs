@@ -31,6 +31,10 @@ pub struct Row {
     pub apply_url: Option<String>,
     pub status: Status,
     pub submit_time: Option<String>,
+    /// `true` when the application was sent but the time was never recorded
+    /// (then `submit_time` is null). Absent otherwise; never `false`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submit_time_unknown: Option<bool>,
     pub cv_version: String,
 }
 
@@ -82,10 +86,24 @@ pub fn validate_row(r: &Row) -> anyhow::Result<()> {
             anyhow::bail!("apply_url must be an https URL");
         }
     }
-    match (&r.submit_time, r.status) {
-        (None, Status::Prepared | Status::Withdrawn) => {}
-        (None, s) => anyhow::bail!("submit_time is required when status is {}", s.as_str()),
-        (Some(t), _) => check_submit_time(t)?,
+    match (&r.submit_time, r.submit_time_unknown, r.status) {
+        (_, Some(false), _) => {
+            anyhow::bail!("submit_time_unknown is either true or absent")
+        }
+        (Some(_), Some(true), _) => {
+            anyhow::bail!("submit_time_unknown: true needs submit_time null")
+        }
+        (None, Some(true), Status::Prepared | Status::Withdrawn) => anyhow::bail!(
+            "submit_time_unknown is only for sent statuses; {} already allows a null submit_time",
+            r.status.as_str()
+        ),
+        (None, Some(true), _) => {}
+        (None, None, Status::Prepared | Status::Withdrawn) => {}
+        (None, None, s) => anyhow::bail!(
+            "submit_time is required when status is {} (if it was never recorded, set submit_time_unknown: true)",
+            s.as_str()
+        ),
+        (Some(t), None, _) => check_submit_time(t)?,
     }
     Ok(())
 }
@@ -134,6 +152,15 @@ pub fn current_rows(rows: &[Row]) -> Vec<Row> {
     v
 }
 
+/// Export text for the submit time: the time, "unknown" when flagged, else `none`.
+fn time_cell<'a>(r: &'a Row, none: &'a str) -> &'a str {
+    match (&r.submit_time, r.submit_time_unknown) {
+        (Some(t), _) => t,
+        (None, Some(true)) => "unknown",
+        _ => none,
+    }
+}
+
 fn csv_field(s: &str) -> String {
     if s.contains([',', '"', '\n', '\r']) {
         format!("\"{}\"", s.replace('"', "\"\""))
@@ -151,7 +178,7 @@ pub fn export_csv(rows: &[Row]) -> String {
             r.link.as_str(),
             r.apply_url.as_deref().unwrap_or(""),
             r.status.as_str(),
-            r.submit_time.as_deref().unwrap_or(""),
+            time_cell(&r, ""),
             r.cv_version.as_str(),
         ];
         s.push_str(&f.iter().map(|x| csv_field(x)).collect::<Vec<_>>().join(","));
@@ -174,7 +201,7 @@ pub fn export_markdown(rows: &[Row]) -> String {
             md_cell(&r.company),
             md_cell(&r.role),
             r.status.as_str(),
-            md_cell(r.submit_time.as_deref().unwrap_or("—")),
+            md_cell(time_cell(&r, "—")),
             md_cell(&r.cv_version),
             md_cell(&r.link),
             md_cell(r.apply_url.as_deref().unwrap_or("—")),
@@ -442,6 +469,65 @@ mod tests {
             "{csv}"
         );
         assert_eq!(current_rows(&rows)[1].link, "https://example.test/j/w");
+    }
+
+    fn unknown_time_row(status: &str, time: &str, flag: &str) -> String {
+        format!(
+            r#"{{"company":"Acme Fictional","role":"Engineer, Widgets","link":"https://example.test/j/u","status":"{status}","submit_time":{time},"submit_time_unknown":{flag},"cv_version":"legacy-unknown"}}"#
+        )
+    }
+
+    #[test]
+    fn sent_status_with_unknown_time_is_representable_and_exported_as_unknown() {
+        for st in ["submitted", "interview", "rejected", "silent-closed"] {
+            let rows = parse_ledger(&unknown_time_row(st, "null", "true"))
+                .unwrap_or_else(|e| panic!("{st}: {e}"));
+            assert_eq!(rows[0].submit_time_unknown, Some(true));
+            assert!(
+                export_csv(&rows).contains(&format!(",{st},unknown,legacy-unknown")),
+                "{st}"
+            );
+            assert!(
+                export_markdown(&rows).contains(&format!("| {st} | unknown |")),
+                "{st}"
+            );
+        }
+    }
+
+    #[test]
+    fn submit_time_unknown_is_strict() {
+        // flag with a time, flag on statuses that already allow null, and explicit false are refused
+        assert!(parse_ledger(&unknown_time_row(
+            "rejected",
+            "\"2026-09-04T17:12:00+02:00\"",
+            "true"
+        ))
+        .is_err());
+        assert!(parse_ledger(&unknown_time_row("prepared", "null", "true")).is_err());
+        assert!(parse_ledger(&unknown_time_row("withdrawn", "null", "true")).is_err());
+        assert!(parse_ledger(&unknown_time_row("rejected", "null", "false")).is_err());
+        // plain null on a sent status still refused, and the error names the honest option
+        let err = parse_ledger(&row("https://example.test/j/1", "rejected", None)).unwrap_err();
+        assert!(err.to_string().contains("submit_time_unknown"), "{err}");
+    }
+
+    #[test]
+    fn a_made_up_time_is_never_required() {
+        for st in [
+            "prepared",
+            "submitted",
+            "interview",
+            "rejected",
+            "withdrawn",
+            "silent-closed",
+        ] {
+            let plain = row("https://example.test/j/1", st, None);
+            let flagged = unknown_time_row(st, "null", "true");
+            assert!(
+                parse_ledger(&plain).is_ok() || parse_ledger(&flagged).is_ok(),
+                "{st} needs a time"
+            );
+        }
     }
 
     #[test]

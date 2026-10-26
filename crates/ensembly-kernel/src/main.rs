@@ -378,6 +378,9 @@ enum AppsCmd {
         /// RFC 3339 with +01:00/+02:00 (omit only for prepared)
         #[arg(long)]
         submit_time: Option<String>,
+        /// Sent, but the time was never recorded (submit_time stays null)
+        #[arg(long, default_value_t = false)]
+        submit_time_unknown: bool,
         #[arg(long)]
         cv_version: String,
     },
@@ -1285,10 +1288,10 @@ fn main() -> Result<()> {
                         al::current_rows(&rows).len()
                     );
                 }
-                AppsCmd::Append { company, role, link, apply_url, status, submit_time, cv_version } => {
+                AppsCmd::Append { company, role, link, apply_url, status, submit_time, submit_time_unknown, cv_version } => {
                     let status: al::Status = serde_json::from_value(serde_json::Value::String(status))
                         .map_err(|e| anyhow::anyhow!("status: {e}"))?;
-                    let row = al::Row { company, role, link, apply_url, status, submit_time, cv_version };
+                    let row = al::Row { company, role, link, apply_url, status, submit_time, submit_time_unknown: submit_time_unknown.then_some(true), cv_version };
                     al::append_row(&ledger, &row)?;
                     println!("appended: {} ({})", row.link, row.status.as_str());
                 }

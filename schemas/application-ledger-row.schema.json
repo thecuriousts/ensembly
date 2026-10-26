@@ -43,12 +43,16 @@
       ]
     },
     "submit_time": {
-      "description": "RFC 3339 / ISO 8601 with Europe/Stockholm offset (+01:00 or +02:00). null allowed only for prepared, and for withdrawn when the application was dropped before sending.",
+      "description": "RFC 3339 with seconds and the Europe/Stockholm offset (+01:00 or +02:00). null for prepared, for withdrawn dropped before sending, or with submit_time_unknown: true.",
       "type": [
         "string",
         "null"
       ],
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?\\+0[12]:00$"
+    },
+    "submit_time_unknown": {
+      "description": "true when the application was sent but its time was never recorded; submit_time is then null. Only for submitted, interview, rejected, silent-closed. Absent otherwise (never false).",
+      "const": true
     },
     "cv_version": {
       "description": "Label of the CV sent. Use the explicit marker \"legacy-unknown\" for migrated rows whose records never noted the CV; ad-hoc unknown markers are refused (the Rust validator also refuses them case-insensitively).",
@@ -68,23 +72,54 @@
       }
     }
   },
-  "if": {
-    "properties": {
-      "status": {
-        "enum": [
-          "submitted",
-          "interview",
-          "rejected",
-          "silent-closed"
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "submitted",
+              "interview",
+              "rejected",
+              "silent-closed"
+            ]
+          }
+        },
+        "not": {
+          "required": [
+            "submit_time_unknown"
+          ]
+        }
+      },
+      "then": {
+        "properties": {
+          "submit_time": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "submit_time_unknown"
         ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "enum": [
+              "submitted",
+              "interview",
+              "rejected",
+              "silent-closed"
+            ]
+          },
+          "submit_time": {
+            "type": "null"
+          }
+        }
       }
     }
-  },
-  "then": {
-    "properties": {
-      "submit_time": {
-        "type": "string"
-      }
-    }
-  }
+  ]
 }
