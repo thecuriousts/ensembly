@@ -291,7 +291,10 @@ pub fn status_for(
     let Some(a) = hit else {
         return (GateStatus::Unaudited, None);
     };
-    let at = chrono::DateTime::parse_from_rfc3339(&a.audited_at).expect("validated");
+    // Fail closed: rows built outside `validate` may carry a bad timestamp.
+    let Ok(at) = chrono::DateTime::parse_from_rfc3339(&a.audited_at) else {
+        return (GateStatus::Stale, Some(a));
+    };
     if now.signed_duration_since(at) > chrono::Duration::days(STALE_AFTER_DAYS) {
         return (GateStatus::Stale, Some(a));
     }
@@ -591,6 +594,44 @@ mod tests {
             canonical_domain("northwind.example.test."),
             "northwind.example.test"
         );
+    }
+
+    #[test]
+    fn status_for_bad_timestamp_is_stale_not_panic() {
+        let mut rows = sample();
+        rows[0].audited_at = "not-a-time".into();
+        let t = now("2026-10-27T12:00:00+01:00");
+        let (s, a) = status_for(&rows, "northwind.example.test", t);
+        assert_eq!(s, GateStatus::Stale);
+        assert!(a.is_some());
+        // would-pass-on-empty guard: a valid row still gates normally
+        assert_ne!(
+            status_for(&rows, "fabrikam.example.test", t).0,
+            GateStatus::Stale
+        );
+    }
+
+    /// Shared with kanithanj autoapply audit.rs (keep the two lists identical).
+    pub const DOMAIN_VECTORS: &[(&str, &str)] = &[
+        ("https://x@acme.example/", "acme.example"),
+        (
+            "https://user:pw@www.Acme.Example:8443/jobs?a=1#f",
+            "acme.example",
+        ),
+        (
+            " HTTPS://www.Northwind.Example.test/jobs?x=1 ",
+            "northwind.example.test",
+        ),
+        ("northwind.example.test.", "northwind.example.test"),
+        ("jobs.acme.example/apply", "jobs.acme.example"),
+    ];
+
+    #[test]
+    fn canonical_domain_shared_vectors() {
+        assert!(!DOMAIN_VECTORS.is_empty());
+        for (i, o) in DOMAIN_VECTORS {
+            assert_eq!(canonical_domain(i), *o, "input {i:?}");
+        }
     }
 
     #[test]
