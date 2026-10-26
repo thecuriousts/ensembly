@@ -16,7 +16,7 @@ Code: `crates/ensembly-kernel/src/application_ledger.rs`.
 | `link` | `https://` canonical posting URL. Identity key of an application; a trailing `/application` is ignored when matching, and `append` refuses a link that ends in it. |
 | `apply_url` | Optional `https://` application-form URL (for example the posting URL plus `/application`). Omitted from the JSON when absent. |
 | `status` | `prepared`, `submitted`, `interview`, `rejected`, `withdrawn`, `silent-closed`. |
-| `submit_time` | RFC 3339 / ISO 8601 with the Europe/Stockholm offset (`+01:00` or `+02:00`). `null` only for `prepared`. |
+| `submit_time` | RFC 3339 / ISO 8601 with the Europe/Stockholm offset (`+01:00` or `+02:00`). `null` only for `prepared`, and for `withdrawn` when the application was dropped before sending (operator decision, 26 Oct 2026). Exports show it empty (CSV) or `—` (markdown) and list such rows after timed rows. |
 | `cv_version` | Non-blank label of the CV that was sent. `legacy-unknown` is the one explicit marker for rows migrated from records that never noted the CV (operator decision, 26 Oct 2026); ad-hoc markers such as `unknown`, `n/a`, `tbd` are refused. |
 
 Unknown fields are refused, so personal details (phone, address) cannot ride along.
@@ -61,4 +61,4 @@ cargo run -p ensembly-kernel -- apps export   # byte-identical on re-run
 ```
 
 Exports list current state only, ordered by submit instant, then link;
-`prepared` rows (no time) come last.
+rows without a time (`prepared`, unsent `withdrawn`) come last, ordered by link.
