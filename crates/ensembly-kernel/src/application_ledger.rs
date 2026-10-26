@@ -3,6 +3,10 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// Real rows live here: under `data/`, which `.gitignore` keeps local-only.
+pub const DEFAULT_LEDGER_PATH: &str = "data/local/applications/ledger.jsonl";
+pub const DEFAULT_EXPORT_DIR: &str = "data/local/applications/exports";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Status {
@@ -96,11 +100,12 @@ pub fn current_rows(rows: &[Row]) -> Vec<Row> {
     let mut v: Vec<Row> = latest.into_values().cloned().collect();
     v.sort_by(|a, b| {
         let key = |r: &Row| {
-            (
-                r.submit_time.is_none(),
-                r.submit_time.clone(),
-                r.link.clone(),
-            )
+            let instant = r
+                .submit_time
+                .as_deref()
+                .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+                .map(|d| d.timestamp());
+            (instant.is_none(), instant, r.link.clone())
         };
         key(a).cmp(&key(b))
     });
@@ -272,6 +277,26 @@ mod tests {
         let cur = current_rows(&parse_ledger(&text).unwrap());
         assert_eq!(cur.len(), 1);
         assert_eq!(cur[0].status, Status::Rejected);
+    }
+
+    #[test]
+    fn current_rows_sort_by_instant_not_string() {
+        // 01:00+02:00 (23:00Z) is earlier than 00:30+01:00 (23:30Z) though it sorts later as a string
+        let text = format!(
+            "{}\n{}\n",
+            row(
+                "https://example.test/j/a",
+                "submitted",
+                Some("2026-10-25T00:30:00+01:00")
+            ),
+            row(
+                "https://example.test/j/b",
+                "submitted",
+                Some("2026-10-25T01:00:00+02:00")
+            )
+        );
+        let cur = current_rows(&parse_ledger(&text).unwrap());
+        assert_eq!(cur[0].link, "https://example.test/j/b");
     }
 
     #[test]
