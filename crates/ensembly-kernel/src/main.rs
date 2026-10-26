@@ -199,6 +199,14 @@ enum Commands {
         #[command(subcommand)]
         sub: ChannelPulseCmd,
     },
+    /// Application ledger (SoT for job applications): validate, append, export
+    Apps {
+        /// Ledger JSONL (default data/local/applications/ledger.jsonl; local-only, gitignored)
+        #[arg(long)]
+        ledger: Option<PathBuf>,
+        #[command(subcommand)]
+        sub: AppsCmd,
+    },
     /// One-shot copy-if-missing: peram-* local files → ensembly-* (never overwrite, never delete)
     #[command(name = "migrate-local-paths")]
     MigrateLocalPaths {
@@ -345,6 +353,35 @@ enum DfCmd {
     Status {
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum AppsCmd {
+    /// Validate every line; print row count and current-state count
+    Validate,
+    /// Append one validated row (identical row refused)
+    Append {
+        #[arg(long)]
+        company: String,
+        #[arg(long)]
+        role: String,
+        #[arg(long)]
+        link: String,
+        /// prepared|submitted|interview|rejected|withdrawn|silent-closed
+        #[arg(long)]
+        status: String,
+        /// RFC 3339 with +01:00/+02:00 (omit only for prepared)
+        #[arg(long)]
+        submit_time: Option<String>,
+        #[arg(long)]
+        cv_version: String,
+    },
+    /// Write applications.csv + applications.md (byte-identical on re-run)
+    Export {
+        /// Output dir (default data/local/applications/exports)
+        #[arg(long)]
+        out_dir: Option<PathBuf>,
     },
 }
 
@@ -1224,6 +1261,38 @@ fn main() -> Result<()> {
                             .map(|p| p.id.as_str())
                             .unwrap_or("-")
                     );
+                }
+            }
+        }
+        Commands::Apps { ledger, sub } => {
+            use ensembly_kernel::application_ledger as al;
+            let ledger = ledger.unwrap_or_else(|| PathBuf::from(al::DEFAULT_LEDGER_PATH));
+            let read = |p: &PathBuf| -> Result<Vec<al::Row>> {
+                let text = std::fs::read_to_string(p)
+                    .map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))?;
+                al::parse_ledger(&text)
+            };
+            match sub {
+                AppsCmd::Validate => {
+                    let rows = read(&ledger)?;
+                    println!(
+                        "ok: {} rows, {} current applications",
+                        rows.len(),
+                        al::current_rows(&rows).len()
+                    );
+                }
+                AppsCmd::Append { company, role, link, status, submit_time, cv_version } => {
+                    let status: al::Status = serde_json::from_value(serde_json::Value::String(status))
+                        .map_err(|e| anyhow::anyhow!("status: {e}"))?;
+                    let row = al::Row { company, role, link, status, submit_time, cv_version };
+                    al::append_row(&ledger, &row)?;
+                    println!("appended: {} ({})", row.link, row.status.as_str());
+                }
+                AppsCmd::Export { out_dir } => {
+                    let rows = read(&ledger)?;
+                    let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
+                    al::write_exports(&rows, &dir)?;
+                    println!("exported {} applications to {}", al::current_rows(&rows).len(), dir.display());
                 }
             }
         }
