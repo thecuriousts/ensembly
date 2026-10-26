@@ -1,0 +1,3 @@
+{"company":"Northwind Fictional AB","role":"Engineer, Widgets","link":"https://jobs.example.test/northwind/1001","status":"submitted","submit_time":"2026-10-20T09:15:00+02:00","cv_version":"cv-sample-1"}
+{"company":"Contoso Sample Ltd","role":"Platform | Infra Engineer","link":"https://jobs.example.test/contoso/2002","status":"rejected","submit_time":"2026-10-21T14:00:00+02:00","cv_version":"cv-sample-1"}
+{"company":"Fabrikam Example GmbH","role":"Forward Deployed Engineer","link":"https://jobs.example.test/fabrikam/3003","status":"prepared","submit_time":null,"cv_version":"cv-sample-2"}

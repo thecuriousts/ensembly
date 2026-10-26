@@ -8,6 +8,7 @@
 //! T1 SQLite store · sealed backup · T2 vault seal bridge · episodic memory sink.
 
 pub mod agent;
+pub mod application_ledger;
 pub mod approvals;
 pub mod backup;
 pub mod channel_pulse;
