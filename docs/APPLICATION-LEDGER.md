@@ -63,3 +63,5 @@ cargo run -p ensembly-kernel -- apps export   # byte-identical on re-run
 
 Exports list current state only, ordered by submit instant, then link;
 rows without a time (`prepared`, unsent `withdrawn`) come last, ordered by link.
+
+Company audits (the gate before a pack or an application) live in a separate store: see [COMPANY-AUDIT.md](COMPANY-AUDIT.md).

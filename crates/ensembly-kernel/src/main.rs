@@ -358,6 +358,14 @@ enum DfCmd {
 
 #[derive(Subcommand)]
 enum AppsCmd {
+    /// Company audit store (scam-risk / due-diligence gate before packs and applications)
+    Audit {
+        /// Audit store JSONL (default data/local/applications/company-audits.jsonl; local-only)
+        #[arg(long)]
+        store: Option<PathBuf>,
+        #[command(subcommand)]
+        sub: AuditCmd,
+    },
     /// Validate every line; print row count and current-state count
     Validate,
     /// Append one validated row (identical row refused)
@@ -389,6 +397,30 @@ enum AppsCmd {
         /// Output dir (default data/local/applications/exports)
         #[arg(long)]
         out_dir: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuditCmd {
+    /// Validate every line (or a FILE instead of the store); print counts
+    Validate {
+        /// Validate this JSONL file instead of the store
+        file: Option<PathBuf>,
+    },
+    /// Append audits from a JSONL FILE ('-' = stdin): all lines validated first; rows already stored are skipped
+    Append { file: PathBuf },
+    /// Write company-audits.csv + .md (byte-identical on re-run)
+    Export {
+        /// Output dir (default data/local/applications/exports)
+        #[arg(long)]
+        out_dir: Option<PathBuf>,
+    },
+    /// Gate: print JSON status for a company name or domain; exit 0 pass, 3 flag, 4 block, 5 unaudited/stale
+    Status {
+        query: String,
+        /// Evaluate staleness at this RFC 3339 time instead of now (tests/replays)
+        #[arg(long)]
+        now: Option<String>,
     },
 }
 
@@ -1280,6 +1312,62 @@ fn main() -> Result<()> {
                 al::parse_ledger(&text)
             };
             match sub {
+                AppsCmd::Audit { store, sub } => {
+                    use ensembly_kernel::company_audit as ca;
+                    let store = store.unwrap_or_else(|| PathBuf::from(ca::DEFAULT_AUDIT_PATH));
+                    let read_store = || -> Result<Vec<ca::Audit>> {
+                        match std::fs::read_to_string(&store) {
+                            Ok(t) => ca::parse_audits(&t),
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+                            Err(e) => Err(anyhow::anyhow!("read {}: {e}", store.display())),
+                        }
+                    };
+                    match sub {
+                        AuditCmd::Validate { file } => {
+                            let rows = match file {
+                                Some(f) => ca::parse_audits(&std::fs::read_to_string(&f).map_err(|e| anyhow::anyhow!("read {}: {e}", f.display()))?)?,
+                                None => read_store()?,
+                            };
+                            println!("ok: {} audits, {} companies", rows.len(), ca::current_audits(&rows).len());
+                        }
+                        AuditCmd::Append { file } => {
+                            let text = if file.as_os_str() == "-" {
+                                let mut t = String::new();
+                                std::io::Read::read_to_string(&mut std::io::stdin(), &mut t)?;
+                                t
+                            } else {
+                                std::fs::read_to_string(&file).map_err(|e| anyhow::anyhow!("read {}: {e}", file.display()))?
+                            };
+                            let (n, skipped) = ca::append_audits(&store, &text)?;
+                            println!("appended {n}, skipped {skipped} already stored");
+                        }
+                        AuditCmd::Export { out_dir } => {
+                            let rows = read_store()?;
+                            let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
+                            ca::write_exports(&rows, &dir)?;
+                            println!("exported {} companies to {}", ca::current_audits(&rows).len(), dir.display());
+                        }
+                        AuditCmd::Status { query, now } => {
+                            let rows = read_store()?;
+                            let now = match now {
+                                Some(t) => chrono::DateTime::parse_from_rfc3339(&t).map_err(|e| anyhow::anyhow!("--now: {e}"))?,
+                                None => chrono::Local::now().fixed_offset(),
+                            };
+                            let (status, audit) = ca::status_for(&rows, &query, now);
+                            let out = serde_json::json!({
+                                "query": query,
+                                "status": status,
+                                "company": audit.as_ref().map(|a| a.company.clone()),
+                                "domain": audit.as_ref().map(|a| a.domain.clone()),
+                                "verdict": audit.as_ref().map(|a| a.verdict),
+                                "audited_at": audit.as_ref().map(|a| a.audited_at.clone()),
+                                "stale_after_days": ca::STALE_AFTER_DAYS,
+                            });
+                            println!("{out}");
+                            std::process::exit(ca::exit_code(status));
+                        }
+                    }
+                }
                 AppsCmd::Validate => {
                     let rows = read(&ledger)?;
                     println!(

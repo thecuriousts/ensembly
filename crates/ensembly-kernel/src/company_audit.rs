@@ -409,6 +409,42 @@ pub fn append_audit(path: &Path, a: &Audit) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Batch append from JSONL text: every line is validated first (any error
+/// writes nothing); rows already in the store are skipped. Returns
+/// (appended, skipped). Re-running the same batch appends nothing.
+pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> {
+    use std::io::Write;
+    let incoming = parse_audits(text)?;
+    let mut existing = match std::fs::read_to_string(path) {
+        Ok(t) => parse_audits(&t)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(e.into()),
+    };
+    let mut lines = String::new();
+    let (mut appended, mut skipped) = (0, 0);
+    for a in incoming {
+        if existing.contains(&a) {
+            skipped += 1;
+            continue;
+        }
+        lines.push_str(&serde_json::to_string(&a)?);
+        lines.push('\n');
+        existing.push(a);
+        appended += 1;
+    }
+    if appended > 0 {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
+        f.write_all(lines.as_bytes())?;
+    }
+    Ok((appended, skipped))
+}
+
 /// Write `company-audits.csv` + `company-audits.md` (byte-identical on re-run).
 pub fn write_exports(rows: &[Audit], dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
@@ -654,6 +690,19 @@ mod tests {
             parse_audits(&std::fs::read_to_string(&p).unwrap()).unwrap(),
             vec![a]
         );
+    }
+
+    #[test]
+    fn batch_append_is_all_or_nothing_and_rerun_is_a_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        assert_eq!(append_audits(&p, SAMPLE).unwrap(), (3, 0));
+        assert_eq!(append_audits(&p, SAMPLE).unwrap(), (0, 3));
+        let bad = format!("{}\nnot json\n", SAMPLE.lines().next().unwrap());
+        let q = dir.path().join("b.jsonl");
+        assert!(append_audits(&q, &bad).is_err());
+        assert!(!q.exists(), "nothing written when any line is invalid");
+        assert_eq!(std::fs::read_to_string(&p).unwrap().lines().count(), 3);
     }
 
     #[test]
