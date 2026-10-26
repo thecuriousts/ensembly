@@ -51,8 +51,21 @@
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?\\+0[12]:00$"
     },
     "cv_version": {
+      "description": "Label of the CV sent. Use the explicit marker \"legacy-unknown\" for migrated rows whose records never noted the CV; ad-hoc unknown markers are refused (the Rust validator also refuses them case-insensitively).",
       "type": "string",
-      "pattern": "\\S"
+      "pattern": "\\S",
+      "not": {
+        "enum": [
+          "unknown",
+          "n/a",
+          "na",
+          "none",
+          "?",
+          "-",
+          "legacy",
+          "tbd"
+        ]
+      }
     }
   },
   "if": {

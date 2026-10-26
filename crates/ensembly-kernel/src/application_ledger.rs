@@ -5,6 +5,8 @@ use std::path::Path;
 
 /// Real rows live here: under `data/`, which `.gitignore` keeps local-only.
 pub const DEFAULT_LEDGER_PATH: &str = "data/local/applications/ledger.jsonl";
+/// Explicit marker for rows migrated from records that never noted which CV was sent.
+pub const LEGACY_UNKNOWN_CV: &str = "legacy-unknown";
 pub const DEFAULT_EXPORT_DIR: &str = "data/local/applications/exports";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -67,6 +69,10 @@ pub fn validate_row(r: &Row) -> anyhow::Result<()> {
         if v.trim().is_empty() {
             anyhow::bail!("{name} must not be blank");
         }
+    }
+    const AD_HOC_UNKNOWN: [&str; 8] = ["unknown", "n/a", "na", "none", "?", "-", "legacy", "tbd"];
+    if AD_HOC_UNKNOWN.contains(&r.cv_version.trim().to_lowercase().as_str()) {
+        anyhow::bail!("cv_version {:?}: use the explicit marker \"{LEGACY_UNKNOWN_CV}\" when the CV is not recorded", r.cv_version);
     }
     if !r.link.starts_with("https://") || r.link.len() <= "https://".len() {
         anyhow::bail!("link must be an https URL");
@@ -380,6 +386,26 @@ mod tests {
             md.contains("| Company | Role | Status | Submitted | CV version | Link | Apply |"),
             "{md}"
         );
+    }
+
+    #[test]
+    fn legacy_unknown_is_the_only_unknown_cv_marker() {
+        let mk = |cv: &str| {
+            format!(
+                r#"{{"company":"A","role":"R","link":"https://x.test/1","status":"rejected","submit_time":"2026-09-04T17:12:00+02:00","cv_version":"{cv}"}}"#
+            )
+        };
+        assert!(parse_ledger(&mk(LEGACY_UNKNOWN_CV)).is_ok());
+        assert_eq!(LEGACY_UNKNOWN_CV, "legacy-unknown");
+        for ad_hoc in [
+            "unknown", "Unknown", "n/a", "none", "?", "-", "legacy", "tbd",
+        ] {
+            let err = parse_ledger(&mk(ad_hoc)).unwrap_err();
+            assert!(
+                err.to_string().contains("legacy-unknown"),
+                "{ad_hoc}: {err}"
+            );
+        }
     }
 
     #[test]

@@ -17,7 +17,7 @@ Code: `crates/ensembly-kernel/src/application_ledger.rs`.
 | `apply_url` | Optional `https://` application-form URL (for example the posting URL plus `/application`). Omitted from the JSON when absent. |
 | `status` | `prepared`, `submitted`, `interview`, `rejected`, `withdrawn`, `silent-closed`. |
 | `submit_time` | RFC 3339 / ISO 8601 with the Europe/Stockholm offset (`+01:00` or `+02:00`). `null` only for `prepared`. |
-| `cv_version` | Non-blank label of the CV that was sent. |
+| `cv_version` | Non-blank label of the CV that was sent. `legacy-unknown` is the one explicit marker for rows migrated from records that never noted the CV (operator decision, 26 Oct 2026); ad-hoc markers such as `unknown`, `n/a`, `tbd` are refused. |
 
 Unknown fields are refused, so personal details (phone, address) cannot ride along.
 
