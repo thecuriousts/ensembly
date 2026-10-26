@@ -572,6 +572,75 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&p).unwrap().lines().count(), 1);
     }
 
+    const SCHEMA: &str = include_str!("../../../schemas/application-ledger-row.schema.json");
+
+    #[test]
+    fn schema_matches_rust_rules_and_accepts_the_sample() {
+        let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
+        let props = schema["properties"].as_object().unwrap();
+        // every field Rust can write is in the schema, and nothing else
+        let full = r#"{"company":"A","role":"R","link":"https://x.test/1","apply_url":"https://x.test/1/application","status":"rejected","submit_time":null,"submit_time_unknown":true,"cv_version":"v"}"#;
+        let full: serde_json::Value =
+            serde_json::to_value(&parse_ledger(full).unwrap()[0]).unwrap();
+        let mut rust_keys: Vec<_> = full.as_object().unwrap().keys().cloned().collect();
+        let mut schema_keys: Vec<_> = props.keys().cloned().collect();
+        rust_keys.sort();
+        schema_keys.sort();
+        assert_eq!(rust_keys, schema_keys);
+        // status enum == Rust Status
+        let statuses: Vec<&str> = props["status"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        let all = [
+            Status::Prepared,
+            Status::Submitted,
+            Status::Interview,
+            Status::Rejected,
+            Status::Withdrawn,
+            Status::SilentClosed,
+        ];
+        assert_eq!(statuses, all.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+        // submit_time pattern agrees with the Rust time check
+        let re = regex::Regex::new(props["submit_time"]["pattern"].as_str().unwrap()).unwrap();
+        for (t, ok) in [
+            ("2026-10-20T09:15:00+02:00", true),
+            ("2026-10-20T09:15+02:00", false),
+            ("2026-10-20T09:15:00Z", false),
+            ("2026-10-20T09:15:00+05:30", false),
+        ] {
+            assert_eq!(re.is_match(t), ok, "schema {t}");
+            assert_eq!(check_submit_time(t).is_ok(), ok, "rust {t}");
+        }
+        // every sample line satisfies required + known keys + patterns
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        let link_re = regex::Regex::new(props["link"]["pattern"].as_str().unwrap()).unwrap();
+        let mut n = 0;
+        for line in SAMPLE.lines().filter(|l| !l.trim().is_empty()) {
+            let v: serde_json::Value = serde_json::from_str(line).unwrap();
+            let o = v.as_object().unwrap();
+            for k in &required {
+                assert!(o.contains_key(*k), "{k} missing: {line}");
+            }
+            for k in o.keys() {
+                assert!(props.contains_key(k), "{k} not in schema");
+            }
+            assert!(link_re.is_match(o["link"].as_str().unwrap()));
+            if let Some(t) = o["submit_time"].as_str() {
+                assert!(re.is_match(t), "{t}");
+            }
+            n += 1;
+        }
+        assert!(n >= 3, "sample must not be empty");
+    }
+
     #[test]
     fn csv_export_has_header_and_rows_and_escapes() {
         let rows = parse_ledger(SAMPLE).unwrap();

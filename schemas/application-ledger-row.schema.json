@@ -25,7 +25,7 @@
     "link": {
       "type": "string",
       "pattern": "^https://.+",
-      "description": "Canonical posting URL (identity key; a trailing /application is ignored when matching so older rows are superseded). New rows must not end in /application."
+      "description": "Canonical posting URL (identity key). Reading accepts a historic link ending in /application (matched to the canonical posting, so a corrected row supersedes it), like the Rust parser; `ensembly apps append` refuses new ones. A schema cannot tell new rows from old, so that write-time rule lives in Rust."
     },
     "apply_url": {
       "description": "Optional application-form URL (e.g. .../application).",
@@ -48,7 +48,7 @@
         "string",
         "null"
       ],
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(:\\d{2}(\\.\\d+)?)?\\+0[12]:00$"
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\+0[12]:00$"
     },
     "submit_time_unknown": {
       "description": "true when the application was sent but its time was never recorded; submit_time is then null. Only for submitted, interview, rejected, silent-closed. Absent otherwise (never false).",
