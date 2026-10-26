@@ -9,7 +9,7 @@ pub const DEFAULT_LEDGER_PATH: &str = "data/local/applications/ledger.jsonl";
 pub const LEGACY_UNKNOWN_CV: &str = "legacy-unknown";
 pub const DEFAULT_EXPORT_DIR: &str = "data/local/applications/exports";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Status {
     Prepared,
