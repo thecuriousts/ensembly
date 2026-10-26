@@ -34,7 +34,7 @@ needs them.
 
 Never edit a line. A status change is a new line with the same `link`; the
 last line per link is the current state. `ensembly apps append` refuses an
-identical row, so re-running an append is safe.
+row equal to one already in the ledger (ignoring surrounding whitespace and a trailing `/` or `/application` on the link): a re-run is refused with an error (exit 1) and writes nothing. There is no file lock; keep one writer at a time.
 
 ### Correcting a row
 

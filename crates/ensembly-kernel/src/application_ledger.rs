@@ -210,8 +210,28 @@ pub fn export_markdown(rows: &[Row]) -> String {
     s
 }
 
-/// Append one validated row. An exact duplicate of an existing row is refused
-/// (re-running the same append is a no-op error, never a double row).
+/// Row with surrounding whitespace trimmed and the link reduced to its identity
+/// key, so cosmetic variants of the same state compare equal.
+fn same_state_key(r: &Row) -> Row {
+    let t = |s: &str| s.trim().to_string();
+    Row {
+        company: t(&r.company),
+        role: t(&r.role),
+        link: link_key(r.link.trim()).to_string(),
+        apply_url: r
+            .apply_url
+            .as_deref()
+            .map(|u| t(u).trim_end_matches('/').to_string()),
+        status: r.status,
+        submit_time: r.submit_time.as_deref().map(t),
+        submit_time_unknown: r.submit_time_unknown,
+        cv_version: t(&r.cv_version),
+    }
+}
+
+/// Append one validated row. A row equal to an existing one (ignoring surrounding
+/// whitespace and a trailing slash or `/application` on the link) is refused with an
+/// error (CLI exit 1), never written twice. No file lock: one writer at a time.
 pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
     use std::io::Write;
     validate_row(r)?;
@@ -223,7 +243,8 @@ pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
         Err(e) => return Err(e.into()),
     };
-    if existing.iter().any(|x| x == r) {
+    let key = same_state_key(r);
+    if existing.iter().any(|x| same_state_key(x) == key) {
         anyhow::bail!("identical row already in ledger for {}", r.link);
     }
     if let Some(dir) = path.parent() {
@@ -528,6 +549,27 @@ mod tests {
                 "{st} needs a time"
             );
         }
+    }
+
+    #[test]
+    fn append_refuses_whitespace_and_trailing_slash_variants_of_the_same_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("l.jsonl");
+        let r: Row = serde_json::from_str(&row(
+            "https://example.test/j/9",
+            "submitted",
+            Some("2026-10-26T20:08:00+01:00"),
+        ))
+        .unwrap();
+        append_row(&p, &r).unwrap();
+        let mut v = r.clone();
+        v.link.push('/');
+        v.role = format!(" {} ", v.role);
+        assert!(
+            append_row(&p, &v).is_err(),
+            "variant appended as a new state"
+        );
+        assert_eq!(std::fs::read_to_string(&p).unwrap().lines().count(), 1);
     }
 
     #[test]
