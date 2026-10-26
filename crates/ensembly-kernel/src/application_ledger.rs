@@ -83,7 +83,7 @@ pub fn validate_row(r: &Row) -> anyhow::Result<()> {
         }
     }
     match (&r.submit_time, r.status) {
-        (None, Status::Prepared) => {}
+        (None, Status::Prepared | Status::Withdrawn) => {}
         (None, s) => anyhow::bail!("submit_time is required when status is {}", s.as_str()),
         (Some(t), _) => check_submit_time(t)?,
     }
@@ -406,6 +406,42 @@ mod tests {
                 "{ad_hoc}: {err}"
             );
         }
+    }
+
+    #[test]
+    fn withdrawn_may_omit_submit_time_but_sent_statuses_may_not() {
+        assert!(parse_ledger(&row("https://example.test/j/1", "withdrawn", None)).is_ok());
+        assert!(parse_ledger(&row(
+            "https://example.test/j/1",
+            "withdrawn",
+            Some("2026-09-06T16:55:00+02:00")
+        ))
+        .is_ok());
+        for st in ["submitted", "interview", "rejected", "silent-closed"] {
+            assert!(
+                parse_ledger(&row("https://example.test/j/1", st, None)).is_err(),
+                "{st}"
+            );
+        }
+        let text = format!(
+            "{}\n{}\n",
+            row("https://example.test/j/w", "withdrawn", None),
+            row(
+                "https://example.test/j/s",
+                "submitted",
+                Some("2026-09-06T16:55:00+02:00")
+            )
+        );
+        let rows = parse_ledger(&text).unwrap();
+        let csv = export_csv(&rows);
+        assert!(
+            csv.lines()
+                .last()
+                .unwrap()
+                .contains(",withdrawn,,cv-sample-1"),
+            "{csv}"
+        );
+        assert_eq!(current_rows(&rows)[1].link, "https://example.test/j/w");
     }
 
     #[test]

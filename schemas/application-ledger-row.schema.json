@@ -43,7 +43,7 @@
       ]
     },
     "submit_time": {
-      "description": "RFC 3339 / ISO 8601 with Europe/Stockholm offset (+01:00 or +02:00). null only when status is prepared.",
+      "description": "RFC 3339 / ISO 8601 with Europe/Stockholm offset (+01:00 or +02:00). null allowed only for prepared, and for withdrawn when the application was dropped before sending.",
       "type": [
         "string",
         "null"
@@ -71,9 +71,12 @@
   "if": {
     "properties": {
       "status": {
-        "not": {
-          "const": "prepared"
-        }
+        "enum": [
+          "submitted",
+          "interview",
+          "rejected",
+          "silent-closed"
+        ]
       }
     }
   },
