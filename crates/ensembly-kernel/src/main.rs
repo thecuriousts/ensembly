@@ -384,11 +384,23 @@ enum AppsCmd {
         #[arg(long)]
         cv_version: String,
     },
-    /// Write applications.csv + applications.md (byte-identical on re-run)
+    /// Write applications.csv + applications.md (byte-identical on re-run), or TRACKER.md with --tracker
     Export {
         /// Output dir (default data/local/applications/exports)
         #[arg(long)]
         out_dir: Option<PathBuf>,
+        /// Write only TRACKER.md (ledger state joined with a side file), atomically
+        #[arg(long)]
+        tracker: bool,
+        /// Side file keyed by canonical link: Posted, Lane, Linear, Trello, Pack (.md hand tracker, .jsonl or .csv)
+        #[arg(long, requires = "tracker")]
+        join: Option<PathBuf>,
+        /// Extra rows for the "Prepared, not submitted" section (.md, .jsonl or .csv)
+        #[arg(long, requires = "tracker")]
+        prepared: Option<PathBuf>,
+        /// Header time "YYYY-MM-DD HH:MM" (default: now, local time)
+        #[arg(long, requires = "tracker")]
+        stamp: Option<String>,
     },
 }
 
@@ -1485,6 +1497,42 @@ fn runtime_dive(rt: &Runtime, probe_budget: u32, json: bool) -> Result<()> {
     Ok(())
 }
 
+fn read_side(p: Option<&std::path::Path>) -> Result<ensembly_kernel::tracker::Side> {
+    use ensembly_kernel::tracker as tr;
+    let Some(p) = p else {
+        return Ok(tr::Side::default());
+    };
+    let text =
+        std::fs::read_to_string(p).map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))?;
+    tr::parse_side(&text, tr::SideFormat::from_path(p))
+        .map_err(|e| anyhow::anyhow!("{}: {e}", p.display()))
+}
+
+/// `apps export --tracker`: TRACKER.md into `dir`, replaced atomically.
+fn export_tracker(
+    rows: &[ensembly_kernel::application_ledger::Row],
+    dir: &std::path::Path,
+    join: Option<&std::path::Path>,
+    prepared: Option<&std::path::Path>,
+    stamp: Option<String>,
+) -> Result<()> {
+    use ensembly_kernel::tracker as tr;
+    let side = read_side(join)?;
+    let extra = read_side(prepared)?;
+    let t = tr::build(rows, &side, &extra.rows);
+    let stamp = stamp.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M").to_string());
+    std::fs::create_dir_all(dir)?;
+    tr::write_atomic(
+        &dir.join(tr::TRACKER_FILE),
+        tr::render(&t, &stamp).as_bytes(),
+    )?;
+    println!(
+        "{}",
+        tr::summary(&t, side.rows.len(), tr::current_rows(rows).len())
+    );
+    Ok(())
+}
+
 fn read_file(p: &PathBuf) -> Result<String> {
     std::fs::read_to_string(p).map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))
 }
@@ -1530,7 +1578,18 @@ fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
             println!("appended: {} ({})", row.link, row.status.as_str());
             Ok(())
         }
-        AppsCmd::Export { out_dir } => {
+        AppsCmd::Export {
+            out_dir,
+            tracker: true,
+            join,
+            prepared,
+            stamp,
+        } => {
+            let rows = read(&ledger)?;
+            let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
+            export_tracker(&rows, &dir, join.as_deref(), prepared.as_deref(), stamp)
+        }
+        AppsCmd::Export { out_dir, .. } => {
             let rows = read(&ledger)?;
             let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
             al::write_exports(&rows, &dir)?;
