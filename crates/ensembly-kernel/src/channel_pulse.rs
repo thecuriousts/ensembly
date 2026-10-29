@@ -72,7 +72,6 @@ pub fn project_wait_snapshot(
     upsert_physical(&physical, Some(snap), now)
 }
 
-
 /// Live Channel IR seed from ops life-state / wait-snapshot.
 /// Fail-closed when empty — never silently inject grocery/rent fixture candidates.
 pub fn seed_live_channel_actions(store: &OpsStore) -> Result<Vec<Action>> {
@@ -107,12 +106,7 @@ pub fn resolve_focus_plan(
         // churn `snapshot_fingerprint` and defeat quiet weekday reconcile.
         None => project_wait_snapshot(actions, None, chrono::DateTime::<Utc>::UNIX_EPOCH),
     };
-    let mut plan = rank_now(
-        &context_at(Utc::now(), location),
-        actions,
-        &[],
-        &snap,
-    );
+    let mut plan = rank_now(&context_at(Utc::now(), location), actions, &[], &snap);
     if let Ok(Some(life)) = store.load_life_state() {
         let now = Utc::now();
         let mut rt = Runtime::new(now);
@@ -128,8 +122,7 @@ pub fn read_channel_pulse(path: &Path) -> Result<Option<ChannelPulseIr>> {
     if !path.exists() {
         return Ok(None);
     }
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("read channel pulse {:?}", path))?;
+    let raw = fs::read_to_string(path).with_context(|| format!("read channel pulse {:?}", path))?;
     let ir: ChannelPulseIr =
         serde_json::from_str(&raw).with_context(|| format!("parse channel pulse {:?}", path))?;
     Ok(Some(ir))
@@ -142,7 +135,8 @@ pub fn write_channel_pulse(path: &Path, ir: &ChannelPulseIr) -> Result<()> {
             .with_context(|| format!("create channel pulse dir {:?}", parent))?;
     }
     let json = serde_json::to_string_pretty(ir)?;
-    fs::write(path, format!("{json}\n")).with_context(|| format!("write channel pulse {:?}", path))?;
+    fs::write(path, format!("{json}\n"))
+        .with_context(|| format!("write channel pulse {:?}", path))?;
     Ok(())
 }
 
@@ -290,9 +284,7 @@ mod tests {
 
         let mut rt = Runtime::new(now);
         rt.load_actions(&actions, now).unwrap();
-        store
-            .save_runtime_pair(&rt.state, &rt.snapshot)
-            .unwrap();
+        store.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
         let life_before = store.load_life_state().unwrap().unwrap();
         let snap_before = store.load_snapshot().unwrap().unwrap();
         let graph_before = DepGraph::from_actions(&actions, &Default::default()).unwrap();
@@ -349,7 +341,10 @@ mod tests {
         let raw = fs::read_to_string(&pulse).unwrap();
         let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(v["version"], 1);
-        assert!(v.get("next_body").is_some(), "fixture must project a body act");
+        assert!(
+            v.get("next_body").is_some(),
+            "fixture must project a body act"
+        );
         assert!(v.get("next_gate").is_some(), "fixture must project a gate");
         assert!(v.get("coach_line").is_none());
 
@@ -427,5 +422,4 @@ mod tests {
             "live ops fingerprint must differ from empty-store fixture projection"
         );
     }
-
 }

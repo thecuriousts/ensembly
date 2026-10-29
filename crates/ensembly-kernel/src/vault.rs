@@ -136,7 +136,10 @@ mod tests {
 
     #[test]
     fn empty_key_denied() {
-        assert!(matches!(seal(b"x", b"").unwrap_err(), VaultError::UnlockDenied));
+        assert!(matches!(
+            seal(b"x", b"").unwrap_err(),
+            VaultError::UnlockDenied
+        ));
         let blob = seal(b"x", b"k").unwrap();
         assert!(matches!(
             unseal(&blob, b"").unwrap_err(),

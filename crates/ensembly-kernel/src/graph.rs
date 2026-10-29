@@ -189,7 +189,11 @@ impl DepGraph {
         let mut order = Vec::with_capacity(self.nodes.len());
         while let Some(u) = q.pop_front() {
             order.push(u.clone());
-            let mut succs: Vec<_> = self.successors(&u).into_iter().map(str::to_string).collect();
+            let mut succs: Vec<_> = self
+                .successors(&u)
+                .into_iter()
+                .map(str::to_string)
+                .collect();
             succs.sort();
             for v in succs {
                 if let Some(d) = indeg.get_mut(&v) {
@@ -270,7 +274,11 @@ impl DepGraph {
         // Materialize edges from depends_on (skip missing preds — loud later via audit).
         let ids: Vec<_> = g.nodes.keys().cloned().collect();
         for id in ids {
-            let preds = g.nodes.get(&id).map(|n| n.depends_on.clone()).unwrap_or_default();
+            let preds = g
+                .nodes
+                .get(&id)
+                .map(|n| n.depends_on.clone())
+                .unwrap_or_default();
             for p in preds {
                 if g.nodes.contains_key(&p) {
                     g.add_edge(&p, &id)?;
@@ -293,7 +301,10 @@ impl DepGraph {
                 format!("{id}:{:?}:{:?}", n.status, n.gate)
             })
             .collect();
-        let edge_s: Vec<_> = edges.iter().map(|e| format!("{}->{}", e.from, e.to)).collect();
+        let edge_s: Vec<_> = edges
+            .iter()
+            .map(|e| format!("{}->{}", e.from, e.to))
+            .collect();
         format!("{}|{}", status.join(","), edge_s.join(","))
     }
 }
@@ -362,7 +373,10 @@ mod tests {
         )
         .unwrap();
         let order = g.topo_order().unwrap();
-        assert!(order.iter().position(|x| x == "a").unwrap() < order.iter().position(|x| x == "b").unwrap());
+        assert!(
+            order.iter().position(|x| x == "a").unwrap()
+                < order.iter().position(|x| x == "b").unwrap()
+        );
         assert_eq!(g.nodes["c"].gate, GateKind::Physical);
         assert_eq!(g.nodes["a"].gate, GateKind::None);
     }

@@ -147,7 +147,11 @@ fn reactivatable(s: &FlowStatus) -> bool {
     )
 }
 
-pub fn activate(flow: &DigitalFlow, actor: &str, now: DateTime<Utc>) -> Result<DigitalFlow, FlowError> {
+pub fn activate(
+    flow: &DigitalFlow,
+    actor: &str,
+    now: DateTime<Utc>,
+) -> Result<DigitalFlow, FlowError> {
     if flow.status == FlowStatus::PendingAuth || !reactivatable(&flow.status) {
         return Err(FlowError::BadActivate(flow.status.clone()));
     }

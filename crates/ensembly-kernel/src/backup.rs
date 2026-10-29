@@ -64,7 +64,10 @@ pub fn read_backup_pack(path: impl AsRef<Path>) -> Result<BackupPack, BackupErro
 }
 
 /// Restore dry-run: unseal into temp store, verify snapshot loads, **do not** write primary.
-pub fn restore_dry_run(pack: &BackupPack, unlock: &[u8]) -> Result<RestoreDryRunReport, BackupError> {
+pub fn restore_dry_run(
+    pack: &BackupPack,
+    unlock: &[u8],
+) -> Result<RestoreDryRunReport, BackupError> {
     let plain = unseal(&pack.sealed_ops, unlock)?;
     let bundle: OpsBundle = serde_json::from_slice(&plain)
         .map_err(|e| BackupError::DryRun(format!("bundle parse: {e}")))?;
@@ -95,7 +98,11 @@ pub fn restore_dry_run(pack: &BackupPack, unlock: &[u8]) -> Result<RestoreDryRun
 }
 
 /// Apply restore into a target store (destructive for those keys).
-pub fn restore_apply(store: &OpsStore, pack: &BackupPack, unlock: &[u8]) -> Result<(), BackupError> {
+pub fn restore_apply(
+    store: &OpsStore,
+    pack: &BackupPack,
+    unlock: &[u8],
+) -> Result<(), BackupError> {
     let plain = unseal(&pack.sealed_ops, unlock)?;
     let bundle: OpsBundle = serde_json::from_slice(&plain)?;
     store.import_bundle(&bundle)?;
@@ -115,9 +122,7 @@ pub struct RestoreDryRunReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::approvals::{
-        apply_decision, upsert_pending_from_actions, Snapshot,
-    };
+    use crate::approvals::{apply_decision, upsert_pending_from_actions, Snapshot};
     use crate::digital_flow::{run_cycle, DigitalFlow};
     use chrono::TimeZone;
 

@@ -8,23 +8,23 @@ use ensembly_kernel::approvals::{list_pending, Snapshot};
 use ensembly_kernel::backup::{
     create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
 };
-use ensembly_kernel::digital_flow::{run_cycle, DigitalFlow};
-use ensembly_kernel::memory_sink::MemorySink;
-use ensembly_kernel::paths::{
-    env_alias, migrate_local_paths_at, resolve_memory_path, resolve_ops_db, DEFAULT_MEMORY_PATH,
-};
-use ensembly_kernel::pulse_pack::{
-    export_pulse_pack, import_pulse_pack, local_pulse_status, read_pulse_pack, write_pulse_pack,
-    PulseExportOpts, PulseImportOpts, DEFAULT_ARCHIVE_SIDECAR,
-};
-use ensembly_kernel::msg_bus::ManualCmd;
-use ensembly_kernel::pulse_core as pc;
-use ensembly_kernel::runtime::Runtime;
-use ensembly_kernel::store::OpsStore;
 use ensembly_kernel::channel_pulse::{
     project_wait_snapshot, reconcile_channel_pulse, seed_live_channel_actions,
     DEFAULT_CHANNEL_PULSE_PATH,
 };
+use ensembly_kernel::digital_flow::{run_cycle, DigitalFlow};
+use ensembly_kernel::memory_sink::MemorySink;
+use ensembly_kernel::msg_bus::ManualCmd;
+use ensembly_kernel::paths::{
+    env_alias, migrate_local_paths_at, resolve_memory_path, resolve_ops_db, DEFAULT_MEMORY_PATH,
+};
+use ensembly_kernel::pulse_core as pc;
+use ensembly_kernel::pulse_pack::{
+    export_pulse_pack, import_pulse_pack, local_pulse_status, read_pulse_pack, write_pulse_pack,
+    PulseExportOpts, PulseImportOpts, DEFAULT_ARCHIVE_SIDECAR,
+};
+use ensembly_kernel::runtime::Runtime;
+use ensembly_kernel::store::OpsStore;
 use ensembly_kernel::turn::{
     actions_from_fixture_path, build_channel_ir, context_at, rank_now, Action,
 };
@@ -111,21 +111,13 @@ enum Commands {
         location: Option<String>,
     },
     /// Approve a pending authorization id
-    Approve {
-        id: String,
-    },
+    Approve { id: String },
     /// Deny a pending authorization id
-    Deny {
-        id: String,
-    },
+    Deny { id: String },
     /// Claim a physical action id
-    Claim {
-        id: String,
-    },
+    Claim { id: String },
     /// Complete a physical action id
-    Complete {
-        id: String,
-    },
+    Complete { id: String },
     /// Digital-flow bill_pay cycle (HITL dry-run)
     #[command(name = "digital-flow")]
     DigitalFlow {
@@ -499,7 +491,9 @@ fn unlock_material(cli: &Option<String>) -> Result<Vec<u8>> {
     if let Some(u) = cli {
         return Ok(u.clone().into_bytes());
     }
-    bail!("unlock required: pass --unlock or set ENSEMBLY_UNLOCK (alias PERAM_UNLOCK; keyring later)");
+    bail!(
+        "unlock required: pass --unlock or set ENSEMBLY_UNLOCK (alias PERAM_UNLOCK; keyring later)"
+    );
 }
 
 fn load_actions_from_fixture(path: &std::path::Path) -> Result<Vec<Action>> {
@@ -522,8 +516,9 @@ fn pulse_cfg(
 ) -> Result<pc::PulseCfg> {
     let now = match now.as_deref() {
         None => Utc::now(),
-        Some(s) => pc::parse_ts(s)
-            .ok_or_else(|| anyhow::anyhow!("--now: cannot parse `{s}` (use RFC 3339 or YYYY-MM-DD)"))?,
+        Some(s) => pc::parse_ts(s).ok_or_else(|| {
+            anyhow::anyhow!("--now: cannot parse `{s}` (use RFC 3339 or YYYY-MM-DD)")
+        })?,
     };
     let mut cfg = pc::PulseCfg::from_env(now);
     cfg.db = pulse_db.unwrap_or(cfg.db);
@@ -532,7 +527,13 @@ fn pulse_cfg(
     Ok(cfg)
 }
 
-fn pulse_read(cfg: &pc::PulseCfg, prefix: Option<String>, search: Option<String>, limit: usize, json: bool) -> Result<()> {
+fn pulse_read(
+    cfg: &pc::PulseCfg,
+    prefix: Option<String>,
+    search: Option<String>,
+    limit: usize,
+    json: bool,
+) -> Result<()> {
     let conn = pc::open_ro(&cfg.db)?;
     let rows = match (prefix, search) {
         (Some(p), None) => pc::read_prefix(&conn, &p, limit)?,
@@ -556,7 +557,12 @@ fn pulse_import(cfg: &pc::PulseCfg, spec: &std::path::Path, force: bool) -> Resu
         }
         Err(e) => return Err(e),
     };
-    let unresolved = st.missions.iter().flat_map(|m| &m.g_files).filter(|g| g.resolved.is_none()).count();
+    let unresolved = st
+        .missions
+        .iter()
+        .flat_map(|m| &m.g_files)
+        .filter(|g| g.resolved.is_none())
+        .count();
     println!(
         "imported {} missions into {} ({} owner(s) unconfirmed, {} G path(s) unresolved)",
         st.missions.len(),
@@ -576,8 +582,15 @@ fn pulse_list(cfg: &pc::PulseCfg, json: bool) -> Result<()> {
         return Ok(());
     }
     for m in &st.missions {
-        let flag = if m.owner_confirmed { "" } else { " (unconfirmed)" };
-        println!("{:<40} {:<6} {:<8} {}{}", m.id, m.horizon, m.status, m.owner, flag);
+        let flag = if m.owner_confirmed {
+            ""
+        } else {
+            " (unconfirmed)"
+        };
+        println!(
+            "{:<40} {:<6} {:<8} {}{}",
+            m.id, m.horizon, m.status, m.owner, flag
+        );
     }
     Ok(())
 }
@@ -600,9 +613,18 @@ fn run_pulse(
             }
             std::process::exit(r.exit_code);
         }
-        PulseCoreCmd::Read { prefix, search, limit, json } => pulse_read(&cfg, prefix, search, limit, json),
-        PulseCoreCmd::Missions { sub: MissionsCmd::Import { spec, force } } => pulse_import(&cfg, &spec, force),
-        PulseCoreCmd::Missions { sub: MissionsCmd::List { json } } => pulse_list(&cfg, json),
+        PulseCoreCmd::Read {
+            prefix,
+            search,
+            limit,
+            json,
+        } => pulse_read(&cfg, prefix, search, limit, json),
+        PulseCoreCmd::Missions {
+            sub: MissionsCmd::Import { spec, force },
+        } => pulse_import(&cfg, &spec, force),
+        PulseCoreCmd::Missions {
+            sub: MissionsCmd::List { json },
+        } => pulse_list(&cfg, json),
     }
 }
 
@@ -631,11 +653,22 @@ fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 if report.copied.is_empty() && report.skipped_dest_exists.is_empty() {
-                    println!("MIGRATE_LOCAL no legacy peram-* files to copy under {}", root.display());
+                    println!(
+                        "MIGRATE_LOCAL no legacy peram-* files to copy under {}",
+                        root.display()
+                    );
                 }
                 for a in &report.copied {
-                    let verb = if report.dry_run { "would-copy" } else { "copied" };
-                    println!("MIGRATE_LOCAL {verb} {} → {}", a.from.display(), a.to.display());
+                    let verb = if report.dry_run {
+                        "would-copy"
+                    } else {
+                        "copied"
+                    };
+                    println!(
+                        "MIGRATE_LOCAL {verb} {} → {}",
+                        a.from.display(),
+                        a.to.display()
+                    );
                 }
                 for a in &report.skipped_dest_exists {
                     println!(
@@ -684,7 +717,8 @@ fn main() -> Result<()> {
                 rt.state = life;
                 rt.snapshot = snap.clone();
                 plan = rt.focus_plan(plan);
-            } else if ensembly_kernel::DepGraph::from_actions(&actions, &Default::default()).is_ok() {
+            } else if ensembly_kernel::DepGraph::from_actions(&actions, &Default::default()).is_ok()
+            {
                 let now = Utc::now();
                 let mut rt = Runtime::new(now);
                 if rt.load_actions(&actions, now).is_ok() {
@@ -778,7 +812,8 @@ fn main() -> Result<()> {
                 let store = OpsStore::open(&db_path)?;
                 let now = Utc::now();
                 let existing = store.load_flow("flow-bill_pay")?;
-                let flow = existing.unwrap_or_else(|| DigitalFlow::bill_pay("flow-bill_pay", &payee, now));
+                let flow =
+                    existing.unwrap_or_else(|| DigitalFlow::bill_pay("flow-bill_pay", &payee, now));
                 let (flow, approval, executed) = run_cycle(&flow, "approve", "operator", now)?;
                 store.save_flow(&flow)?;
                 let mut snap = store
@@ -890,7 +925,11 @@ fn main() -> Result<()> {
                     );
                 }
             }
-            OpsBundleCmd::Import { bundle, dry_run, json } => {
+            OpsBundleCmd::Import {
+                bundle,
+                dry_run,
+                json,
+            } => {
                 let read = OpsStore::read_bundle_file(&bundle)?;
                 if dry_run {
                     let temp = OpsStore::open_in_memory()?;
@@ -982,8 +1021,7 @@ fn main() -> Result<()> {
                     }
                     eprintln!(
                         "PULSE_OK export traces={} archive={}",
-                        status.memory_trace_count,
-                        status.archive_event_count
+                        status.memory_trace_count, status.archive_event_count
                     );
                 }
                 PulsePackCmd::Import {
@@ -1017,8 +1055,7 @@ fn main() -> Result<()> {
                     }
                     eprintln!(
                         "PULSE_OK import dry_run={} after={}",
-                        report.dry_run,
-                        report.memory_trajectory_after
+                        report.dry_run, report.memory_trajectory_after
                     );
                 }
                 PulsePackCmd::Status {
@@ -1126,7 +1163,8 @@ fn main() -> Result<()> {
                         println!("regime: {:?}", rt.state.regime);
                         println!(
                             "CP: {}",
-                            cp.map(|c| c.explain.as_str()).unwrap_or("(none — run runtime load)")
+                            cp.map(|c| c.explain.as_str())
+                                .unwrap_or("(none — run runtime load)")
                         );
                         println!(
                             "metrics: hootl_done={} hitl_surfaces={} agent_failures={}",
@@ -1165,7 +1203,12 @@ fn main() -> Result<()> {
                 RuntimeCmd::Approve { id, json } => {
                     // Normalize: approve uses action id (pay-rent); auth- prefix accepted then stripped.
                     let action_id = ensembly_kernel::runtime::action_id_of(&id).to_string();
-                    rt.enqueue_manual(ManualCmd::Approve { id: action_id.clone() }, now);
+                    rt.enqueue_manual(
+                        ManualCmd::Approve {
+                            id: action_id.clone(),
+                        },
+                        now,
+                    );
                     let report = rt.tick(false, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
                     save_memory(&mut rt);
@@ -1178,7 +1221,12 @@ fn main() -> Result<()> {
                 }
                 RuntimeCmd::Deny { id, json } => {
                     let action_id = ensembly_kernel::runtime::action_id_of(&id).to_string();
-                    rt.enqueue_manual(ManualCmd::Deny { id: action_id.clone() }, now);
+                    rt.enqueue_manual(
+                        ManualCmd::Deny {
+                            id: action_id.clone(),
+                        },
+                        now,
+                    );
                     let report = rt.tick(false, now)?;
                     store.save_runtime_pair(&rt.state, &rt.snapshot)?;
                     save_memory(&mut rt);
@@ -1224,7 +1272,12 @@ fn main() -> Result<()> {
                                 "not enough trajectory to reflect (have {entries}, need >= 5) — run runtime load/tick first"
                             );
                             if json {
-                                println!("{}", serde_json::to_string_pretty(&serde_json::json!({ "ok": false, "reason": msg }))?);
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(
+                                        &serde_json::json!({ "ok": false, "reason": msg })
+                                    )?
+                                );
                             } else {
                                 println!("REFLECT_SKIP {msg}");
                             }
@@ -1234,9 +1287,18 @@ fn main() -> Result<()> {
                             if json {
                                 println!("{}", serde_json::to_string_pretty(&r)?);
                             } else {
-                                println!("REFLECT coherence={:.1}% entries={} skills={} new_skills={:?}", r.coherence * 100.0, r.trajectory_length, r.known_skills, r.new_skills);
+                                println!(
+                                    "REFLECT coherence={:.1}% entries={} skills={} new_skills={:?}",
+                                    r.coherence * 100.0,
+                                    r.trajectory_length,
+                                    r.known_skills,
+                                    r.new_skills
+                                );
                                 for p in &r.goal_proposals {
-                                    println!("  proposal [{}] {} (priority {:.1})", p.goal_type, p.description, p.priority);
+                                    println!(
+                                        "  proposal [{}] {} (priority {:.1})",
+                                        p.goal_type, p.description, p.priority
+                                    );
                                 }
                             }
                             eprintln!(
@@ -1325,10 +1387,18 @@ fn main() -> Result<()> {
                     match sub {
                         AuditCmd::Validate { file } => {
                             let rows = match file {
-                                Some(f) => ca::parse_audits(&std::fs::read_to_string(&f).map_err(|e| anyhow::anyhow!("read {}: {e}", f.display()))?)?,
+                                Some(f) => {
+                                    ca::parse_audits(&std::fs::read_to_string(&f).map_err(
+                                        |e| anyhow::anyhow!("read {}: {e}", f.display()),
+                                    )?)?
+                                }
                                 None => read_store()?,
                             };
-                            println!("ok: {} audits, {} companies", rows.len(), ca::current_audits(&rows).len());
+                            println!(
+                                "ok: {} audits, {} companies",
+                                rows.len(),
+                                ca::current_audits(&rows).len()
+                            );
                         }
                         AuditCmd::Append { file } => {
                             let text = if file.as_os_str() == "-" {
@@ -1336,21 +1406,28 @@ fn main() -> Result<()> {
                                 std::io::Read::read_to_string(&mut std::io::stdin(), &mut t)?;
                                 t
                             } else {
-                                std::fs::read_to_string(&file).map_err(|e| anyhow::anyhow!("read {}: {e}", file.display()))?
+                                std::fs::read_to_string(&file)
+                                    .map_err(|e| anyhow::anyhow!("read {}: {e}", file.display()))?
                             };
                             let (n, skipped) = ca::append_audits(&store, &text)?;
                             println!("appended {n}, skipped {skipped} already stored");
                         }
                         AuditCmd::Export { out_dir } => {
                             let rows = read_store()?;
-                            let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
+                            let dir =
+                                out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
                             ca::write_exports(&rows, &dir)?;
-                            println!("exported {} companies to {}", ca::current_audits(&rows).len(), dir.display());
+                            println!(
+                                "exported {} companies to {}",
+                                ca::current_audits(&rows).len(),
+                                dir.display()
+                            );
                         }
                         AuditCmd::Status { query, now } => {
                             let rows = read_store()?;
                             let now = match now {
-                                Some(t) => chrono::DateTime::parse_from_rfc3339(&t).map_err(|e| anyhow::anyhow!("--now: {e}"))?,
+                                Some(t) => chrono::DateTime::parse_from_rfc3339(&t)
+                                    .map_err(|e| anyhow::anyhow!("--now: {e}"))?,
                                 None => chrono::Local::now().fixed_offset(),
                             };
                             let (status, audit) = ca::status_for(&rows, &query, now);
@@ -1376,10 +1453,29 @@ fn main() -> Result<()> {
                         al::current_rows(&rows).len()
                     );
                 }
-                AppsCmd::Append { company, role, link, apply_url, status, submit_time, submit_time_unknown, cv_version } => {
-                    let status: al::Status = serde_json::from_value(serde_json::Value::String(status))
-                        .map_err(|e| anyhow::anyhow!("status: {e}"))?;
-                    let row = al::Row { company, role, link, apply_url, status, submit_time, submit_time_unknown: submit_time_unknown.then_some(true), cv_version };
+                AppsCmd::Append {
+                    company,
+                    role,
+                    link,
+                    apply_url,
+                    status,
+                    submit_time,
+                    submit_time_unknown,
+                    cv_version,
+                } => {
+                    let status: al::Status =
+                        serde_json::from_value(serde_json::Value::String(status))
+                            .map_err(|e| anyhow::anyhow!("status: {e}"))?;
+                    let row = al::Row {
+                        company,
+                        role,
+                        link,
+                        apply_url,
+                        status,
+                        submit_time,
+                        submit_time_unknown: submit_time_unknown.then_some(true),
+                        cv_version,
+                    };
                     al::append_row(&ledger, &row)?;
                     println!("appended: {} ({})", row.link, row.status.as_str());
                 }
@@ -1387,7 +1483,11 @@ fn main() -> Result<()> {
                     let rows = read(&ledger)?;
                     let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
                     al::write_exports(&rows, &dir)?;
-                    println!("exported {} applications to {}", al::current_rows(&rows).len(), dir.display());
+                    println!(
+                        "exported {} applications to {}",
+                        al::current_rows(&rows).len(),
+                        dir.display()
+                    );
                 }
             }
         }
@@ -1408,12 +1508,8 @@ fn main() -> Result<()> {
                     seed_live_channel_actions(&store)?
                 };
                 let pulse_path = out.unwrap_or_else(|| PathBuf::from(DEFAULT_CHANNEL_PULSE_PATH));
-                let report = reconcile_channel_pulse(
-                    &store,
-                    &actions,
-                    location.as_deref(),
-                    &pulse_path,
-                )?;
+                let report =
+                    reconcile_channel_pulse(&store, &actions, location.as_deref(), &pulse_path)?;
                 if json {
                     println!("{}", serde_json::to_string_pretty(&report)?);
                 } else if verbose && report.wrote {

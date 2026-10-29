@@ -194,17 +194,17 @@ impl PulsePack {
             last_seen,
             memory_trajectory_count: self.memory_crdt.as_ref().map(|d| d.trajectory.len()),
             memory_hash: self.memory_hash.clone().or_else(|| {
-                self.memory_crdt.as_ref().map(|d| d.hash.clone()).filter(|h| !h.is_empty())
+                self.memory_crdt
+                    .as_ref()
+                    .map(|d| d.hash.clone())
+                    .filter(|h| !h.is_empty())
             }),
         }
     }
 }
 
 pub fn traces_from_document(doc: &CrdtDocument) -> Vec<MemoryTrace> {
-    doc.trajectory
-        .values()
-        .map(trace_from_entry)
-        .collect()
+    doc.trajectory.values().map(trace_from_entry).collect()
 }
 
 pub fn trace_from_entry(entry: &TrajectoryEntry) -> MemoryTrace {
@@ -313,10 +313,7 @@ fn load_archive_sidecar(path: &Path) -> Result<Vec<ArchiveEvent>, PulsePackError
     Ok(out)
 }
 
-fn merge_archive_events(
-    mut base: Vec<ArchiveEvent>,
-    more: Vec<ArchiveEvent>,
-) -> Vec<ArchiveEvent> {
+fn merge_archive_events(mut base: Vec<ArchiveEvent>, more: Vec<ArchiveEvent>) -> Vec<ArchiveEvent> {
     let mut index: HashMap<String, usize> = HashMap::new();
     for (i, e) in base.iter().enumerate() {
         index.insert(e.nat_key.clone(), i);
@@ -348,9 +345,8 @@ fn export_archive_from_ops(
     let mut out = vec![];
     for (ts, kind, payload) in tail {
         let nat_key = format!("audit:{}:{}", ts, kind);
-        let payload_val = serde_json::from_str(&payload).unwrap_or_else(|_| {
-            serde_json::json!({ "raw": payload })
-        });
+        let payload_val = serde_json::from_str(&payload)
+            .unwrap_or_else(|_| serde_json::json!({ "raw": payload }));
         let ts_parsed = DateTime::parse_from_rfc3339(&ts)
             .map(|d| d.with_timezone(&Utc))
             .unwrap_or_else(|_| Utc::now());
@@ -565,7 +561,10 @@ fn count_archive_lines(path: &Path) -> Result<usize, PulsePackError> {
     }
     let file = fs::File::open(path)?;
     let reader = BufReader::new(file);
-    Ok(reader.lines().filter(|l| l.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)).count())
+    Ok(reader
+        .lines()
+        .filter(|l| l.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false))
+        .count())
 }
 
 fn last_archive_ts(path: &Path) -> Result<Option<DateTime<Utc>>, PulsePackError> {
@@ -741,17 +740,19 @@ mod tests {
 
         let mut doc = CrdtDocument::new("host");
         let mut patch = CrdtDocument::new("host");
-        patch
-            .trajectory
-            .insert("key-1".into(), entry_from_trace(&sample_trace("key-1", older, "old")));
+        patch.trajectory.insert(
+            "key-1".into(),
+            entry_from_trace(&sample_trace("key-1", older, "old")),
+        );
         doc.merge(&patch);
 
         let pack = PulsePack::from_memory(&doc, vec![], "peer");
         let mut peer_doc = CrdtDocument::new("peer");
         let mut peer_patch = CrdtDocument::new("peer");
-        peer_patch
-            .trajectory
-            .insert("key-1".into(), entry_from_trace(&sample_trace("key-1", newer, "new")));
+        peer_patch.trajectory.insert(
+            "key-1".into(),
+            entry_from_trace(&sample_trace("key-1", newer, "new")),
+        );
         peer_doc.merge(&peer_patch);
         let mut pack_with_update = pack;
         pack_with_update.memory_traces = vec![sample_trace("key-1", newer, "new")];

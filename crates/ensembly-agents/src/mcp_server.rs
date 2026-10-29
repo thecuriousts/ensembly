@@ -137,20 +137,11 @@ pub fn serve(config: McpServeConfig) -> anyhow::Result<()> {
 
 fn open_mem(path: &PathBuf, agent_id: &str) -> Result<EpisodicMemory, Value> {
     // Fail closed: never create an empty doc for read-only MCP (wrong cwd footgun).
-    EpisodicMemory::open_existing(path, agent_id).map_err(|e| {
-        rpc_error(
-            -32000,
-            &format!("open memory {path:?}: {e}"),
-        )
-    })
+    EpisodicMemory::open_existing(path, agent_id)
+        .map_err(|e| rpc_error(-32000, &format!("open memory {path:?}: {e}")))
 }
 
-fn call_tool(
-    name: &str,
-    args: &Value,
-    memory_path: &PathBuf,
-    agent_id: &str,
-) -> DispatchResult {
+fn call_tool(name: &str, args: &Value, memory_path: &PathBuf, agent_id: &str) -> DispatchResult {
     match name {
         "swarm_banner" => Ok(text_content(json!({
             "ok": true,
@@ -173,7 +164,9 @@ fn call_tool(
         "memory_get_report" => {
             let mem = open_mem(memory_path, agent_id)?;
             let report = coherence_report(mem.doc());
-            Ok(text_content(serde_json::to_value(report).unwrap_or_default()))
+            Ok(text_content(
+                serde_json::to_value(report).unwrap_or_default(),
+            ))
         }
         "memory_list_skills" => {
             let mem = open_mem(memory_path, agent_id)?;
@@ -281,11 +274,7 @@ mod tests {
         {
             let mut mem = EpisodicMemory::open(&path, "peram-swarm").unwrap();
             for i in 0..10 {
-                mem.append(
-                    TrajectoryType::Observation,
-                    json!({"i": i}),
-                    0.5,
-                );
+                mem.append(TrajectoryType::Observation, json!({"i": i}), 0.5);
             }
             mem.save().unwrap();
         }
@@ -298,7 +287,10 @@ mod tests {
         .expect("tool ok");
         let text = result["content"][0]["text"].as_str().unwrap();
         let body: Value = serde_json::from_str(text).unwrap();
-        assert_eq!(body["count"], 5, "float limit must not fall back to default 40");
+        assert_eq!(
+            body["count"], 5,
+            "float limit must not fall back to default 40"
+        );
     }
 
     #[test]

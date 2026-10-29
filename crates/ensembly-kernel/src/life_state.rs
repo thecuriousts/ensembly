@@ -54,7 +54,11 @@ impl LifeState {
         }
     }
 
-    pub fn with_graph(graph: DepGraph, now: DateTime<Utc>, mc_samples: u32) -> Result<Self, String> {
+    pub fn with_graph(
+        graph: DepGraph,
+        now: DateTime<Utc>,
+        mc_samples: u32,
+    ) -> Result<Self, String> {
         let mut s = Self::empty(now);
         s.mc_samples = mc_samples;
         s.replace_graph(graph, now)?;
@@ -73,13 +77,16 @@ impl LifeState {
         let cp = compute_critical_path(&self.graph, self.mc_samples)?;
         self.fingerprint = self.graph.fingerprint();
         let needs_hitl = cp.path.iter().any(|id| {
-            self.graph.nodes.get(id).map(|n| {
-                matches!(
-                    n.gate,
-                    crate::graph::GateKind::Auth | crate::graph::GateKind::Physical
-                ) && n.status != crate::graph::TaskStatus::Done
-            })
-            .unwrap_or(false)
+            self.graph
+                .nodes
+                .get(id)
+                .map(|n| {
+                    matches!(
+                        n.gate,
+                        crate::graph::GateKind::Auth | crate::graph::GateKind::Physical
+                    ) && n.status != crate::graph::TaskStatus::Done
+                })
+                .unwrap_or(false)
         }) || self.graph.nodes.values().any(|n| {
             matches!(
                 n.gate,
