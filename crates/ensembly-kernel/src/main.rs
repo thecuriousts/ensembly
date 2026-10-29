@@ -18,6 +18,7 @@ use ensembly_kernel::pulse_pack::{
     PulseExportOpts, PulseImportOpts, DEFAULT_ARCHIVE_SIDECAR,
 };
 use ensembly_kernel::msg_bus::ManualCmd;
+use ensembly_kernel::pulse_core as pc;
 use ensembly_kernel::runtime::Runtime;
 use ensembly_kernel::store::OpsStore;
 use ensembly_kernel::channel_pulse::{
@@ -47,6 +48,48 @@ struct Cli {
 
     #[command(subcommand)]
     cmd: Commands,
+}
+
+#[derive(Subcommand)]
+enum PulseCoreCmd {
+    /// Health verdict. Exit 0 ok, 1 warn, 2 fail. Never writes.
+    Check {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read traces by key prefix or full-text search. Never writes.
+    Read {
+        /// nat_key prefix, e.g. `civic/`
+        prefix: Option<String>,
+        #[arg(long)]
+        search: Option<String>,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Mission store (new store only; sources are read-only)
+    Missions {
+        #[command(subcommand)]
+        sub: MissionsCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum MissionsCmd {
+    /// Import the `| Mission |` table from a spec markdown into the mission store
+    Import {
+        #[arg(long)]
+        spec: PathBuf,
+        /// Replace an existing store (old one is kept as .bak-<utc>)
+        #[arg(long)]
+        force: bool,
+    },
+    /// List missions in the store
+    List {
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -127,6 +170,23 @@ enum Commands {
     PulsePack {
         #[command(subcommand)]
         sub: PulsePackCmd,
+    },
+    /// Pulse core (read-only): health check and read over pulse-memory, mission store import
+    Pulse {
+        /// pulse-memory SQLite (opened read-only). Default: ~/.local/share/pulse-memory/pulse.sqlite
+        #[arg(long, global = true)]
+        pulse_db: Option<PathBuf>,
+        /// premflow binary. Default: first `premflow` on PATH, else ~/.local/bin/premflow
+        #[arg(long, global = true)]
+        premflow_bin: Option<PathBuf>,
+        /// Mission store directory. Default: /workspace/ops/ensembly-pulse/missions
+        #[arg(long, global = true)]
+        missions_dir: Option<PathBuf>,
+        /// Override "now" (RFC 3339 or YYYY-MM-DD), for tests and replays
+        #[arg(long, global = true)]
+        now: Option<String>,
+        #[command(subcommand)]
+        sub: PulseCoreCmd,
     },
     /// Issue #1 control plane: S+G+CP, MsgBus, HITL/HOOTL tick
     Runtime {
@@ -376,6 +436,98 @@ fn ensure_snap(store: &OpsStore, actions: &[Action]) -> Result<Snapshot> {
     let snap = project_wait_snapshot(actions, existing, now);
     store.save_snapshot(&snap)?;
     Ok(snap)
+}
+
+fn pulse_cfg(
+    pulse_db: Option<PathBuf>,
+    premflow_bin: Option<PathBuf>,
+    missions_dir: Option<PathBuf>,
+    now: Option<String>,
+) -> Result<pc::PulseCfg> {
+    let now = match now.as_deref() {
+        None => Utc::now(),
+        Some(s) => pc::parse_ts(s)
+            .ok_or_else(|| anyhow::anyhow!("--now: cannot parse `{s}` (use RFC 3339 or YYYY-MM-DD)"))?,
+    };
+    let mut cfg = pc::PulseCfg::from_env(now);
+    cfg.db = pulse_db.unwrap_or(cfg.db);
+    cfg.premflow_bin = premflow_bin.unwrap_or(cfg.premflow_bin);
+    cfg.missions_dir = missions_dir.unwrap_or(cfg.missions_dir);
+    Ok(cfg)
+}
+
+fn pulse_read(cfg: &pc::PulseCfg, prefix: Option<String>, search: Option<String>, limit: usize, json: bool) -> Result<()> {
+    let conn = pc::open_ro(&cfg.db)?;
+    let rows = match (prefix, search) {
+        (Some(p), None) => pc::read_prefix(&conn, &p, limit)?,
+        (None, Some(q)) => pc::read_search(&conn, &q, limit)?,
+        _ => bail!("give exactly one of <key-prefix> or --search <text>"),
+    };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+    } else {
+        print!("{}", pc::render_traces(&rows));
+    }
+    Ok(())
+}
+
+fn pulse_import(cfg: &pc::PulseCfg, spec: &std::path::Path, force: bool) -> Result<()> {
+    let st = match pc::import_missions(cfg, spec, force) {
+        Ok(st) => st,
+        Err(e) if e.downcast_ref::<pc::RefusedWrite>().is_some() => {
+            eprintln!("{e}");
+            std::process::exit(3);
+        }
+        Err(e) => return Err(e),
+    };
+    let unresolved = st.missions.iter().flat_map(|m| &m.g_files).filter(|g| g.resolved.is_none()).count();
+    println!(
+        "imported {} missions into {} ({} owner(s) unconfirmed, {} G path(s) unresolved)",
+        st.missions.len(),
+        cfg.missions_dir.join(pc::MISSIONS_FILE).display(),
+        st.missions.iter().filter(|m| !m.owner_confirmed).count(),
+        unresolved
+    );
+    Ok(())
+}
+
+fn pulse_list(cfg: &pc::PulseCfg, json: bool) -> Result<()> {
+    let Some(st) = pc::load_store(&cfg.missions_dir)? else {
+        bail!("no mission store at {}", cfg.missions_dir.display());
+    };
+    if json {
+        println!("{}", serde_json::to_string_pretty(&st)?);
+        return Ok(());
+    }
+    for m in &st.missions {
+        let flag = if m.owner_confirmed { "" } else { " (unconfirmed)" };
+        println!("{:<40} {:<6} {:<8} {}{}", m.id, m.horizon, m.status, m.owner, flag);
+    }
+    Ok(())
+}
+
+fn run_pulse(
+    pulse_db: Option<PathBuf>,
+    premflow_bin: Option<PathBuf>,
+    missions_dir: Option<PathBuf>,
+    now: Option<String>,
+    sub: PulseCoreCmd,
+) -> Result<()> {
+    let cfg = pulse_cfg(pulse_db, premflow_bin, missions_dir, now)?;
+    match sub {
+        PulseCoreCmd::Check { json } => {
+            let r = pc::run_check(&cfg);
+            if json {
+                println!("{}", serde_json::to_string_pretty(&r)?);
+            } else {
+                print!("{}", pc::render_check(&r));
+            }
+            std::process::exit(r.exit_code);
+        }
+        PulseCoreCmd::Read { prefix, search, limit, json } => pulse_read(&cfg, prefix, search, limit, json),
+        PulseCoreCmd::Missions { sub: MissionsCmd::Import { spec, force } } => pulse_import(&cfg, &spec, force),
+        PulseCoreCmd::Missions { sub: MissionsCmd::List { json } } => pulse_list(&cfg, json),
+    }
 }
 
 fn main() -> Result<()> {
@@ -705,6 +857,13 @@ fn main() -> Result<()> {
                 }
             }
         },
+        Commands::Pulse {
+            pulse_db,
+            premflow_bin,
+            missions_dir,
+            now,
+            sub,
+        } => run_pulse(pulse_db, premflow_bin, missions_dir, now, sub)?,
         Commands::PulsePack { sub } => {
             let memory_path = resolve_memory_path(cli.memory.clone());
             let archive_sidecar = PathBuf::from(DEFAULT_ARCHIVE_SIDECAR);
