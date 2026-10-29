@@ -229,9 +229,6 @@ fn same_state_key(r: &Row) -> Row {
     }
 }
 
-/// Append one validated row. A row equal to an existing one (ignoring surrounding
-/// whitespace and a trailing slash or `/application` on the link) is refused with an
-/// error (CLI exit 1), never written twice. No file lock: one writer at a time.
 /// Open a JSONL store for appending. If the file is non-empty and its last
 /// byte is not a newline (for example after a hand edit), write one first so
 /// the next row starts on its own line.
@@ -253,6 +250,9 @@ pub(crate) fn open_jsonl_append(path: &Path) -> anyhow::Result<std::fs::File> {
     Ok(f)
 }
 
+/// Append one validated row. A row equal to an existing one (ignoring surrounding
+/// whitespace and a trailing slash or `/application` on the link) is refused with an
+/// error (CLI exit 1), never written twice. No file lock: one writer at a time.
 pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
     use std::io::Write;
     validate_row(r)?;
