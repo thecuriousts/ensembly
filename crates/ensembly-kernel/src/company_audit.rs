@@ -60,6 +60,9 @@ pub struct Audit {
     pub checks: Vec<Check>,
     pub audited_at: String,
     pub audited_by: String,
+    /// Optional `audited_at` of the earlier audit whose result this row reuses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reused_from: Option<String>,
 }
 
 /// Gate status for `audit status`.
@@ -177,6 +180,19 @@ fn is_https(u: &str) -> bool {
     u.starts_with("https://") && u.len() > "https://".len() && !u.contains(char::is_whitespace)
 }
 
+fn validate_optional_fields(a: &Audit) -> anyhow::Result<()> {
+    if let Some(u) = &a.apply_url {
+        if !is_https(u) {
+            anyhow::bail!("apply_url must be an https URL");
+        }
+    }
+    if let Some(r) = &a.reused_from {
+        crate::application_ledger::check_submit_time(r)
+            .map_err(|e| anyhow::anyhow!("reused_from: {e}"))?;
+    }
+    Ok(())
+}
+
 pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
     for (name, v) in [("company", &a.company), ("audited_by", &a.audited_by)] {
         if v.trim().is_empty() {
@@ -192,11 +208,7 @@ pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
             dom
         );
     }
-    if let Some(u) = &a.apply_url {
-        if !is_https(u) {
-            anyhow::bail!("apply_url must be an https URL");
-        }
-    }
+    validate_optional_fields(a)?;
     crate::application_ledger::check_submit_time(&a.audited_at)
         .map_err(|e| anyhow::anyhow!("audited_at: {e}"))?;
     for id in CheckId::ALL {
@@ -562,6 +574,19 @@ mod tests {
     }
 
     #[test]
+    fn reused_from_is_optional_and_checked() {
+        let base = SAMPLE.lines().next().unwrap();
+        let with = base.replacen("{", r#"{"reused_from":"2026-10-20T09:00:00+02:00","#, 1);
+        let rows = parse_audits(&with).expect("row with reused_from validates");
+        assert_eq!(rows[0].reused_from.as_deref(), Some("2026-10-20T09:00:00+02:00"));
+        assert!(parse_audits(base).is_ok(), "row without reused_from still validates");
+        let bad = base.replacen("{", r#"{"reused_from":"yesterday","#, 1);
+        assert!(parse_audits(&bad).is_err(), "reused_from must be a timestamp");
+        let extra = base.replacen("{", r#"{"reused_by":"x","#, 1);
+        assert!(parse_audits(&extra).is_err(), "unknown fields stay refused");
+    }
+
+    #[test]
     fn rejects_bad_domain_time_and_unknown_fields() {
         let mut a = first();
         a.domain = "https://Northwind.example.test/".into();
@@ -775,7 +800,10 @@ mod tests {
             .cloned()
             .collect();
         keys.sort();
-        let full = serde_json::to_value(&first()).unwrap();
+        let mut a = first();
+        a.apply_url.get_or_insert_with(|| "https://jobs.example.test/x".into());
+        a.reused_from = Some("2026-10-20T09:00:00+02:00".into());
+        let full = serde_json::to_value(&a).unwrap();
         let mut rk: Vec<_> = full.as_object().unwrap().keys().cloned().collect();
         rk.sort();
         assert_eq!(keys, rk);
