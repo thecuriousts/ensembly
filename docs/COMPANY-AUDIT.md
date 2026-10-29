@@ -27,6 +27,7 @@ Sample (fictional): `fixtures/company-audits-sample.jsonl`.
 | `verdict` | **Derived, then checked**: `block` if any check is block; `flag` if any check is flag or any of `apply_domain`, `domain_age`, `funding_ownership` is unknown; else `pass`. A row whose stated verdict disagrees is refused. |
 | `audited_at` | RFC 3339 with seconds and the Europe/Stockholm offset (`+01:00` / `+02:00`). |
 | `audited_by` | Non-blank (agent or person label, no personal contact data). |
+| `reused_from` | Optional. The `audited_at` of an earlier audit whose result this row reuses (a re-stamp, not a fresh check). Same time format as `audited_at`. |
 
 Unknown fields are refused. Append-only: a re-audit is a new row; the last
 row per domain wins.
