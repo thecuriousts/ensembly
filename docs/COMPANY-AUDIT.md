@@ -62,6 +62,7 @@ several domains, the most recent audit wins).
 | `block` | Latest audit blocks: do not prepare or send | 4 |
 | `unaudited` | No audit for this company/domain | 5 |
 | `stale` | Latest audit is older than 30 days: re-audit | 5 |
+| `stale` | Latest `audited_at` is more than 5 minutes in the future: fix the stamp | 5 |
 | (error) | Store unreadable or invalid, bad arguments | 1 / 2 |
 
 `status` prints one JSON object: `query`, `status`, `company`, `domain`,

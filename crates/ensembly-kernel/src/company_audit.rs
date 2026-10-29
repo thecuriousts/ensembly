@@ -9,6 +9,9 @@ use std::path::Path;
 pub const DEFAULT_AUDIT_PATH: &str = "data/local/applications/company-audits.jsonl";
 /// Audits older than this many days count as stale.
 pub const STALE_AFTER_DAYS: i64 = 30;
+/// An `audited_at` more than this many minutes after `now` reads as stale:
+/// a future stamp would otherwise stay fresh for ever.
+pub const FUTURE_SKEW_MINUTES: i64 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -307,7 +310,10 @@ pub fn status_for(
     let Ok(at) = chrono::DateTime::parse_from_rfc3339(&a.audited_at) else {
         return (GateStatus::Stale, Some(a));
     };
-    if now.signed_duration_since(at) > chrono::Duration::days(STALE_AFTER_DAYS) {
+    let age = now.signed_duration_since(at);
+    if age > chrono::Duration::days(STALE_AFTER_DAYS)
+        || age < -chrono::Duration::minutes(FUTURE_SKEW_MINUTES)
+    {
         return (GateStatus::Stale, Some(a));
     }
     let s = match a.verdict {
@@ -636,6 +642,23 @@ mod tests {
         assert_ne!(
             status_for(&rows, "fabrikam.example.test", t).0,
             GateStatus::Stale
+        );
+    }
+
+    #[test]
+    fn future_audited_at_reads_stale_not_fresh_forever() {
+        let mut rows = sample();
+        let t = now("2026-10-27T12:00:00+01:00");
+        rows[0].audited_at = "2027-10-27T12:00:00+01:00".into();
+        assert_eq!(
+            status_for(&rows, "northwind.example.test", t).0,
+            GateStatus::Stale
+        );
+        // a few seconds of clock skew between writers is still fresh
+        rows[0].audited_at = "2026-10-27T12:04:00+01:00".into();
+        assert_eq!(
+            status_for(&rows, "northwind.example.test", t).0,
+            GateStatus::Pass
         );
     }
 
