@@ -4,6 +4,7 @@ members = [
     "crates/ensembly-kernel",
     "crates/ensembly-memory",
     "crates/ensembly-agents",
+    "crates/ensembly-schema",
 ]
 resolver = "2"
 

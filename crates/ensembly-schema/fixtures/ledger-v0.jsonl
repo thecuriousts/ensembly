@@ -1,0 +1,6 @@
+{"company":"Acme Fictional","role":"Widget Engineer","link":"https://jobs.example.test/acme/1","status":"prepared","submit_time":null,"cv_version":"cv-sample-1"}
+{"company":"Acme Fictional","role":"Widget Engineer","link":"https://jobs.example.test/acme/2","status":"submitted","submit_time":"2026-10-26T18:59:00+01:00","cv_version":"cv-sample-1"}
+{"company":"Bramble Fictional","role":"Widget Engineer","link":"https://jobs.example.test/bramble/1","status":"interview","submit_time":"2026-07-01T10:00:00+02:00","cv_version":"cv-sample-1"}
+{"company":"Acme Fictional","role":"Engineer, Widgets","link":"https://jobs.example.test/acme/3","apply_url":"https://jobs.example.test/acme/3/application","status":"submitted","submit_time":"2026-10-26T18:59:00+01:00","cv_version":"cv-sample-1"}
+{"company":"Acme Fictional","role":"Widget Engineer","link":"https://example.test/j/u","status":"rejected","submit_time":null,"submit_time_unknown":true,"cv_version":"legacy-unknown"}
+{"company":"Ember Fictional","role":"Widget Engineer","link":"https://jobs.example.test/ember/1","apply_url":"https://jobs.example.test/ember/1/application","status":"silent-closed","submit_time":null,"submit_time_unknown":true,"cv_version":"cv-sample-1"}
