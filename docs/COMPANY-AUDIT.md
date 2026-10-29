@@ -24,7 +24,7 @@ Sample (fictional): `fixtures/company-audits-sample.jsonl`.
 | `checks` | Each of the 8 ids **exactly once**: `apply_domain`, `domain_age`, `funding_ownership`, `headcount`, `reviews_news`, `duplicate_ghost`, `payment_id_ask`, `agency_repost`. Result `pass`, `flag`, `block` or `unknown`. A partial audit is not an audit; record what you could not find as `unknown`. |
 | `checks[].note` | Non-blank. Refused if it looks like personal data: an email address, or a phone-like number (9+ digits written with `+`, a leading 0, parentheses or separators). ISO dates and plain amounts pass. |
 | `checks[].sources` | https URLs only. Every `pass`/`flag`/`block` needs at least one; `unknown` may have none. |
-| `verdict` | **Derived, then checked**: `block` if any check is block; `flag` if any check is flag or any of `apply_domain`, `domain_age`, `funding_ownership` is unknown; else `pass`. A row whose stated verdict disagrees is refused. |
+| `verdict` | **Derived, then checked**: `block` if any check is block; `flag` if any check is flag, any of `apply_domain`, `domain_age`, `funding_ownership` is unknown, or `headcount` and `reviews_news` are both unknown (the employer's size and standing are then unverified); else `pass`. A new row whose stated verdict disagrees is refused. A row stored before 30 Oct 2026 that says `pass` under the earlier rule still reads, but `status` and exports use the derived verdict (`flag`). |
 | `audited_at` | RFC 3339 with seconds and the Europe/Stockholm offset (`+01:00` / `+02:00`). |
 | `audited_by` | Non-blank (agent or person label, no personal contact data). |
 | `reused_from` | Optional. The `audited_at` of an earlier audit whose result this row reuses (a re-stamp, not a fresh check). Same time format as `audited_at`. |

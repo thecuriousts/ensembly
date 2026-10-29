@@ -1436,7 +1436,7 @@ fn main() -> Result<()> {
                                 "status": status,
                                 "company": audit.as_ref().map(|a| a.company.clone()),
                                 "domain": audit.as_ref().map(|a| a.domain.clone()),
-                                "verdict": audit.as_ref().map(|a| a.verdict),
+                                "verdict": audit.as_ref().map(|a| a.effective_verdict()),
                                 "audited_at": audit.as_ref().map(|a| a.audited_at.clone()),
                                 "stale_after_days": ca::STALE_AFTER_DAYS,
                             });
