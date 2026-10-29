@@ -1,1 +1,114 @@
-{"$schema":"http://json-schema.org/draft-07/schema#","title":"Audit","type":"object","required":["audited_at","audited_by","checks","company","domain","verdict"],"properties":{"apply_url":{"type":["string","null"]},"audited_at":{"type":"string"},"audited_by":{"type":"string"},"checks":{"type":"array","items":{"$ref":"#/definitions/Check"}},"company":{"type":"string"},"domain":{"type":"string"},"reused_from":{"type":["string","null"]},"verdict":{"$ref":"#/definitions/Verdict"}},"additionalProperties":false,"definitions":{"Check":{"type":"object","required":["id","note","result","sources"],"properties":{"id":{"$ref":"#/definitions/CheckId"},"note":{"type":"string"},"result":{"$ref":"#/definitions/CheckResult"},"sources":{"type":"array","items":{"type":"string"}}},"additionalProperties":false},"CheckId":{"type":"string","enum":["apply_domain","domain_age","funding_ownership","headcount","reviews_news","duplicate_ghost","payment_id_ask","agency_repost"]},"CheckResult":{"type":"string","enum":["pass","flag","block","unknown"]},"Verdict":{"type":"string","enum":["pass","flag","block"]}}}
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditLine",
+  "type": "object",
+  "required": [
+    "audited_at",
+    "audited_by",
+    "checks",
+    "company",
+    "domain",
+    "v",
+    "verdict"
+  ],
+  "properties": {
+    "apply_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "audited_at": {
+      "type": "string"
+    },
+    "audited_by": {
+      "type": "string"
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Check"
+      }
+    },
+    "company": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "reused_from": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "v": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "verdict": {
+      "$ref": "#/definitions/Verdict"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "Check": {
+      "type": "object",
+      "required": [
+        "id",
+        "note",
+        "result",
+        "sources"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/CheckId"
+        },
+        "note": {
+          "type": "string"
+        },
+        "result": {
+          "$ref": "#/definitions/CheckResult"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "CheckId": {
+      "type": "string",
+      "enum": [
+        "apply_domain",
+        "domain_age",
+        "funding_ownership",
+        "headcount",
+        "reviews_news",
+        "duplicate_ghost",
+        "payment_id_ask",
+        "agency_repost"
+      ]
+    },
+    "CheckResult": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "flag",
+        "block",
+        "unknown"
+      ]
+    },
+    "Verdict": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "flag",
+        "block"
+      ]
+    }
+  }
+}
