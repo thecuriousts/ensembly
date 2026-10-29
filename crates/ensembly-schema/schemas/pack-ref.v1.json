@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PackRefLine",
+  "type": "object",
+  "required": [
+    "company",
+    "cv_version",
+    "domain",
+    "id",
+    "link",
+    "role",
+    "sha256",
+    "v"
+  ],
+  "properties": {
+    "apply_url": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "company": {
+      "type": "string"
+    },
+    "cv_version": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string"
+    },
+    "link": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string"
+    },
+    "sha256": {
+      "type": "string"
+    },
+    "v": {
+      "const": 1
+    }
+  },
+  "additionalProperties": false
+}
