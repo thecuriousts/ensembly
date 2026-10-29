@@ -64,4 +64,29 @@ cargo run -p ensembly-kernel -- apps export   # byte-identical on re-run; each f
 Exports list current state only, ordered by submit instant, then link;
 rows without a time (`prepared`, unsent `withdrawn`) come last, ordered by link.
 
+### TRACKER.md (`apps export --tracker`)
+
+```bash
+ensembly apps export --tracker [--join FILE] [--prepared FILE] [--stamp "YYYY-MM-DD HH:MM"] [--out-dir DIR]
+```
+
+Writes only `DIR/TRACKER.md` (temp file + rename) and prints a JSON summary.
+It replaces the ops script `gen_tracker.py` and is byte-equal to it for the
+same inputs (golden test `tests/tracker_golden.rs`, synthetic fixtures in
+`fixtures/tracker/`). Code: `crates/ensembly-kernel/src/tracker.rs`.
+
+- Current state: last ledger row per tracker link key, ordered as in the exports.
+- `--join`: side file with Posted, Lane, Linear, Trello, Pack per row. Format by
+  extension: `.md` (a hand tracker table; lines after it are carried as notes),
+  `.jsonl` (keys = column names) or `.csv` (header = column names).
+- Join key: first URL in the cell, without `#…`, `?…`, a trailing `/`,
+  `/application` or `/apply`, lowercased; the ledger's `link`, then `apply_url`.
+  Fallback: company + role without parentheticals, only when one row is left.
+  Like the script, a ledger row with no `apply_url` can take a side row that
+  has no URL (key ""); fix once the script is retired.
+- Side rows that match no ledger row, then the `--prepared` rows, form the
+  "Prepared, not submitted" section, status as written.
+- The header line still names gen_tracker.py so the bytes match; change it
+  when the script is retired.
+
 Company audits (the gate before a pack or an application) live in a separate store: see [COMPANY-AUDIT.md](COMPANY-AUDIT.md).
