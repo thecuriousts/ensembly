@@ -12,6 +12,7 @@ pub mod approvals;
 pub mod backup;
 pub mod channel_pulse;
 pub mod pulse_pack;
+pub mod pulse_core;
 pub mod critical_path;
 pub mod digital_flow;
 pub mod graph;
