@@ -560,8 +560,9 @@ pub fn dangling_reuse(rows: &[Audit]) -> Vec<usize> {
 /// Write `company-audits.csv` + `company-audits.md` (byte-identical on re-run).
 pub fn write_exports(rows: &[Audit], dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
-    std::fs::write(dir.join("company-audits.csv"), export_csv(rows))?;
-    std::fs::write(dir.join("company-audits.md"), export_markdown(rows))?;
+    let write = crate::application_ledger::write_atomic;
+    write(&dir.join("company-audits.csv"), export_csv(rows).as_bytes())?;
+    write(&dir.join("company-audits.md"), export_markdown(rows).as_bytes())?;
     Ok(())
 }
 
@@ -950,6 +951,18 @@ mod tests {
             std::fs::read(dir.path().join("company-audits.csv")).unwrap()
         );
         assert!(!a.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_exports_replaces_files_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let rows = sample();
+        crate::application_ledger::tests::assert_replaced_atomically(
+            dir.path(),
+            &["company-audits.csv", "company-audits.md"],
+            &|| write_exports(&rows, dir.path()).unwrap(),
+        );
     }
 
     #[test]

@@ -58,7 +58,7 @@ cargo run -p ensembly-kernel -- apps validate
 cargo run -p ensembly-kernel -- apps append --company "Example" --role "Engineer" \
   --link https://jobs.example.test/1 --apply-url https://jobs.example.test/1/application --status submitted \
   --submit-time 2026-10-26T18:59:00+01:00 --cv-version cv-sample-1
-cargo run -p ensembly-kernel -- apps export   # byte-identical on re-run
+cargo run -p ensembly-kernel -- apps export   # byte-identical on re-run; each file replaced atomically (temp + rename)
 ```
 
 Exports list current state only, ordered by submit instant, then link;

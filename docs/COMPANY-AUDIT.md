@@ -45,7 +45,7 @@ row per domain wins.
 ensembly apps audit validate [FILE]          # store, or a FILE in the same format
 ensembly apps audit append FILE|-            # all lines validated first (any error: nothing written);
                                              # rows already stored are skipped, so a re-run appends 0
-ensembly apps audit export [--out-dir DIR]   # byte-identical on re-run; one row per domain, sorted
+ensembly apps audit export [--out-dir DIR]   # byte-identical on re-run; one row per domain, sorted; atomic replace
 ensembly apps audit status <company-or-domain> [--now RFC3339]
 ```
 

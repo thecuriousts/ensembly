@@ -276,16 +276,50 @@ pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Replace `path` atomically: write a temp file in the same directory, flush
+/// it to disk, then rename it over `path`. A reader sees the old or the new
+/// file, never a half-written one; on error the temp file is removed.
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    use std::io::Write;
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("no file name in {}", path.display()))?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp = dir.join(format!(
+        ".{}.tmp-{}-{nanos}",
+        name.to_string_lossy(),
+        std::process::id()
+    ));
+    let result = (|| -> anyhow::Result<()> {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
 /// Write `applications.csv` + `applications.md` into `dir` (byte-identical on re-run).
 pub fn write_exports(rows: &[Row], dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
-    std::fs::write(dir.join("applications.csv"), export_csv(rows))?;
-    std::fs::write(dir.join("applications.md"), export_markdown(rows))?;
+    write_atomic(&dir.join("applications.csv"), export_csv(rows).as_bytes())?;
+    write_atomic(&dir.join("applications.md"), export_markdown(rows).as_bytes())?;
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const SAMPLE: &str = include_str!("../../../fixtures/application-ledger-sample.jsonl");
@@ -720,6 +754,38 @@ mod tests {
         let mut bad = r.clone();
         bad.submit_time = None;
         assert!(append_row(&p, &bad).is_err());
+    }
+
+    /// An atomic replace gives each export a new inode (temp file + rename);
+    /// an in-place write would truncate the file a reader may have open.
+    #[cfg(unix)]
+    pub(crate) fn assert_replaced_atomically(dir: &Path, names: &[&str], write: &dyn Fn()) {
+        use std::os::unix::fs::MetadataExt;
+        write();
+        let ino = |n: &str| std::fs::metadata(dir.join(n)).unwrap().ino();
+        let before: Vec<u64> = names.iter().map(|n| ino(n)).collect();
+        let held = std::fs::read(dir.join(names[0])).unwrap();
+        write();
+        for (n, b) in names.iter().zip(&before) {
+            assert_ne!(ino(n), *b, "{n} was rewritten in place");
+        }
+        assert_eq!(std::fs::read(dir.join(names[0])).unwrap(), held);
+        let left: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| !names.contains(&n.as_str()))
+            .collect();
+        assert!(left.is_empty(), "temp files left: {left:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_exports_replaces_files_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let rows = parse_ledger(SAMPLE).unwrap();
+        assert_replaced_atomically(dir.path(), &["applications.csv", "applications.md"], &|| {
+            write_exports(&rows, dir.path()).unwrap()
+        });
     }
 
     #[test]
