@@ -381,7 +381,7 @@ pub fn status_for(
     (s, Some(a))
 }
 
-/// 0 pass, 3 flag, 4 block, 5 unaudited or stale. (1/2 stay free for errors/usage.)
+/// 0 pass, 3 = flag (not approvable), 4 block, 5 unaudited or stale. (1/2 stay free for errors/usage.)
 pub fn exit_code(s: GateStatus) -> i32 {
     match s {
         GateStatus::Pass => 0,
@@ -831,6 +831,23 @@ mod tests {
             status_for(&rows, "fabrikam.example.test", t).0,
             GateStatus::Stale
         );
+    }
+
+    #[test]
+    fn future_skew_limit_is_exactly_five_minutes() {
+        let mut rows = sample();
+        let t = now("2026-10-27T12:00:00+01:00");
+        let at = |s: &str, rows: &mut Vec<Audit>| {
+            rows[0].audited_at = s.into();
+            status_for(rows, "northwind.example.test", t).0
+        };
+        // now + 5 min 1 s: past the limit, stale
+        assert_eq!(
+            at("2026-10-27T12:05:01+01:00", &mut rows),
+            GateStatus::Stale
+        );
+        // now + 4 min 59 s: within the limit, still the verdict
+        assert_eq!(at("2026-10-27T12:04:59+01:00", &mut rows), GateStatus::Pass);
     }
 
     #[test]

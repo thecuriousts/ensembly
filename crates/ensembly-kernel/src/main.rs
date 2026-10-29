@@ -407,7 +407,7 @@ enum AuditCmd {
         #[arg(long)]
         out_dir: Option<PathBuf>,
     },
-    /// Print JSON status for a company name or domain; exit 0 pass, 3 flag, 4 block, 5 unaudited/stale
+    /// Print JSON status for a company name or domain; exit 0 pass, 3 = flag (not approvable), 4 block, 5 unaudited or stale
     Status {
         query: String,
         /// Evaluate staleness at this RFC 3339 time instead of now (tests/replays)

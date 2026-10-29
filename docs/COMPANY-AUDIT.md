@@ -58,7 +58,7 @@ several domains, the most recent audit wins).
 | Status | Meaning | Exit |
 |---|---|---|
 | `pass` | Latest audit passes and is ≤ 30 days old | 0 |
-| `flag` | Latest audit flags: a human looks before a pack or send | 3 |
+| `flag` | 3 = flag (not approvable): a human reviews the flags before a pack or send | 3 |
 | `block` | Latest audit blocks: do not prepare or send | 4 |
 | `unaudited` | No audit for this company/domain | 5 |
 | `stale` | Latest audit is older than 30 days: re-audit | 5 |
