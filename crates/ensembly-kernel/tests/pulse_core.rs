@@ -582,18 +582,49 @@ fn cli_read_and_refused_write() {
     let out = bin(&fx, &["read", "demo/a"]);
     assert_eq!(out.status.code(), Some(0));
     assert!(String::from_utf8_lossy(&out.stdout).contains("demo/alpha"));
-    // Refused write: a second import without --force exits 3.
+    // Refused write: a second import without --force exits REFUSED_WRITE_EXIT.
     fs::write(fx.root.join("spec.md"), SPEC).unwrap();
     let spec = fx.root.join("spec.md");
     let spec = spec.to_str().unwrap();
     let first = bin(&fx, &["missions", "import", "--spec", spec]);
     assert_eq!(first.status.code(), Some(0));
     let second = bin(&fx, &["missions", "import", "--spec", spec]);
-    assert_eq!(second.status.code(), Some(3));
+    assert_eq!(second.status.code(), Some(7));
+    assert_eq!(second.status.code(), Some(pc::REFUSED_WRITE_EXIT));
     assert_ne!(
         bin(&fx, &["read"]).status.code(),
         Some(0),
         "read needs a prefix or --search"
     );
     assert_ne!(bin_at(&fx, "garbage", &["check"]).status.code(), Some(0));
+}
+
+/// No exit code may mean two different things across `pulse` and `apps audit status`:
+/// pulse 0 ok / 1 warn / 2 fail / REFUSED_WRITE_EXIT; audit 0 pass / 3 flag / 4 block /
+/// 5 unaudited or stale (1/2 errors). 0 is success in both.
+#[test]
+fn pulse_and_audit_exit_codes_do_not_clash() {
+    use ensembly_kernel::company_audit::{exit_code, GateStatus};
+    let audit: Vec<i32> = [
+        GateStatus::Flag,
+        GateStatus::Block,
+        GateStatus::Unaudited,
+        GateStatus::Stale,
+    ]
+    .iter()
+    .map(|s| exit_code(*s))
+    .collect();
+    assert_eq!(
+        audit,
+        [3, 4, 5, 5],
+        "audit codes are a contract with callers"
+    );
+    assert_eq!(exit_code(GateStatus::Pass), 0);
+    let pulse = [1, 2, pc::REFUSED_WRITE_EXIT];
+    for c in pulse {
+        assert!(
+            !audit.contains(&c),
+            "pulse exit {c} is also an audit status"
+        );
+    }
 }

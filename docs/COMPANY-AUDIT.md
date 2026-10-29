@@ -24,10 +24,10 @@ Sample (fictional): `fixtures/company-audits-sample.jsonl`.
 | `checks` | Each of the 8 ids **exactly once**: `apply_domain`, `domain_age`, `funding_ownership`, `headcount`, `reviews_news`, `duplicate_ghost`, `payment_id_ask`, `agency_repost`. Result `pass`, `flag`, `block` or `unknown`. A partial audit is not an audit; record what you could not find as `unknown`. |
 | `checks[].note` | Non-blank. Refused if it looks like personal data: an email address, or a phone-like number (9+ digits written with `+`, a leading 0, parentheses or separators). ISO dates and plain amounts pass. |
 | `checks[].sources` | https URLs only. Every `pass`/`flag`/`block` needs at least one; `unknown` may have none. |
-| `verdict` | **Derived, then checked**: `block` if any check is block; `flag` if any check is flag or any of `apply_domain`, `domain_age`, `funding_ownership` is unknown; else `pass`. A row whose stated verdict disagrees is refused. |
+| `verdict` | **Derived, then checked**: `block` if any check is block; `flag` if any check is flag, any of `apply_domain`, `domain_age`, `funding_ownership` is unknown, or `headcount` and `reviews_news` are both unknown (the employer's size and standing are then unverified); else `pass`. A new row whose stated verdict disagrees is refused. A row stored before 30 Oct 2026 that says `pass` under the earlier rule still reads, but `status` and exports use the derived verdict (`flag`). |
 | `audited_at` | RFC 3339 with seconds and the Europe/Stockholm offset (`+01:00` / `+02:00`). |
 | `audited_by` | Non-blank (agent or person label, no personal contact data). |
-| `reused_from` | Optional. The `audited_at` of an earlier audit whose result this row reuses (a re-stamp, not a fresh check). Same time format as `audited_at`. |
+| `reused_from` | Optional. The `audited_at` of an earlier audit whose result this row reuses (a re-stamp, not a fresh check). Same time format as `audited_at`. On append it must name an audit of the **same domain** already in the store (or earlier in the same batch) with an earlier time; otherwise the append is refused. `validate` warns (exit 0) about stored rows written before this check whose reference names no such audit. |
 
 Unknown fields are refused. Append-only: a re-audit is a new row; the last
 row per domain wins.
@@ -45,7 +45,7 @@ row per domain wins.
 ensembly apps audit validate [FILE]          # store, or a FILE in the same format
 ensembly apps audit append FILE|-            # all lines validated first (any error: nothing written);
                                              # rows already stored are skipped, so a re-run appends 0
-ensembly apps audit export [--out-dir DIR]   # byte-identical on re-run; one row per domain, sorted
+ensembly apps audit export [--out-dir DIR]   # byte-identical on re-run; one row per domain, sorted; atomic replace
 ensembly apps audit status <company-or-domain> [--now RFC3339]
 ```
 
@@ -58,10 +58,11 @@ several domains, the most recent audit wins).
 | Status | Meaning | Exit |
 |---|---|---|
 | `pass` | Latest audit passes and is ≤ 30 days old | 0 |
-| `flag` | Latest audit flags: a human looks before a pack or send | 3 |
+| `flag` | 3 = flag (not approvable): a human reviews the flags before a pack or send | 3 |
 | `block` | Latest audit blocks: do not prepare or send | 4 |
 | `unaudited` | No audit for this company/domain | 5 |
 | `stale` | Latest audit is older than 30 days: re-audit | 5 |
+| `stale` | Latest `audited_at` is more than 5 minutes in the future: fix the stamp | 5 |
 | (error) | Store unreadable or invalid, bad arguments | 1 / 2 |
 
 `status` prints one JSON object: `query`, `status`, `company`, `domain`,

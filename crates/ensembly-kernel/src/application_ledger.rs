@@ -229,9 +229,6 @@ fn same_state_key(r: &Row) -> Row {
     }
 }
 
-/// Append one validated row. A row equal to an existing one (ignoring surrounding
-/// whitespace and a trailing slash or `/application` on the link) is refused with an
-/// error (CLI exit 1), never written twice. No file lock: one writer at a time.
 /// Open a JSONL store for appending. If the file is non-empty and its last
 /// byte is not a newline (for example after a hand edit), write one first so
 /// the next row starts on its own line.
@@ -253,6 +250,9 @@ pub(crate) fn open_jsonl_append(path: &Path) -> anyhow::Result<std::fs::File> {
     Ok(f)
 }
 
+/// Append one validated row. A row equal to an existing one (ignoring surrounding
+/// whitespace and a trailing slash or `/application` on the link) is refused with an
+/// error (CLI exit 1), never written twice. No file lock: one writer at a time.
 pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
     use std::io::Write;
     validate_row(r)?;
@@ -276,16 +276,53 @@ pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Replace `path` atomically: write a temp file in the same directory, flush
+/// it to disk, then rename it over `path`. A reader sees the old or the new
+/// file, never a half-written one; on error the temp file is removed.
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
+    use std::io::Write;
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let name = path
+        .file_name()
+        .ok_or_else(|| anyhow::anyhow!("no file name in {}", path.display()))?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let tmp = dir.join(format!(
+        ".{}.tmp-{}-{nanos}",
+        name.to_string_lossy(),
+        std::process::id()
+    ));
+    let result = (|| -> anyhow::Result<()> {
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
 /// Write `applications.csv` + `applications.md` into `dir` (byte-identical on re-run).
 pub fn write_exports(rows: &[Row], dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
-    std::fs::write(dir.join("applications.csv"), export_csv(rows))?;
-    std::fs::write(dir.join("applications.md"), export_markdown(rows))?;
+    write_atomic(&dir.join("applications.csv"), export_csv(rows).as_bytes())?;
+    write_atomic(
+        &dir.join("applications.md"),
+        export_markdown(rows).as_bytes(),
+    )?;
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     const SAMPLE: &str = include_str!("../../../fixtures/application-ledger-sample.jsonl");
@@ -592,11 +629,16 @@ mod tests {
 
     const SCHEMA: &str = include_str!("../../../schemas/application-ledger-row.schema.json");
 
-    #[test]
-    fn schema_matches_rust_rules_and_accepts_the_sample() {
-        let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
-        let props = schema["properties"].as_object().unwrap();
-        // every field Rust can write is in the schema, and nothing else
+    fn str_array(v: &serde_json::Value) -> Vec<&str> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect()
+    }
+
+    /// Every field Rust can write is in the schema, and nothing else.
+    fn assert_schema_keys_match_rust(props: &serde_json::Map<String, serde_json::Value>) {
         let full = r#"{"company":"A","role":"R","link":"https://x.test/1","apply_url":"https://x.test/1/application","status":"rejected","submit_time":null,"submit_time_unknown":true,"cv_version":"v"}"#;
         let full: serde_json::Value =
             serde_json::to_value(&parse_ledger(full).unwrap()[0]).unwrap();
@@ -605,13 +647,10 @@ mod tests {
         rust_keys.sort();
         schema_keys.sort();
         assert_eq!(rust_keys, schema_keys);
-        // status enum == Rust Status
-        let statuses: Vec<&str> = props["status"]["enum"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap())
-            .collect();
+    }
+
+    /// Status enum == Rust Status.
+    fn assert_status_enum_matches_rust(props: &serde_json::Map<String, serde_json::Value>) {
         let all = [
             Status::Prepared,
             Status::Submitted,
@@ -620,9 +659,14 @@ mod tests {
             Status::Withdrawn,
             Status::SilentClosed,
         ];
-        assert_eq!(statuses, all.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-        // submit_time pattern agrees with the Rust time check
-        let re = regex::Regex::new(props["submit_time"]["pattern"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            str_array(&props["status"]["enum"]),
+            all.iter().map(|s| s.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    /// The submit_time pattern agrees with the Rust time check.
+    fn assert_time_pattern_agrees(re: &regex::Regex) {
         for (t, ok) in [
             ("2026-10-20T09:15:00+02:00", true),
             ("2026-10-20T09:15+02:00", false),
@@ -632,31 +676,40 @@ mod tests {
             assert_eq!(re.is_match(t), ok, "schema {t}");
             assert_eq!(check_submit_time(t).is_ok(), ok, "rust {t}");
         }
-        // every sample line satisfies required + known keys + patterns
-        let required: Vec<&str> = schema["required"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap())
-            .collect();
+    }
+
+    /// One sample line satisfies required + known keys + patterns.
+    fn assert_line_fits_schema(line: &str, schema: &serde_json::Value, time_re: &regex::Regex) {
+        let props = schema["properties"].as_object().unwrap();
         let link_re = regex::Regex::new(props["link"]["pattern"].as_str().unwrap()).unwrap();
-        let mut n = 0;
-        for line in SAMPLE.lines().filter(|l| !l.trim().is_empty()) {
-            let v: serde_json::Value = serde_json::from_str(line).unwrap();
-            let o = v.as_object().unwrap();
-            for k in &required {
-                assert!(o.contains_key(*k), "{k} missing: {line}");
-            }
-            for k in o.keys() {
-                assert!(props.contains_key(k), "{k} not in schema");
-            }
-            assert!(link_re.is_match(o["link"].as_str().unwrap()));
-            if let Some(t) = o["submit_time"].as_str() {
-                assert!(re.is_match(t), "{t}");
-            }
-            n += 1;
+        let v: serde_json::Value = serde_json::from_str(line).unwrap();
+        let o = v.as_object().unwrap();
+        for k in str_array(&schema["required"]) {
+            assert!(o.contains_key(k), "{k} missing: {line}");
         }
-        assert!(n >= 3, "sample must not be empty");
+        assert!(
+            o.keys().all(|k| props.contains_key(k)),
+            "key not in schema: {line}"
+        );
+        assert!(link_re.is_match(o["link"].as_str().unwrap()));
+        if let Some(t) = o["submit_time"].as_str() {
+            assert!(time_re.is_match(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn schema_matches_rust_rules_and_accepts_the_sample() {
+        let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
+        let props = schema["properties"].as_object().unwrap();
+        assert_schema_keys_match_rust(props);
+        assert_status_enum_matches_rust(props);
+        let re = regex::Regex::new(props["submit_time"]["pattern"].as_str().unwrap()).unwrap();
+        assert_time_pattern_agrees(&re);
+        let lines: Vec<&str> = SAMPLE.lines().filter(|l| !l.trim().is_empty()).collect();
+        for line in &lines {
+            assert_line_fits_schema(line, &schema, &re);
+        }
+        assert!(lines.len() >= 3, "sample must not be empty");
     }
 
     #[test]
@@ -720,6 +773,40 @@ mod tests {
         let mut bad = r.clone();
         bad.submit_time = None;
         assert!(append_row(&p, &bad).is_err());
+    }
+
+    /// An atomic replace gives each export a new inode (temp file + rename);
+    /// an in-place write would truncate the file a reader may have open.
+    #[cfg(unix)]
+    pub(crate) fn assert_replaced_atomically(dir: &Path, names: &[&str], write: &dyn Fn()) {
+        use std::os::unix::fs::MetadataExt;
+        write();
+        let ino = |n: &str| std::fs::metadata(dir.join(n)).unwrap().ino();
+        let before: Vec<u64> = names.iter().map(|n| ino(n)).collect();
+        let held = std::fs::read(dir.join(names[0])).unwrap();
+        write();
+        for (n, b) in names.iter().zip(&before) {
+            assert_ne!(ino(n), *b, "{n} was rewritten in place");
+        }
+        assert_eq!(std::fs::read(dir.join(names[0])).unwrap(), held);
+        let left: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .filter(|n| !names.contains(&n.as_str()))
+            .collect();
+        assert!(left.is_empty(), "temp files left: {left:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_exports_replaces_files_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let rows = parse_ledger(SAMPLE).unwrap();
+        assert_replaced_atomically(
+            dir.path(),
+            &["applications.csv", "applications.md"],
+            &|| write_exports(&rows, dir.path()).unwrap(),
+        );
     }
 
     #[test]

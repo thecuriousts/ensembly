@@ -9,6 +9,9 @@ use std::path::Path;
 pub const DEFAULT_AUDIT_PATH: &str = "data/local/applications/company-audits.jsonl";
 /// Audits older than this many days count as stale.
 pub const STALE_AFTER_DAYS: i64 = 30;
+/// An `audited_at` more than this many minutes after `now` reads as stale:
+/// a future stamp would otherwise stay fresh for ever.
+pub const FUTURE_SKEW_MINUTES: i64 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -130,9 +133,25 @@ impl Verdict {
     }
 }
 
-/// block if any check is block; flag if any check is flag or any of
-/// apply_domain / domain_age / funding_ownership is unknown; else pass.
+/// block if any check is block; flag if any check is flag, any of
+/// apply_domain / domain_age / funding_ownership is unknown, or headcount and
+/// reviews_news are both unknown; else pass.
 pub fn derive_verdict(checks: &[Check]) -> Verdict {
+    let unknown = |id: CheckId| {
+        checks
+            .iter()
+            .any(|c| c.id == id && c.result == CheckResult::Unknown)
+    };
+    let size_unknown = unknown(CheckId::Headcount) && unknown(CheckId::ReviewsNews);
+    match derive_verdict_before_size_rule(checks) {
+        Verdict::Pass if size_unknown => Verdict::Flag,
+        v => v,
+    }
+}
+
+/// The rule before 30 Oct 2026, without the headcount + reviews_news case.
+/// Only used to keep rows stored under that rule readable.
+fn derive_verdict_before_size_rule(checks: &[Check]) -> Verdict {
     if checks.iter().any(|c| c.result == CheckResult::Block) {
         Verdict::Block
     } else if checks.iter().any(|c| {
@@ -193,7 +212,46 @@ fn validate_optional_fields(a: &Audit) -> anyhow::Result<()> {
     Ok(())
 }
 
+impl Audit {
+    /// The verdict the checks give under the current rule. Equals `verdict`
+    /// for every row except a stored legacy pass that now derives flag.
+    pub fn effective_verdict(&self) -> Verdict {
+        derive_verdict(&self.checks)
+    }
+}
+
+/// Strict check for new rows: the stated verdict must equal the derived one.
 pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
+    validate_audit_body(a)?;
+    check_stated_verdict(a, derive_verdict(&a.checks))
+}
+
+/// Check for rows already in the store: as strict, except a stated `pass`
+/// that was right under the earlier rule still reads (as flag, see
+/// `effective_verdict`), so an append-only store never turns unreadable.
+pub fn validate_stored_audit(a: &Audit) -> anyhow::Result<()> {
+    validate_audit_body(a)?;
+    let derived = derive_verdict(&a.checks);
+    let legacy_pass =
+        a.verdict == Verdict::Pass && derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
+    if legacy_pass {
+        return Ok(());
+    }
+    check_stated_verdict(a, derived)
+}
+
+fn check_stated_verdict(a: &Audit, derived: Verdict) -> anyhow::Result<()> {
+    if derived != a.verdict {
+        anyhow::bail!(
+            "stated verdict {} disagrees with the checks (derived: {})",
+            a.verdict.as_str(),
+            derived.as_str()
+        );
+    }
+    Ok(())
+}
+
+fn validate_audit_body(a: &Audit) -> anyhow::Result<()> {
     for (name, v) in [("company", &a.company), ("audited_by", &a.audited_by)] {
         if v.trim().is_empty() {
             anyhow::bail!("{name} must not be blank");
@@ -244,18 +302,20 @@ pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
             );
         }
     }
-    let derived = derive_verdict(&a.checks);
-    if derived != a.verdict {
-        anyhow::bail!(
-            "stated verdict {} disagrees with the checks (derived: {})",
-            a.verdict.as_str(),
-            derived.as_str()
-        );
-    }
     Ok(())
 }
 
+/// Parse a stored JSONL store (blank lines ignored). Errors name the 1-based line.
 pub fn parse_audits(text: &str) -> anyhow::Result<Vec<Audit>> {
+    parse_with(text, validate_stored_audit)
+}
+
+/// Parse new input rows with the strict rule.
+pub fn parse_new_audits(text: &str) -> anyhow::Result<Vec<Audit>> {
+    parse_with(text, validate_audit)
+}
+
+fn parse_with(text: &str, check: fn(&Audit) -> anyhow::Result<()>) -> anyhow::Result<Vec<Audit>> {
     let mut out = Vec::new();
     for (i, line) in text.lines().enumerate() {
         if line.trim().is_empty() {
@@ -263,7 +323,7 @@ pub fn parse_audits(text: &str) -> anyhow::Result<Vec<Audit>> {
         }
         let a: Audit =
             serde_json::from_str(line).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
-        validate_audit(&a).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
+        check(&a).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
         out.push(a);
     }
     Ok(out)
@@ -307,10 +367,13 @@ pub fn status_for(
     let Ok(at) = chrono::DateTime::parse_from_rfc3339(&a.audited_at) else {
         return (GateStatus::Stale, Some(a));
     };
-    if now.signed_duration_since(at) > chrono::Duration::days(STALE_AFTER_DAYS) {
+    let age = now.signed_duration_since(at);
+    if age > chrono::Duration::days(STALE_AFTER_DAYS)
+        || age < -chrono::Duration::minutes(FUTURE_SKEW_MINUTES)
+    {
         return (GateStatus::Stale, Some(a));
     }
-    let s = match a.verdict {
+    let s = match a.effective_verdict() {
         Verdict::Pass => GateStatus::Pass,
         Verdict::Flag => GateStatus::Flag,
         Verdict::Block => GateStatus::Block,
@@ -318,7 +381,7 @@ pub fn status_for(
     (s, Some(a))
 }
 
-/// 0 pass, 3 flag, 4 block, 5 unaudited or stale. (1/2 stay free for errors/usage.)
+/// 0 pass, 3 = flag (not approvable), 4 block, 5 unaudited or stale. (1/2 stay free for errors/usage.)
 pub fn exit_code(s: GateStatus) -> i32 {
     match s {
         GateStatus::Pass => 0,
@@ -355,7 +418,7 @@ pub fn export_csv(rows: &[Audit]) -> String {
         let mut f: Vec<String> = [
             a.domain.as_str(),
             a.company.as_str(),
-            a.verdict.as_str(),
+            a.effective_verdict().as_str(),
             a.audited_at.as_str(),
             a.audited_by.as_str(),
             a.apply_url.as_deref().unwrap_or(""),
@@ -389,7 +452,7 @@ pub fn export_markdown(rows: &[Audit]) -> String {
             "| {} | {} | {} | {} | {} |",
             md_cell(&a.domain),
             md_cell(&a.company),
-            a.verdict.as_str(),
+            a.effective_verdict().as_str(),
             md_cell(&a.audited_at),
             md_cell(&a.audited_by)
         ));
@@ -413,6 +476,7 @@ pub fn append_audit(path: &Path, a: &Audit) -> anyhow::Result<()> {
     if existing.iter().any(|x| x == a) {
         anyhow::bail!("identical audit already in store for {}", a.domain);
     }
+    check_reuse(&existing, a)?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -426,7 +490,7 @@ pub fn append_audit(path: &Path, a: &Audit) -> anyhow::Result<()> {
 /// (appended, skipped). Re-running the same batch appends nothing.
 pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> {
     use std::io::Write;
-    let incoming = parse_audits(text)?;
+    let incoming = parse_new_audits(text)?;
     let mut existing = match std::fs::read_to_string(path) {
         Ok(t) => parse_audits(&t)?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
@@ -439,6 +503,7 @@ pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> 
             skipped += 1;
             continue;
         }
+        check_reuse(&existing, &a)?;
         lines.push_str(&serde_json::to_string(&a)?);
         lines.push('\n');
         existing.push(a);
@@ -454,11 +519,53 @@ pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> 
     Ok((appended, skipped))
 }
 
+fn instant(t: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(t)
+        .ok()
+        .map(|d| d.timestamp())
+}
+
+/// `reused_from`, when set, must be the `audited_at` of an audit of the same
+/// domain that comes before `a` in the store and is earlier in time.
+fn reuse_target_ok(prior: &[Audit], a: &Audit) -> bool {
+    let Some(rf) = a.reused_from.as_deref() else {
+        return true;
+    };
+    let earlier = matches!((instant(rf), instant(&a.audited_at)), (Some(f), Some(t)) if f < t);
+    earlier
+        && prior
+            .iter()
+            .any(|p| p.domain == a.domain && p.audited_at == rf)
+}
+
+fn check_reuse(prior: &[Audit], a: &Audit) -> anyhow::Result<()> {
+    if !reuse_target_ok(prior, a) {
+        anyhow::bail!(
+            "reused_from {:?} for {} does not name an earlier stored audit of that domain",
+            a.reused_from.as_deref().unwrap_or(""),
+            a.domain
+        );
+    }
+    Ok(())
+}
+
+/// Indices of stored rows whose `reused_from` names no earlier audit of the
+/// same domain. Rows stored before this check existed may dangle; new ones cannot.
+pub fn dangling_reuse(rows: &[Audit]) -> Vec<usize> {
+    (0..rows.len())
+        .filter(|&i| !reuse_target_ok(&rows[..i], &rows[i]))
+        .collect()
+}
+
 /// Write `company-audits.csv` + `company-audits.md` (byte-identical on re-run).
 pub fn write_exports(rows: &[Audit], dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
-    std::fs::write(dir.join("company-audits.csv"), export_csv(rows))?;
-    std::fs::write(dir.join("company-audits.md"), export_markdown(rows))?;
+    let write = crate::application_ledger::write_atomic;
+    write(&dir.join("company-audits.csv"), export_csv(rows).as_bytes())?;
+    write(
+        &dir.join("company-audits.md"),
+        export_markdown(rows).as_bytes(),
+    )?;
     Ok(())
 }
 
@@ -506,6 +613,43 @@ mod tests {
             c.checks[i].result = CheckResult::Unknown;
             assert_eq!(derive_verdict(&c.checks), Verdict::Flag, "check {i}");
         }
+    }
+
+    fn both_size_checks_unknown(mut a: Audit) -> Audit {
+        for i in [3, 4] {
+            // headcount, reviews_news
+            a.checks[i].result = CheckResult::Unknown;
+            a.checks[i].sources.clear();
+        }
+        a
+    }
+
+    #[test]
+    fn unknown_headcount_and_reviews_news_together_flag() {
+        let a = both_size_checks_unknown(first());
+        assert_eq!(derive_verdict(&a.checks), Verdict::Flag);
+        // a new row stating pass is refused
+        let err = validate_audit(&a).unwrap_err();
+        assert!(err.to_string().contains("verdict"), "{err}");
+        let mut b = a.clone();
+        b.verdict = Verdict::Flag;
+        validate_audit(&b).unwrap();
+    }
+
+    #[test]
+    fn stored_legacy_pass_with_both_unknown_still_parses_but_reads_flag() {
+        let a = both_size_checks_unknown(first());
+        let line = serde_json::to_string(&a).unwrap(); // stated pass, old rule
+        let rows = parse_audits(&line).expect("legacy store row stays readable");
+        let t = now("2026-10-27T12:00:00+01:00");
+        assert_eq!(
+            status_for(&rows, "northwind.example.test", t).0,
+            GateStatus::Flag
+        );
+        assert!(export_csv(&rows).contains(",flag,"), "export shows derived");
+        // a batch append is strict: the same row is refused as new input
+        let dir = tempfile::tempdir().unwrap();
+        assert!(append_audits(&dir.path().join("a.jsonl"), &line).is_err());
     }
 
     #[test]
@@ -589,6 +733,56 @@ mod tests {
         assert!(parse_audits(&extra).is_err(), "unknown fields stay refused");
     }
 
+    fn reuse_of(a: &Audit, from: &str, at: &str) -> Audit {
+        let mut r = a.clone();
+        r.reused_from = Some(from.into());
+        r.audited_at = at.into();
+        r
+    }
+
+    #[test]
+    fn reused_from_must_name_an_earlier_stored_audit_of_the_same_domain() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        let rows = sample();
+        let line = |a: &Audit| serde_json::to_string(a).unwrap();
+        // nothing stored yet: the reference dangles
+        let dangling = reuse_of(
+            &rows[0],
+            "2026-10-20T09:00:00+02:00",
+            "2026-10-28T09:00:00+01:00",
+        );
+        assert!(append_audits(&p, &line(&dangling)).is_err());
+        assert!(append_audit(&p, &dangling).is_err());
+        assert!(!p.exists(), "nothing written");
+        append_audits(&p, SAMPLE).unwrap();
+        // contoso's stamp exists, but for another domain
+        let other = reuse_of(
+            &rows[0],
+            "2026-10-21T10:00:00+02:00",
+            "2026-10-28T09:00:00+01:00",
+        );
+        assert!(append_audits(&p, &line(&other)).is_err());
+        // a reference to a later stamp is not an earlier audit
+        let later = reuse_of(
+            &rows[0],
+            "2026-10-20T09:00:00+02:00",
+            "2026-10-19T09:00:00+02:00",
+        );
+        assert!(append_audits(&p, &line(&later)).is_err());
+        // same domain, earlier, stored: accepted (also within one batch)
+        assert_eq!(append_audits(&p, &line(&dangling)).unwrap(), (1, 0));
+        let again = reuse_of(
+            &rows[0],
+            "2026-10-28T09:00:00+01:00",
+            "2026-10-29T09:00:00+01:00",
+        );
+        append_audit(&p, &again).unwrap();
+        let stored = parse_audits(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert!(dangling_reuse(&stored).is_empty());
+        assert_eq!(dangling_reuse(&[dangling]), vec![0]);
+    }
+
     #[test]
     fn rejects_bad_domain_time_and_unknown_fields() {
         let mut a = first();
@@ -636,6 +830,40 @@ mod tests {
         assert_ne!(
             status_for(&rows, "fabrikam.example.test", t).0,
             GateStatus::Stale
+        );
+    }
+
+    #[test]
+    fn future_skew_limit_is_exactly_five_minutes() {
+        let mut rows = sample();
+        let t = now("2026-10-27T12:00:00+01:00");
+        let at = |s: &str, rows: &mut Vec<Audit>| {
+            rows[0].audited_at = s.into();
+            status_for(rows, "northwind.example.test", t).0
+        };
+        // now + 5 min 1 s: past the limit, stale
+        assert_eq!(
+            at("2026-10-27T12:05:01+01:00", &mut rows),
+            GateStatus::Stale
+        );
+        // now + 4 min 59 s: within the limit, still the verdict
+        assert_eq!(at("2026-10-27T12:04:59+01:00", &mut rows), GateStatus::Pass);
+    }
+
+    #[test]
+    fn future_audited_at_reads_stale_not_fresh_forever() {
+        let mut rows = sample();
+        let t = now("2026-10-27T12:00:00+01:00");
+        rows[0].audited_at = "2027-10-27T12:00:00+01:00".into();
+        assert_eq!(
+            status_for(&rows, "northwind.example.test", t).0,
+            GateStatus::Stale
+        );
+        // a few seconds of clock skew between writers is still fresh
+        rows[0].audited_at = "2026-10-27T12:04:00+01:00".into();
+        assert_eq!(
+            status_for(&rows, "northwind.example.test", t).0,
+            GateStatus::Pass
         );
     }
 
@@ -743,6 +971,18 @@ mod tests {
             std::fs::read(dir.path().join("company-audits.csv")).unwrap()
         );
         assert!(!a.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_exports_replaces_files_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let rows = sample();
+        crate::application_ledger::tests::assert_replaced_atomically(
+            dir.path(),
+            &["company-audits.csv", "company-audits.md"],
+            &|| write_exports(&rows, dir.path()).unwrap(),
+        );
     }
 
     #[test]
