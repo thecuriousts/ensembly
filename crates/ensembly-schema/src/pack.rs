@@ -17,3 +17,13 @@ pub struct PackRef {
 }
 
 impl Checked for PackRef {}
+
+#[cfg(test)]
+#[derive(schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+pub(crate) struct PackRefLine {
+    #[serde(flatten)]
+    body: PackRef,
+    v: crate::version_one::VersionOne,
+}

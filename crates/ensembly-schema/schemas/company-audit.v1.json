@@ -43,9 +43,7 @@
       ]
     },
     "v": {
-      "type": "integer",
-      "format": "uint32",
-      "minimum": 0.0
+      "const": 1
     },
     "verdict": {
       "$ref": "#/definitions/Verdict"

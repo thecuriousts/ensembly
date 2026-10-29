@@ -104,3 +104,13 @@ pub fn link_key(link: &str) -> &str {
     let l = link.trim_end_matches('/');
     l.strip_suffix("/application").unwrap_or(l)
 }
+
+#[cfg(test)]
+#[derive(schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+pub(crate) struct LedgerRowLine {
+    #[serde(flatten)]
+    body: LedgerRow,
+    v: crate::version_one::VersionOne,
+}

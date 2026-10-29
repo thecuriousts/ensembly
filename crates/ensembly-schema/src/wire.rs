@@ -116,6 +116,14 @@ impl JsonScan<'_> {
 
     fn value(&mut self) -> Result<(), String> {
         self.skip_ws();
+        if self
+            .s
+            .as_bytes()
+            .get(self.i..)
+            .is_some_and(|b| b.starts_with(b"\xEF\xBB\xBF"))
+        {
+            return Err("byte-order mark".into());
+        }
         let b = self.bump()?;
         self.value_byte(b)
     }

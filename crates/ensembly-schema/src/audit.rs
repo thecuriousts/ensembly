@@ -103,6 +103,16 @@ pub fn audit_exit_status(code: i32) -> Option<&'static [GateStatus]> {
     }
 }
 
+#[cfg(test)]
+#[derive(schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+pub(crate) struct AuditLine {
+    #[serde(flatten)]
+    body: Audit,
+    v: crate::version_one::VersionOne,
+}
+
 pub fn canonical_domain(s: &str) -> String {
     let s = s.trim().to_lowercase();
     let s = s.split_once("://").map(|(_, r)| r.to_string()).unwrap_or(s);

@@ -1,5 +1,7 @@
+use super::audit::AuditLine;
+use super::ledger::LedgerRowLine;
+use super::pack::PackRefLine;
 use super::*;
-use schemars::JsonSchema;
 use serde_json::json;
 use std::path::Path;
 
@@ -9,33 +11,6 @@ const PACK: &str = "fixtures/pack-ref-v0.jsonl";
 const LEDGER_V1: &str = "fixtures/ledger-v1.jsonl";
 const AUDIT_V1: &str = "fixtures/audit-v1.jsonl";
 const PACK_V1: &str = "fixtures/pack-ref-v1.jsonl";
-
-#[derive(JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[allow(dead_code)]
-struct LedgerRowLine {
-    #[serde(flatten)]
-    body: LedgerRow,
-    v: u32,
-}
-
-#[derive(JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[allow(dead_code)]
-struct AuditLine {
-    #[serde(flatten)]
-    body: Audit,
-    v: u32,
-}
-
-#[derive(JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[allow(dead_code)]
-struct PackRefLine {
-    #[serde(flatten)]
-    body: PackRef,
-    v: u32,
-}
 
 fn text(rel: &str) -> String {
     std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)).unwrap()
@@ -261,6 +236,66 @@ fn match_schema(rel: &str, schema: schemars::schema::RootSchema) {
 }
 
 #[test]
+fn version_two_fails_line_schema() {
+    for (rel, schema) in [
+        (
+            LEDGER_V1,
+            schema_value(schemars::schema_for!(LedgerRowLine)),
+        ),
+        (AUDIT_V1, schema_value(schemars::schema_for!(AuditLine))),
+        (PACK_V1, schema_value(schemars::schema_for!(PackRefLine))),
+    ] {
+        assert_eq!(schema["properties"]["v"]["const"], json!(1), "{rel}");
+        let line = first(rel).replacen("\"v\":1", "\"v\":2", 1);
+        let instance: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert!(validate(&schema, &schema, &instance).is_err(), "{rel}");
+    }
+}
+
+fn schema_value(schema: schemars::schema::RootSchema) -> serde_json::Value {
+    serde_json::to_value(schema).unwrap()
+}
+
+#[test]
+fn line_fields_match_body_types() {
+    same_fields(
+        schema_value(schemars::schema_for!(LedgerRow)),
+        schema_value(schemars::schema_for!(LedgerRowLine)),
+    );
+    same_fields(
+        schema_value(schemars::schema_for!(Audit)),
+        schema_value(schemars::schema_for!(AuditLine)),
+    );
+    same_fields(
+        schema_value(schemars::schema_for!(PackRef)),
+        schema_value(schemars::schema_for!(PackRefLine)),
+    );
+}
+
+fn property_names(schema: &serde_json::Value) -> std::collections::BTreeSet<String> {
+    schema["properties"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect()
+}
+
+fn same_fields(body: serde_json::Value, line: serde_json::Value) {
+    let body = property_names(&body);
+    let mut line = property_names(&line);
+    assert!(line.remove("v"));
+    assert_eq!(line, body);
+}
+
+#[test]
+fn byte_order_mark_is_named() {
+    let line = format!("\u{feff}{}", first(LEDGER));
+    let err = decode_line::<LedgerRow>(&line).unwrap_err();
+    assert!(err.contains("byte-order mark"), "{err}");
+}
+
+#[test]
 fn v1_fixtures_match_checked_in_schema() {
     check_lines::<LedgerRow>(LEDGER_V1, "schemas/ledger-row.v1.json");
     check_lines::<Audit>(AUDIT_V1, "schemas/company-audit.v1.json");
@@ -292,10 +327,22 @@ fn validate(
             .ok_or_else(|| format!("missing {name}"))?;
         return validate(doc, def, instance);
     }
+    check_const(schema, instance)?;
     check_type(schema, instance)?;
     check_enum(schema, instance)?;
     check_object(doc, schema, instance)?;
     check_array(doc, schema, instance)
+}
+
+fn check_const(schema: &serde_json::Value, instance: &serde_json::Value) -> Result<(), String> {
+    let Some(expected) = schema.get("const") else {
+        return Ok(());
+    };
+    if expected == instance {
+        Ok(())
+    } else {
+        Err(format!("const {instance}"))
+    }
 }
 
 fn check_type(schema: &serde_json::Value, instance: &serde_json::Value) -> Result<(), String> {

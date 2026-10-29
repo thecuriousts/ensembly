@@ -23,4 +23,31 @@ pub trait Checked {
 }
 
 #[cfg(test)]
+mod version_one {
+    use schemars::schema::{Schema, SchemaObject};
+    use schemars::{gen::SchemaGenerator, JsonSchema};
+
+    /// Schema const for a version-1 line. Not a runtime value.
+    pub struct VersionOne;
+
+    impl JsonSchema for VersionOne {
+        fn schema_name() -> String {
+            "VersionOne".to_owned()
+        }
+
+        fn is_referenceable() -> bool {
+            false
+        }
+
+        fn json_schema(_: &mut SchemaGenerator) -> Schema {
+            SchemaObject {
+                const_value: Some(serde_json::json!(1)),
+                ..Default::default()
+            }
+            .into()
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;
