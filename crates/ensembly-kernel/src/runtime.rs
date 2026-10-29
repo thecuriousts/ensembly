@@ -9,7 +9,9 @@ use crate::agent::{AgentError, AgentWorker};
 use crate::approvals::{
     apply_decision, apply_physical_decision, upsert_pending_from_actions, upsert_physical, Snapshot,
 };
-use crate::critical_path::{explain_node, next_auth_gate, next_hootl_digital, next_physical_beacon};
+use crate::critical_path::{
+    explain_node, next_auth_gate, next_hootl_digital, next_physical_beacon,
+};
 use crate::graph::{DepGraph, GateKind, TaskStatus};
 use crate::life_state::{LifeState, LoopRegime};
 use crate::memory_sink::{memory_content_of, MemorySink};
@@ -316,11 +318,8 @@ impl Runtime {
                 Ok(())
             }
             BusMessage::Agent { report } => {
-                match report.kind {
-                    AgentReportKind::Failed => {
-                        self.state.metrics.agent_failures += 1;
-                    }
-                    _ => {}
+                if report.kind == AgentReportKind::Failed {
+                    self.state.metrics.agent_failures += 1;
                 }
                 Ok(())
             }
@@ -375,8 +374,7 @@ impl Runtime {
             }
             ManualCmd::ClaimPhysical { id } => {
                 let action_id = action_id_of(&id).to_string();
-                let snap_next =
-                    apply_physical_decision(&self.snapshot, &action_id, "claim", now)?;
+                let snap_next = apply_physical_decision(&self.snapshot, &action_id, "claim", now)?;
                 if let Some(n) = self.state.graph.nodes.get_mut(&action_id) {
                     n.status = TaskStatus::Claimed;
                     n.claimed_by = Some("human".into());
@@ -508,7 +506,10 @@ mod tests {
         // Tick 2: complete
         let r2 = rt.tick(true, now).unwrap();
         assert_eq!(r2.hootl_complete.as_deref(), Some("triage-inbox"));
-        assert_eq!(rt.state.graph.nodes["triage-inbox"].status, TaskStatus::Done);
+        assert_eq!(
+            rt.state.graph.nodes["triage-inbox"].status,
+            TaskStatus::Done
+        );
         assert_eq!(r2.next_auth.as_deref(), Some("pay-rent"));
         assert_eq!(rt.state.regime, LoopRegime::HitlWait);
 
@@ -542,7 +543,8 @@ mod tests {
         assert_eq!(rt.state.graph.nodes["pay-rent"].status, TaskStatus::Done);
         assert!(list_pending(&rt.snapshot)
             .iter()
-            .all(|p| p.id != "auth-pay-rent" || p.status != crate::approvals::ApprovalStatus::Pending));
+            .all(|p| p.id != "auth-pay-rent"
+                || p.status != crate::approvals::ApprovalStatus::Pending));
         assert_eq!(r3.next_physical.as_deref(), Some("grocery-errand"));
     }
 
@@ -597,7 +599,10 @@ mod tests {
         rt.tick(true, now).unwrap();
         rt.tick(true, now).unwrap();
         store.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
-        assert_eq!(rt.state.graph.nodes["triage-inbox"].status, TaskStatus::Done);
+        assert_eq!(
+            rt.state.graph.nodes["triage-inbox"].status,
+            TaskStatus::Done
+        );
         assert_eq!(rt.state.graph.nodes["pay-rent"].status, TaskStatus::Open);
 
         // Top-level-style approve path (enqueue + tick + pair save).
@@ -618,9 +623,9 @@ mod tests {
             "graph must reflect approve (not Snapshot-only desync)"
         );
         assert!(
-            list_pending(&snap).iter().all(|p| {
-                p.id != "auth-pay-rent" || p.status != ApprovalStatus::Pending
-            }),
+            list_pending(&snap)
+                .iter()
+                .all(|p| { p.id != "auth-pay-rent" || p.status != ApprovalStatus::Pending }),
             "snapshot pending must clear auth for pay-rent"
         );
         assert_eq!(
@@ -638,13 +643,7 @@ mod tests {
         let _ = rt.tick(false, now).unwrap();
         store.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
         assert_eq!(
-            store
-                .load_life_state()
-                .unwrap()
-                .unwrap()
-                .graph
-                .nodes["grocery-errand"]
-                .status,
+            store.load_life_state().unwrap().unwrap().graph.nodes["grocery-errand"].status,
             TaskStatus::Claimed
         );
 
@@ -658,10 +657,7 @@ mod tests {
         store.save_runtime_pair(&rt.state, &rt.snapshot).unwrap();
         let life2 = store.load_life_state().unwrap().unwrap();
         let snap2 = store.load_snapshot().unwrap().unwrap();
-        assert_eq!(
-            life2.graph.nodes["grocery-errand"].status,
-            TaskStatus::Done
-        );
+        assert_eq!(life2.graph.nodes["grocery-errand"].status, TaskStatus::Done);
         // Both stores still present and consistent after complete (paired write).
         assert_eq!(life2.version, rt.state.version);
         assert_eq!(snap2.updated_at, rt.snapshot.updated_at);

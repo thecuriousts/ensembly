@@ -33,11 +33,7 @@ pub fn grok_headless_argv(prompt: &str, model: Option<&str>) -> Vec<String> {
 
 /// Build argv for ACP agent mode.
 pub fn grok_acp_argv() -> Vec<String> {
-    vec![
-        "--no-auto-update".into(),
-        "agent".into(),
-        "stdio".into(),
-    ]
+    vec!["--no-auto-update".into(), "agent".into(), "stdio".into()]
 }
 
 /// Project-scoped MCP server entry for `.grok/config.toml` (see xAI MCP docs).

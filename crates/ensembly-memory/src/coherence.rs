@@ -328,7 +328,13 @@ pub fn reflect(doc: &mut CrdtDocument, config: &CoherenceConfig) -> Option<Refle
 }
 
 pub fn coherence_report(doc: &CrdtDocument) -> CoherenceReport {
-    let history: Vec<CoherenceRecord> = doc.coherence_history.iter().rev().take(10).cloned().collect();
+    let history: Vec<CoherenceRecord> = doc
+        .coherence_history
+        .iter()
+        .rev()
+        .take(10)
+        .cloned()
+        .collect();
     let average = if history.is_empty() {
         0.5
     } else {
@@ -350,12 +356,7 @@ pub fn coherence_report(doc: &CrdtDocument) -> CoherenceReport {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn goal(
-    description: &str,
-    priority: f32,
-    goal_type: &str,
-    skill_name: Option<String>,
-) -> Goal {
+pub fn goal(description: &str, priority: f32, goal_type: &str, skill_name: Option<String>) -> Goal {
     Goal {
         id: String::new(),
         description: description.into(),

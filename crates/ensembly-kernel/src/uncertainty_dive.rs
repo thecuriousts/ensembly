@@ -93,17 +93,17 @@ fn relative_span(optimistic: f64, likely: f64, pessimistic: f64) -> f64 {
     ((pessimistic - optimistic) / denom).max(0.0)
 }
 
-fn classify_node(
-    graph: &DepGraph,
-    report: &CriticalPathReport,
-    id: &str,
-) -> Option<DiveCandidate> {
+fn classify_node(graph: &DepGraph, report: &CriticalPathReport, id: &str) -> Option<DiveCandidate> {
     let n = graph.nodes.get(id)?;
     if n.status == TaskStatus::Done {
         return None;
     }
     let on_cp = report.path.iter().any(|p| p == id);
-    let span = relative_span(n.duration.optimistic, n.duration.likely, n.duration.pessimistic);
+    let span = relative_span(
+        n.duration.optimistic,
+        n.duration.likely,
+        n.duration.pessimistic,
+    );
     let expected = n.duration.expected();
 
     let (class, score, recommended, reason) = match n.gate {
@@ -167,11 +167,7 @@ fn classify_node(
 /// Plan a trauma-light dive from current G + CP+P.
 ///
 /// Does not mutate state. `probe_budget` is advisory (surfaced on guards).
-pub fn plan_dive(
-    graph: &DepGraph,
-    report: &CriticalPathReport,
-    probe_budget: u32,
-) -> DiveReport {
+pub fn plan_dive(graph: &DepGraph, report: &CriticalPathReport, probe_budget: u32) -> DiveReport {
     let mut candidates: Vec<DiveCandidate> = graph
         .nodes
         .keys()
@@ -197,10 +193,7 @@ pub fn plan_dive(
         .find(|c| {
             c.on_critical_path
                 && c.recommended == DiveStep::Probe
-                && matches!(
-                    c.class,
-                    EpistemicClass::Sparse | EpistemicClass::Empty
-                )
+                && matches!(c.class, EpistemicClass::Sparse | EpistemicClass::Empty)
                 && graph
                     .nodes
                     .get(&c.id)
@@ -242,10 +235,7 @@ pub fn plan_dive(
             cp_path: report.path.clone(),
             length_expected: report.length_expected,
             pert_sigma: report.pert_sigma,
-            monte_carlo_p90: report
-                .monte_carlo
-                .as_ref()
-                .map(|m| m.p90),
+            monte_carlo_p90: report.monte_carlo.as_ref().map(|m| m.p90),
             explain: report.explain.clone(),
         },
         candidates,
@@ -263,14 +253,7 @@ mod tests {
     use crate::graph::{DepGraph, DurationEstimate, GateKind, TaskNode, TaskRealm, TaskStatus};
     // Utc not needed for node helpers
 
-    fn node(
-        id: &str,
-        realm: TaskRealm,
-        gate: GateKind,
-        o: f64,
-        l: f64,
-        p: f64,
-    ) -> TaskNode {
+    fn node(id: &str, realm: TaskRealm, gate: GateKind, o: f64, l: f64, p: f64) -> TaskNode {
         TaskNode {
             id: id.into(),
             title: id.into(),

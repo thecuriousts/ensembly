@@ -115,9 +115,18 @@ mod tests {
 
     #[test]
     fn parse_backends() {
-        assert_eq!(InferenceBackend::parse("grok-mcp"), InferenceBackend::GrokMcp);
-        assert_eq!(InferenceBackend::parse("GROK-ACP"), InferenceBackend::GrokAcp);
-        assert_eq!(InferenceBackend::parse("nope"), InferenceBackend::Deterministic);
+        assert_eq!(
+            InferenceBackend::parse("grok-mcp"),
+            InferenceBackend::GrokMcp
+        );
+        assert_eq!(
+            InferenceBackend::parse("GROK-ACP"),
+            InferenceBackend::GrokAcp
+        );
+        assert_eq!(
+            InferenceBackend::parse("nope"),
+            InferenceBackend::Deterministic
+        );
     }
 
     #[test]

@@ -16,7 +16,9 @@ use serde_json::json;
 use crate::msg_bus::{BusMessage, ManualCmd};
 use crate::runtime::TickReport;
 
-pub use crate::paths::{DEFAULT_AGENT_ID, DEFAULT_MEMORY_PATH, LEGACY_AGENT_ID, LEGACY_MEMORY_PATH};
+pub use crate::paths::{
+    DEFAULT_AGENT_ID, DEFAULT_MEMORY_PATH, LEGACY_AGENT_ID, LEGACY_MEMORY_PATH,
+};
 
 pub struct MemorySink {
     pub memory: EpisodicMemory,
@@ -139,10 +141,7 @@ impl MemorySink {
             }
             Ok(None) => {}
             Err(e) => {
-                eprintln!(
-                    "INFERENCE_WARN provider={} — {e}",
-                    provider.name()
-                );
+                eprintln!("INFERENCE_WARN provider={} — {e}", provider.name());
             }
         }
         Some(reflection)
@@ -158,13 +157,7 @@ impl MemorySink {
         }
         let parts: Vec<String> = slice
             .iter()
-            .map(|e| {
-                format!(
-                    "{:?}@{}",
-                    e.entry_type,
-                    e.timestamp.format("%H:%M:%S")
-                )
-            })
+            .map(|e| format!("{:?}@{}", e.entry_type, e.timestamp.format("%H:%M:%S")))
             .collect();
         format!("recall: {}", parts.join(" · "))
     }
@@ -183,7 +176,9 @@ mod tests {
     #[test]
     fn manual_commands_map_to_action_intents() {
         let msg = BusMessage::Manual {
-            cmd: ManualCmd::Approve { id: "pay-rent".into() },
+            cmd: ManualCmd::Approve {
+                id: "pay-rent".into(),
+            },
             at: Utc::now(),
         };
         let content = memory_content_of(&msg);
@@ -281,7 +276,12 @@ mod tests {
         rt.load_actions(&actions, now).unwrap();
         let r1 = rt.tick(true, now).unwrap();
         let r2 = rt.tick(true, now).unwrap();
-        rt.enqueue_manual(ManualCmd::Approve { id: "pay-rent".into() }, now);
+        rt.enqueue_manual(
+            ManualCmd::Approve {
+                id: "pay-rent".into(),
+            },
+            now,
+        );
         rt.tick(false, now).unwrap();
 
         // Control plane results unchanged by the attached sink.
@@ -310,17 +310,17 @@ mod tests {
         assert!(
             entries.iter().any(|e| {
                 e.entry_type == TrajectoryType::Action
-                    && e.content.pointer("/action/intent").and_then(|v| v.as_str()) == Some("approve")
-                    && e.content.pointer("/action/target").and_then(|v| v.as_str()) == Some("pay-rent")
+                    && e.content.pointer("/action/intent").and_then(|v| v.as_str())
+                        == Some("approve")
+                    && e.content.pointer("/action/target").and_then(|v| v.as_str())
+                        == Some("pay-rent")
             }),
             "operator approve recorded as action"
         );
         assert!(
             entries.iter().any(|e| {
                 e.entry_type == TrajectoryType::Action
-                    && e.content
-                        .pointer("/action/actor")
-                        .and_then(|v| v.as_str())
+                    && e.content.pointer("/action/actor").and_then(|v| v.as_str())
                         == Some("swarm-digital-1")
             }),
             "HOOTL agent work recorded"
@@ -333,7 +333,11 @@ mod tests {
         assert!(reflection.trajectory_length >= 5);
         sink2.sync_and_save().unwrap();
 
-        let report = coherence_report(&ensembly_memory::EpisodicMemory::open(&mem_path, "r2").unwrap().doc());
+        let report = coherence_report(
+            ensembly_memory::EpisodicMemory::open(&mem_path, "r2")
+                .unwrap()
+                .doc(),
+        );
         assert_eq!(report.history.len(), 1, "reflection recorded in history");
     }
 

@@ -42,7 +42,10 @@ pub struct MonteCarloSummary {
 }
 
 /// Compute CP on open/claimed subgraph (done nodes treated as zero remaining).
-pub fn compute_critical_path(graph: &DepGraph, mc_samples: u32) -> Result<CriticalPathReport, String> {
+pub fn compute_critical_path(
+    graph: &DepGraph,
+    mc_samples: u32,
+) -> Result<CriticalPathReport, String> {
     let order = graph.topo_order().map_err(|e| e.to_string())?;
     if order.is_empty() {
         return Ok(CriticalPathReport {
@@ -437,25 +440,21 @@ mod tests {
         // Long chain a→b(Auth) is CP; side digital `noise` has slack and must not be picked.
         let mut g = DepGraph::new();
         g.upsert_node(node("a", &[], 10.0, GateKind::None, TaskRealm::Digital));
-        g.upsert_node(node(
-            "b",
-            &["a"],
-            50.0,
-            GateKind::Auth,
-            TaskRealm::Digital,
-        ));
+        g.upsert_node(node("b", &["a"], 50.0, GateKind::Auth, TaskRealm::Digital));
         g.upsert_node(node("noise", &[], 5.0, GateKind::None, TaskRealm::Digital));
         let report = compute_critical_path(&g, 0).unwrap();
         assert!(report.path.contains(&"a".into()));
-        assert!(!report.path.contains(&"noise".into()) || {
-            // If noise somehow lands on path, skip — structure should keep it off.
-            report
-                .timings
-                .iter()
-                .find(|t| t.id == "noise")
-                .map(|t| !t.on_critical_path)
-                .unwrap_or(true)
-        });
+        assert!(
+            !report.path.contains(&"noise".into()) || {
+                // If noise somehow lands on path, skip — structure should keep it off.
+                report
+                    .timings
+                    .iter()
+                    .find(|t| t.id == "noise")
+                    .map(|t| !t.on_critical_path)
+                    .unwrap_or(true)
+            }
+        );
         let noise_timing = report.timings.iter().find(|t| t.id == "noise").unwrap();
         assert!(
             !noise_timing.on_critical_path || noise_timing.slack > 1e-6,

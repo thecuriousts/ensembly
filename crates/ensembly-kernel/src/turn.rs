@@ -217,7 +217,10 @@ fn redact_channel_act(item: &FocusItem, area: Option<&str>) -> ChannelAct {
     let title = if c.pushable && !area_denied && c.visibility == Visibility::Public {
         item.title.clone()
     } else if c.visibility == Visibility::Private || !c.pushable || area_denied {
-        format!("[redacted:{}]", c.reason.split(':').next().unwrap_or("private"))
+        format!(
+            "[redacted:{}]",
+            c.reason.split(':').next().unwrap_or("private")
+        )
     } else {
         item.title.clone()
     };
@@ -235,15 +238,12 @@ pub fn build_channel_ir(plan: &FocusPlan, snap: &Snapshot, now: DateTime<Utc>) -
         .as_ref()
         .and_then(|p| snap.physical.iter().find(|r| r.id == p.id))
         .and_then(|r| r.area.as_deref());
-    let gate_area = plan
-        .primary_auth
-        .as_ref()
-        .and_then(|a| {
-            snap.pending
-                .iter()
-                .find(|p| p.id == a.id)
-                .and_then(|p| p.area.as_deref())
-        });
+    let gate_area = plan.primary_auth.as_ref().and_then(|a| {
+        snap.pending
+            .iter()
+            .find(|p| p.id == a.id)
+            .and_then(|p| p.area.as_deref())
+    });
     ChannelPulseIr {
         version: CHANNEL_IR_VERSION,
         generated_at: now,
@@ -355,12 +355,18 @@ pub fn select_next_physical(
     let mut best: Option<(i32, FocusItem)> = None;
 
     for slot in schedule {
-        let Some(aid) = &slot.assigned_id else { continue };
+        let Some(aid) = &slot.assigned_id else {
+            continue;
+        };
         let Some((id, title, _, _)) = pickups.iter().find(|(i, _, _, _)| i == aid) else {
             continue;
         };
-        let Some(start) = parse_hm(&slot.start) else { continue };
-        let Some(end) = parse_hm(&slot.end) else { continue };
+        let Some(start) = parse_hm(&slot.start) else {
+            continue;
+        };
+        let Some(end) = parse_hm(&slot.end) else {
+            continue;
+        };
         let (score, reason) = if in_window(now_min, start, end) {
             (10_000, "current_window")
         } else if end > start && now_min < start {
@@ -456,12 +462,7 @@ pub fn rank_now(
                     .iter()
                     .any(|p| p.id == a.id && p.status == PhysicalStatus::Completed);
                 if !done {
-                    physical.push((
-                        a.id.clone(),
-                        a.title.clone(),
-                        a.urgency,
-                        a.importance,
-                    ));
+                    physical.push((a.id.clone(), a.title.clone(), a.urgency, a.importance));
                 }
             }
             Realm::Digital => digital.push(a),
@@ -476,10 +477,11 @@ pub fn rank_now(
         .filter(|a| {
             // prefer open HITL-related or highest score
             let open_auth = snap.pending.iter().any(|p| {
-                p.action_id.as_deref() == Some(a.id.as_str())
-                    && p.status == ApprovalStatus::Pending
+                p.action_id.as_deref() == Some(a.id.as_str()) && p.status == ApprovalStatus::Pending
             });
-            open_auth || a.kind.as_deref() == Some("finance_transfer") || a.kind.as_deref() == Some("bill_pay")
+            open_auth
+                || a.kind.as_deref() == Some("finance_transfer")
+                || a.kind.as_deref() == Some("bill_pay")
         })
         .max_by_key(|a| a.urgency + a.importance)
         .or_else(|| digital.iter().max_by_key(|a| a.urgency + a.importance))
@@ -498,7 +500,10 @@ pub fn rank_now(
         .as_ref()
         .map(|d| d.kind.contains("finance") || d.kind.contains("bill") || d.title.contains("Bank"))
         .unwrap_or(false)
-        || snap.pending.iter().any(|p| p.place.as_deref() == Some("Bank"))
+        || snap
+            .pending
+            .iter()
+            .any(|p| p.place.as_deref() == Some("Bank"))
     {
         places.push("Bank".into());
     }
@@ -615,18 +620,17 @@ mod tests {
             "auth-apply-high-signal"
         );
         assert!(plan.places.contains(&"Gate".into()));
-        assert!(plan.biome.contains("day") || plan.biome.contains("courtyard") || !plan.biome.is_empty());
+        assert!(
+            plan.biome.contains("day")
+                || plan.biome.contains("courtyard")
+                || !plan.biome.is_empty()
+        );
     }
 
     #[test]
     fn empty_snapshot_clear_plan() {
         let now = Utc.with_ymd_and_hms(2026, 7, 15, 22, 0, 0).unwrap();
-        let plan = rank_now(
-            &context_at(now, None),
-            &[],
-            &[],
-            &Snapshot::empty(now),
-        );
+        let plan = rank_now(&context_at(now, None), &[], &[], &Snapshot::empty(now));
         assert!(plan.primary_physical.is_none());
         assert!(plan.primary_auth.is_none());
         assert!(plan.biome.contains("night") || plan.biome.contains("desk"));

@@ -110,12 +110,9 @@ pub fn derive_status(pending: &[PendingAuth]) -> SnapshotStatus {
     if open.is_empty() {
         return SnapshotStatus::Clear;
     }
-    let resolved = pending.iter().any(|p| {
-        matches!(
-            p.status,
-            ApprovalStatus::Approved | ApprovalStatus::Denied
-        )
-    });
+    let resolved = pending
+        .iter()
+        .any(|p| matches!(p.status, ApprovalStatus::Approved | ApprovalStatus::Denied));
     if resolved {
         SnapshotStatus::Partial
     } else {
@@ -311,7 +308,12 @@ mod tests {
     #[test]
     fn approve_closes_pending() {
         let snap = upsert_pending_from_actions(
-            &[("apply".into(), "Apply".into(), "job_application_submit".into(), true)],
+            &[(
+                "apply".into(),
+                "Apply".into(),
+                "job_application_submit".into(),
+                true,
+            )],
             None,
             now(),
         );

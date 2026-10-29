@@ -159,9 +159,9 @@ impl OpsStore {
     }
 
     pub fn audit_tail(&self, limit: usize) -> Result<Vec<(String, String, String)>, StoreError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT ts, kind, payload FROM audit ORDER BY id DESC LIMIT ?1",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT ts, kind, payload FROM audit ORDER BY id DESC LIMIT ?1")?;
         let rows = stmt.query_map(params![limit as i64], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
         })?;

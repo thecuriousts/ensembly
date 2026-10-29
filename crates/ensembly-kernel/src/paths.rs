@@ -97,10 +97,7 @@ pub struct LocalPathMigrateReport {
 
 /// One-shot **copy-if-missing**. Never overwrites dest. Never deletes source.
 /// Also copies SQLite `-wal` / `-shm` siblings when present.
-pub fn migrate_local_paths_at(
-    root: &Path,
-    dry_run: bool,
-) -> io::Result<LocalPathMigrateReport> {
+pub fn migrate_local_paths_at(root: &Path, dry_run: bool) -> io::Result<LocalPathMigrateReport> {
     let pairs = [
         (LEGACY_OPS_PATH, DEFAULT_OPS_PATH),
         (LEGACY_OPS_PRIVATE_PATH, DEFAULT_OPS_PRIVATE_PATH),
@@ -227,10 +224,7 @@ mod tests {
         fs::create_dir_all(dir.path().join("data/local")).unwrap();
         fs::write(dir.path().join(LEGACY_OPS_PATH), b"legacy").unwrap();
         let forced = dir.path().join("forced.sqlite");
-        assert_eq!(
-            resolve_ops_db_at(dir.path(), Some(forced.clone())),
-            forced
-        );
+        assert_eq!(resolve_ops_db_at(dir.path(), Some(forced.clone())), forced);
         let forced_mem = PathBuf::from("/tmp/forced-mem.json");
         assert_eq!(
             resolve_memory_path_at(dir.path(), Some(forced_mem.clone())),
@@ -264,7 +258,10 @@ mod tests {
         let dest_ops = dir.path().join(DEFAULT_OPS_PATH);
         let dest_mem = dir.path().join(DEFAULT_MEMORY_PATH);
         assert_eq!(fs::read(&dest_ops).unwrap(), b"ops-bytes");
-        assert_eq!(fs::read(format!("{}-wal", dest_ops.display())).unwrap(), b"wal");
+        assert_eq!(
+            fs::read(format!("{}-wal", dest_ops.display())).unwrap(),
+            b"wal"
+        );
         assert_eq!(fs::read(&dest_mem).unwrap(), b"mem-bytes");
         assert_eq!(fs::read(&legacy_ops).unwrap(), b"ops-bytes");
         assert_eq!(fs::read(&legacy_mem).unwrap(), b"mem-bytes");
