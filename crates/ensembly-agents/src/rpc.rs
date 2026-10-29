@@ -18,9 +18,9 @@ where
 {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
-    let mut lines = stdin.lock().lines();
+    let lines = stdin.lock().lines();
 
-    while let Some(line) = lines.next() {
+    for line in lines {
         let line = line?;
         let trimmed = line.trim();
         if trimmed.is_empty() {

@@ -316,11 +316,8 @@ impl Runtime {
                 Ok(())
             }
             BusMessage::Agent { report } => {
-                match report.kind {
-                    AgentReportKind::Failed => {
-                        self.state.metrics.agent_failures += 1;
-                    }
-                    _ => {}
+                if report.kind == AgentReportKind::Failed {
+                    self.state.metrics.agent_failures += 1;
                 }
                 Ok(())
             }

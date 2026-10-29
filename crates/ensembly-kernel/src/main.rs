@@ -502,7 +502,7 @@ fn unlock_material(cli: &Option<String>) -> Result<Vec<u8>> {
     bail!("unlock required: pass --unlock or set ENSEMBLY_UNLOCK (alias PERAM_UNLOCK; keyring later)");
 }
 
-fn load_actions_from_fixture(path: &PathBuf) -> Result<Vec<Action>> {
+fn load_actions_from_fixture(path: &std::path::Path) -> Result<Vec<Action>> {
     actions_from_fixture_path(path).map_err(|e| anyhow::anyhow!("{e}"))
 }
 

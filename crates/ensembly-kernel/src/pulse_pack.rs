@@ -203,7 +203,7 @@ impl PulsePack {
 pub fn traces_from_document(doc: &CrdtDocument) -> Vec<MemoryTrace> {
     doc.trajectory
         .values()
-        .map(|e| trace_from_entry(e))
+        .map(trace_from_entry)
         .collect()
 }
 

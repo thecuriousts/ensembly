@@ -333,7 +333,7 @@ mod tests {
         assert!(reflection.trajectory_length >= 5);
         sink2.sync_and_save().unwrap();
 
-        let report = coherence_report(&ensembly_memory::EpisodicMemory::open(&mem_path, "r2").unwrap().doc());
+        let report = coherence_report(ensembly_memory::EpisodicMemory::open(&mem_path, "r2").unwrap().doc());
         assert_eq!(report.history.len(), 1, "reflection recorded in history");
     }
 
