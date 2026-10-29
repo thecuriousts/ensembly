@@ -1,0 +1,7 @@
+company,role,link,apply_url,status,submit_time,cv_version
+Bramble Fictional,Widget Engineer,https://jobs.example.test/bramble/1,,interview,2026-07-01T10:00:00+02:00,cv-sample-1
+Acme Fictional,Widget Engineer,https://jobs.example.test/acme/2,,submitted,2026-10-26T18:59:00+01:00,cv-sample-1
+Acme Fictional,"Engineer, Widgets",https://jobs.example.test/acme/3,https://jobs.example.test/acme/3/application,submitted,2026-10-26T18:59:00+01:00,cv-sample-1
+Acme Fictional,Widget Engineer,https://example.test/j/u,,rejected,unknown,legacy-unknown
+Acme Fictional,Widget Engineer,https://jobs.example.test/acme/1,,prepared,,cv-sample-1
+Ember Fictional,Widget Engineer,https://jobs.example.test/ember/1,https://jobs.example.test/ember/1/application,silent-closed,unknown,cv-sample-1
