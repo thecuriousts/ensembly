@@ -27,7 +27,7 @@ Sample (fictional): `fixtures/company-audits-sample.jsonl`.
 | `verdict` | **Derived, then checked**: `block` if any check is block; `flag` if any check is flag, any of `apply_domain`, `domain_age`, `funding_ownership` is unknown, or `headcount` and `reviews_news` are both unknown (the employer's size and standing are then unverified); else `pass`. A new row whose stated verdict disagrees is refused. A row stored before 30 Oct 2026 that says `pass` under the earlier rule still reads, but `status` and exports use the derived verdict (`flag`). |
 | `audited_at` | RFC 3339 with seconds and the Europe/Stockholm offset (`+01:00` / `+02:00`). |
 | `audited_by` | Non-blank (agent or person label, no personal contact data). |
-| `reused_from` | Optional. The `audited_at` of an earlier audit whose result this row reuses (a re-stamp, not a fresh check). Same time format as `audited_at`. |
+| `reused_from` | Optional. The `audited_at` of an earlier audit whose result this row reuses (a re-stamp, not a fresh check). Same time format as `audited_at`. On append it must name an audit of the **same domain** already in the store (or earlier in the same batch) with an earlier time; otherwise the append is refused. `validate` warns (exit 0) about stored rows written before this check whose reference names no such audit. |
 
 Unknown fields are refused. Append-only: a re-audit is a new row; the last
 row per domain wins.

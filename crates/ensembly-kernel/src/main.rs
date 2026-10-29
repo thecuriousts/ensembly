@@ -1399,6 +1399,9 @@ fn main() -> Result<()> {
                                 rows.len(),
                                 ca::current_audits(&rows).len()
                             );
+                            for i in ca::dangling_reuse(&rows) {
+                                eprintln!("warning: audit {} ({}) has a reused_from that names no earlier stored audit of that domain", i + 1, rows[i].domain);
+                            }
                         }
                         AuditCmd::Append { file } => {
                             let text = if file.as_os_str() == "-" {

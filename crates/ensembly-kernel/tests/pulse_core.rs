@@ -614,10 +614,17 @@ fn pulse_and_audit_exit_codes_do_not_clash() {
     .iter()
     .map(|s| exit_code(*s))
     .collect();
-    assert_eq!(audit, [3, 4, 5, 5], "audit codes are a contract with callers");
+    assert_eq!(
+        audit,
+        [3, 4, 5, 5],
+        "audit codes are a contract with callers"
+    );
     assert_eq!(exit_code(GateStatus::Pass), 0);
     let pulse = [1, 2, pc::REFUSED_WRITE_EXIT];
     for c in pulse {
-        assert!(!audit.contains(&c), "pulse exit {c} is also an audit status");
+        assert!(
+            !audit.contains(&c),
+            "pulse exit {c} is also an audit status"
+        );
     }
 }

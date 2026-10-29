@@ -232,8 +232,8 @@ pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
 pub fn validate_stored_audit(a: &Audit) -> anyhow::Result<()> {
     validate_audit_body(a)?;
     let derived = derive_verdict(&a.checks);
-    let legacy_pass = a.verdict == Verdict::Pass
-        && derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
+    let legacy_pass =
+        a.verdict == Verdict::Pass && derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
     if legacy_pass {
         return Ok(());
     }
@@ -476,6 +476,7 @@ pub fn append_audit(path: &Path, a: &Audit) -> anyhow::Result<()> {
     if existing.iter().any(|x| x == a) {
         anyhow::bail!("identical audit already in store for {}", a.domain);
     }
+    check_reuse(&existing, a)?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -502,6 +503,7 @@ pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> 
             skipped += 1;
             continue;
         }
+        check_reuse(&existing, &a)?;
         lines.push_str(&serde_json::to_string(&a)?);
         lines.push('\n');
         existing.push(a);
@@ -515,6 +517,44 @@ pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> 
         f.write_all(lines.as_bytes())?;
     }
     Ok((appended, skipped))
+}
+
+fn instant(t: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(t)
+        .ok()
+        .map(|d| d.timestamp())
+}
+
+/// `reused_from`, when set, must be the `audited_at` of an audit of the same
+/// domain that comes before `a` in the store and is earlier in time.
+fn reuse_target_ok(prior: &[Audit], a: &Audit) -> bool {
+    let Some(rf) = a.reused_from.as_deref() else {
+        return true;
+    };
+    let earlier = matches!((instant(rf), instant(&a.audited_at)), (Some(f), Some(t)) if f < t);
+    earlier
+        && prior
+            .iter()
+            .any(|p| p.domain == a.domain && p.audited_at == rf)
+}
+
+fn check_reuse(prior: &[Audit], a: &Audit) -> anyhow::Result<()> {
+    if !reuse_target_ok(prior, a) {
+        anyhow::bail!(
+            "reused_from {:?} for {} does not name an earlier stored audit of that domain",
+            a.reused_from.as_deref().unwrap_or(""),
+            a.domain
+        );
+    }
+    Ok(())
+}
+
+/// Indices of stored rows whose `reused_from` names no earlier audit of the
+/// same domain. Rows stored before this check existed may dangle; new ones cannot.
+pub fn dangling_reuse(rows: &[Audit]) -> Vec<usize> {
+    (0..rows.len())
+        .filter(|&i| !reuse_target_ok(&rows[..i], &rows[i]))
+        .collect()
 }
 
 /// Write `company-audits.csv` + `company-audits.md` (byte-identical on re-run).
@@ -687,6 +727,56 @@ mod tests {
         );
         let extra = base.replacen("{", r#"{"reused_by":"x","#, 1);
         assert!(parse_audits(&extra).is_err(), "unknown fields stay refused");
+    }
+
+    fn reuse_of(a: &Audit, from: &str, at: &str) -> Audit {
+        let mut r = a.clone();
+        r.reused_from = Some(from.into());
+        r.audited_at = at.into();
+        r
+    }
+
+    #[test]
+    fn reused_from_must_name_an_earlier_stored_audit_of_the_same_domain() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        let rows = sample();
+        let line = |a: &Audit| serde_json::to_string(a).unwrap();
+        // nothing stored yet: the reference dangles
+        let dangling = reuse_of(
+            &rows[0],
+            "2026-10-20T09:00:00+02:00",
+            "2026-10-28T09:00:00+01:00",
+        );
+        assert!(append_audits(&p, &line(&dangling)).is_err());
+        assert!(append_audit(&p, &dangling).is_err());
+        assert!(!p.exists(), "nothing written");
+        append_audits(&p, SAMPLE).unwrap();
+        // contoso's stamp exists, but for another domain
+        let other = reuse_of(
+            &rows[0],
+            "2026-10-21T10:00:00+02:00",
+            "2026-10-28T09:00:00+01:00",
+        );
+        assert!(append_audits(&p, &line(&other)).is_err());
+        // a reference to a later stamp is not an earlier audit
+        let later = reuse_of(
+            &rows[0],
+            "2026-10-20T09:00:00+02:00",
+            "2026-10-19T09:00:00+02:00",
+        );
+        assert!(append_audits(&p, &line(&later)).is_err());
+        // same domain, earlier, stored: accepted (also within one batch)
+        assert_eq!(append_audits(&p, &line(&dangling)).unwrap(), (1, 0));
+        let again = reuse_of(
+            &rows[0],
+            "2026-10-28T09:00:00+01:00",
+            "2026-10-29T09:00:00+01:00",
+        );
+        append_audit(&p, &again).unwrap();
+        let stored = parse_audits(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert!(dangling_reuse(&stored).is_empty());
+        assert_eq!(dangling_reuse(&[dangling]), vec![0]);
     }
 
     #[test]
