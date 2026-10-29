@@ -309,6 +309,7 @@ dependencies = [
  "clap",
  "ensembly-agents",
  "ensembly-memory",
+ "ensembly-schema",
  "hex",
  "rand",
  "regex",

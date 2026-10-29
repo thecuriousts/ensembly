@@ -100,6 +100,7 @@ pub fn check_row_submit_time(r: &LedgerRow) -> Result<(), String> {
     }
 }
 
+/// Posting URL without a trailing `/` or `/application`.
 pub fn link_key(link: &str) -> &str {
     let l = link.trim_end_matches('/');
     l.strip_suffix("/application").unwrap_or(l)

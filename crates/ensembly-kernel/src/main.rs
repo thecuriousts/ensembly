@@ -12,6 +12,7 @@ use ensembly_kernel::channel_pulse::{
     project_wait_snapshot, reconcile_channel_pulse, seed_live_channel_actions,
     DEFAULT_CHANNEL_PULSE_PATH,
 };
+use ensembly_kernel::company_audit::StoredAudit;
 use ensembly_kernel::digital_flow::{run_cycle, DigitalFlow};
 use ensembly_kernel::memory_sink::MemorySink;
 use ensembly_kernel::msg_bus::ManualCmd;

@@ -1,7 +1,11 @@
 //! Application ledger (Stage 1) — Ensembly is SoT for job applications.
 //! Append-only JSONL; later row for the same `link` supersedes earlier ones.
-use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+pub use ensembly_schema::{link_key, LedgerRow, Status};
+
+/// One ledger row.
+pub type Row = LedgerRow;
 
 /// Real rows live here: under `data/`, which `.gitignore` keeps local-only.
 pub const DEFAULT_LEDGER_PATH: &str = "data/local/applications/ledger.jsonl";
@@ -9,59 +13,10 @@ pub const DEFAULT_LEDGER_PATH: &str = "data/local/applications/ledger.jsonl";
 pub const LEGACY_UNKNOWN_CV: &str = "legacy-unknown";
 pub const DEFAULT_EXPORT_DIR: &str = "data/local/applications/exports";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Status {
-    Prepared,
-    Submitted,
-    Interview,
-    Rejected,
-    Withdrawn,
-    SilentClosed,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Row {
-    pub company: String,
-    pub role: String,
-    pub link: String,
-    /// Optional application-form URL (e.g. `…/application`); `link` stays the canonical posting.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub apply_url: Option<String>,
-    pub status: Status,
-    pub submit_time: Option<String>,
-    /// `true` when the application was sent but the time was never recorded
-    /// (then `submit_time` is null). Absent otherwise; never `false`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub submit_time_unknown: Option<bool>,
-    pub cv_version: String,
-}
-
-impl Status {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Status::Prepared => "prepared",
-            Status::Submitted => "submitted",
-            Status::Interview => "interview",
-            Status::Rejected => "rejected",
-            Status::Withdrawn => "withdrawn",
-            Status::SilentClosed => "silent-closed",
-        }
-    }
-}
-
 /// Europe/Stockholm is +01:00 (CET) or +02:00 (CEST). `Z` and other offsets are refused
 /// so every row reads in the operator's zone without conversion.
 pub(crate) fn check_submit_time(t: &str) -> anyhow::Result<()> {
-    chrono::DateTime::parse_from_rfc3339(t)
-        .map_err(|e| anyhow::anyhow!("submit_time {t:?} is not RFC 3339 with offset: {e}"))?;
-    if !(t.ends_with("+01:00") || t.ends_with("+02:00")) {
-        anyhow::bail!(
-            "submit_time {t:?} must carry the Europe/Stockholm offset (+01:00 or +02:00)"
-        );
-    }
-    Ok(())
+    ensembly_schema::check_submit_time(t).map_err(anyhow::Error::msg)
 }
 
 pub fn validate_row(r: &Row) -> anyhow::Result<()> {
@@ -86,34 +41,8 @@ pub fn validate_row(r: &Row) -> anyhow::Result<()> {
             anyhow::bail!("apply_url must be an https URL");
         }
     }
-    match (&r.submit_time, r.submit_time_unknown, r.status) {
-        (_, Some(false), _) => {
-            anyhow::bail!("submit_time_unknown is either true or absent")
-        }
-        (Some(_), Some(true), _) => {
-            anyhow::bail!("submit_time_unknown: true needs submit_time null")
-        }
-        (None, Some(true), Status::Prepared | Status::Withdrawn) => anyhow::bail!(
-            "submit_time_unknown is only for sent statuses; {} already allows a null submit_time",
-            r.status.as_str()
-        ),
-        (None, Some(true), _) => {}
-        (None, None, Status::Prepared | Status::Withdrawn) => {}
-        (None, None, s) => anyhow::bail!(
-            "submit_time is required when status is {} (if it was never recorded, set submit_time_unknown: true)",
-            s.as_str()
-        ),
-        (Some(t), None, _) => check_submit_time(t)?,
-    }
+    ensembly_schema::check_row_submit_time(r).map_err(anyhow::Error::msg)?;
     Ok(())
-}
-
-/// Identity key of an application: the posting URL without a trailing `/application`
-/// (ATS form suffix) or `/`. Lets a corrected row with the canonical `link`
-/// supersede an older row that stored the form URL, without editing history.
-pub fn link_key(link: &str) -> &str {
-    let l = link.trim_end_matches('/');
-    l.strip_suffix("/application").unwrap_or(l)
 }
 
 /// Parse JSONL (blank lines ignored). Errors name the 1-based line.

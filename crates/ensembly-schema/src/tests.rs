@@ -66,7 +66,7 @@ fn missing_v_reads_as_zero() {
 
 #[test]
 fn version_two_is_refused() {
-    for n in [json!(0), json!(2), json!("1")] {
+    for n in [json!(0), json!(1.0), json!(2), json!("1")] {
         assert!(decode_line::<LedgerRow>(&set(LEDGER, "v", n.clone())).is_err());
         assert!(decode_line::<Audit>(&set(AUDIT, "v", n.clone())).is_err());
         assert!(decode_line::<PackRef>(&set(PACK, "v", n)).is_err());
@@ -292,7 +292,7 @@ fn same_fields(body: serde_json::Value, line: serde_json::Value) {
 fn byte_order_mark_is_named() {
     let line = format!("\u{feff}{}", first(LEDGER));
     let err = decode_line::<LedgerRow>(&line).unwrap_err();
-    assert!(err.contains("byte-order mark"), "{err}");
+    assert!(err.contains("strip the BOM"), "{err}");
 }
 
 #[test]

@@ -2,8 +2,12 @@
 //! checked before a pack is prepared or an application is sent.
 //! Last row per canonical domain wins. The verdict is derived from the checks
 //! and validated, never trusted.
-use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+pub use ensembly_schema::{
+    audit_exit_code as exit_code, canonical_domain, Audit, Check, CheckId, CheckResult, GateStatus,
+    Verdict,
+};
 
 /// Real audits live here, under gitignored `data/`.
 pub const DEFAULT_AUDIT_PATH: &str = "data/local/applications/company-audits.jsonl";
@@ -13,74 +17,23 @@ pub const STALE_AFTER_DAYS: i64 = 30;
 /// a future stamp would otherwise stay fresh for ever.
 pub const FUTURE_SKEW_MINUTES: i64 = 5;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Verdict {
-    Pass,
-    Flag,
-    Block,
+trait CheckCatalog {
+    const ALL: [CheckId; 8];
+    fn as_str(&self) -> &'static str;
+    fn unknown_flags(self) -> bool;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CheckResult {
-    Pass,
-    Flag,
-    Block,
-    Unknown,
+trait WireStr {
+    fn as_str(&self) -> &'static str;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CheckId {
-    ApplyDomain,
-    DomainAge,
-    FundingOwnership,
-    Headcount,
-    ReviewsNews,
-    DuplicateGhost,
-    PaymentIdAsk,
-    AgencyRepost,
+/// Derived verdict for a stored audit.
+pub trait StoredAudit {
+    fn effective_verdict(&self) -> Verdict;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Check {
-    pub id: CheckId,
-    pub result: CheckResult,
-    pub note: String,
-    pub sources: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Audit {
-    pub company: String,
-    pub domain: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub apply_url: Option<String>,
-    pub verdict: Verdict,
-    pub checks: Vec<Check>,
-    pub audited_at: String,
-    pub audited_by: String,
-    /// Optional `audited_at` of the earlier audit whose result this row reuses.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reused_from: Option<String>,
-}
-
-/// Gate status for `audit status`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum GateStatus {
-    Pass,
-    Flag,
-    Block,
-    Unaudited,
-    Stale,
-}
-
-impl CheckId {
-    pub const ALL: [CheckId; 8] = [
+impl CheckCatalog for CheckId {
+    const ALL: [CheckId; 8] = [
         CheckId::ApplyDomain,
         CheckId::DomainAge,
         CheckId::FundingOwnership,
@@ -90,7 +43,7 @@ impl CheckId {
         CheckId::PaymentIdAsk,
         CheckId::AgencyRepost,
     ];
-    pub fn as_str(self) -> &'static str {
+    fn as_str(&self) -> &'static str {
         match self {
             CheckId::ApplyDomain => "apply_domain",
             CheckId::DomainAge => "domain_age",
@@ -112,8 +65,8 @@ impl CheckId {
     }
 }
 
-impl CheckResult {
-    pub fn as_str(self) -> &'static str {
+impl WireStr for CheckResult {
+    fn as_str(&self) -> &'static str {
         match self {
             CheckResult::Pass => "pass",
             CheckResult::Flag => "flag",
@@ -123,8 +76,8 @@ impl CheckResult {
     }
 }
 
-impl Verdict {
-    pub fn as_str(self) -> &'static str {
+impl WireStr for Verdict {
+    fn as_str(&self) -> &'static str {
         match self {
             Verdict::Pass => "pass",
             Verdict::Flag => "flag",
@@ -161,17 +114,6 @@ fn derive_verdict_before_size_rule(checks: &[Check]) -> Verdict {
     } else {
         Verdict::Pass
     }
-}
-
-/// Lowercase host without scheme, `www.`, path, query, port or trailing dot.
-pub fn canonical_domain(s: &str) -> String {
-    let s = s.trim().to_lowercase();
-    let s = s.split_once("://").map(|(_, r)| r.to_string()).unwrap_or(s);
-    let host = s.split(['/', '?', '#']).next().unwrap_or("");
-    let host = host.rsplit('@').next().unwrap_or(host);
-    let host = host.split(':').next().unwrap_or(host);
-    let host = host.trim_end_matches('.');
-    host.strip_prefix("www.").unwrap_or(host).to_string()
 }
 
 fn email_re() -> regex::Regex {
@@ -212,10 +154,10 @@ fn validate_optional_fields(a: &Audit) -> anyhow::Result<()> {
     Ok(())
 }
 
-impl Audit {
+impl StoredAudit for Audit {
     /// The verdict the checks give under the current rule. Equals `verdict`
     /// for every row except a stored legacy pass that now derives flag.
-    pub fn effective_verdict(&self) -> Verdict {
+    fn effective_verdict(&self) -> Verdict {
         derive_verdict(&self.checks)
     }
 }
@@ -379,16 +321,6 @@ pub fn status_for(
         Verdict::Block => GateStatus::Block,
     };
     (s, Some(a))
-}
-
-/// 0 pass, 3 = flag (not approvable), 4 block, 5 unaudited or stale. (1/2 stay free for errors/usage.)
-pub fn exit_code(s: GateStatus) -> i32 {
-    match s {
-        GateStatus::Pass => 0,
-        GateStatus::Flag => 3,
-        GateStatus::Block => 4,
-        GateStatus::Unaudited | GateStatus::Stale => 5,
-    }
 }
 
 fn result_of(a: &Audit, id: CheckId) -> &'static str {

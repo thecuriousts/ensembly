@@ -18,7 +18,7 @@ struct Envelope<'a, T: Serialize> {
 
 /// Decode one JSON object line.
 ///
-/// A missing `v` is version 0. The only accepted present value is [`SCHEMA_VERSION`].
+/// A missing `v` means the v0 shape. The only accepted present value is [`SCHEMA_VERSION`].
 /// An explicit `v` of 0 is refused, as is any other value. Duplicate keys are refused.
 pub fn decode_line<T: DeserializeOwned + Checked>(line: &str) -> Result<Decoded<T>, String> {
     reject_duplicate_keys(line)?;
@@ -122,7 +122,7 @@ impl JsonScan<'_> {
             .get(self.i..)
             .is_some_and(|b| b.starts_with(b"\xEF\xBB\xBF"))
         {
-            return Err("byte-order mark".into());
+            return Err("byte-order mark; strip the BOM".into());
         }
         let b = self.bump()?;
         self.value_byte(b)

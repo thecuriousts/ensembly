@@ -113,6 +113,7 @@ pub(crate) struct AuditLine {
     v: crate::version_one::VersionOne,
 }
 
+/// Lowercase host without scheme, `www.`, path, query, port, or trailing dot.
 pub fn canonical_domain(s: &str) -> String {
     let s = s.trim().to_lowercase();
     let s = s.split_once("://").map(|(_, r)| r.to_string()).unwrap_or(s);
