@@ -232,6 +232,27 @@ fn same_state_key(r: &Row) -> Row {
 /// Append one validated row. A row equal to an existing one (ignoring surrounding
 /// whitespace and a trailing slash or `/application` on the link) is refused with an
 /// error (CLI exit 1), never written twice. No file lock: one writer at a time.
+/// Open a JSONL store for appending. If the file is non-empty and its last
+/// byte is not a newline (for example after a hand edit), write one first so
+/// the next row starts on its own line.
+pub(crate) fn open_jsonl_append(path: &Path) -> anyhow::Result<std::fs::File> {
+    use std::io::{Read, Seek, SeekFrom, Write};
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .read(true)
+        .append(true)
+        .open(path)?;
+    if f.metadata()?.len() > 0 {
+        f.seek(SeekFrom::End(-1))?;
+        let mut last = [0u8; 1];
+        f.read_exact(&mut last)?;
+        if last[0] != b'\n' {
+            f.write_all(b"\n")?;
+        }
+    }
+    Ok(f)
+}
+
 pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
     use std::io::Write;
     validate_row(r)?;
@@ -250,10 +271,7 @@ pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
+    let mut f = open_jsonl_append(path)?;
     writeln!(f, "{}", serde_json::to_string(r)?)?;
     Ok(())
 }
@@ -665,6 +683,23 @@ mod tests {
         assert_eq!(export_csv(&rows), export_csv(&rows));
         assert_eq!(export_csv(&rows), export_csv(&rev));
         assert_eq!(export_markdown(&rows), export_markdown(&rev));
+    }
+
+    #[test]
+    fn append_after_missing_final_newline_keeps_rows_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("ledger.jsonl");
+        std::fs::write(&p, SAMPLE.trim_end_matches('\n')).unwrap();
+        let before = parse_ledger(SAMPLE).unwrap().len();
+        let r: Row = serde_json::from_str(&row(
+            "https://example.test/j/nl",
+            "submitted",
+            Some("2026-10-26T20:08:00+01:00"),
+        ))
+        .unwrap();
+        append_row(&p, &r).unwrap();
+        let rows = parse_ledger(&std::fs::read_to_string(&p).unwrap()).unwrap();
+        assert_eq!(rows.len(), before + 1);
     }
 
     #[test]

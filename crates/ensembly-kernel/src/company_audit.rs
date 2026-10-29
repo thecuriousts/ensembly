@@ -416,10 +416,7 @@ pub fn append_audit(path: &Path, a: &Audit) -> anyhow::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
+    let mut f = crate::application_ledger::open_jsonl_append(path)?;
     writeln!(f, "{}", serde_json::to_string(a)?)?;
     Ok(())
 }
@@ -451,10 +448,7 @@ pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> 
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let mut f = crate::application_ledger::open_jsonl_append(path)?;
         f.write_all(lines.as_bytes())?;
     }
     Ok((appended, skipped))
@@ -555,7 +549,7 @@ mod tests {
         for bad in [
             "call +00 70 123 45 67",
             "mail hr@x.example.test",
-            "070-123 45 67",
+            "070-174 06 50", // fiction range 070-1740605..699
             "(555) 123-4567",
         ] {
             let mut a = first();
@@ -578,10 +572,19 @@ mod tests {
         let base = SAMPLE.lines().next().unwrap();
         let with = base.replacen("{", r#"{"reused_from":"2026-10-20T09:00:00+02:00","#, 1);
         let rows = parse_audits(&with).expect("row with reused_from validates");
-        assert_eq!(rows[0].reused_from.as_deref(), Some("2026-10-20T09:00:00+02:00"));
-        assert!(parse_audits(base).is_ok(), "row without reused_from still validates");
+        assert_eq!(
+            rows[0].reused_from.as_deref(),
+            Some("2026-10-20T09:00:00+02:00")
+        );
+        assert!(
+            parse_audits(base).is_ok(),
+            "row without reused_from still validates"
+        );
         let bad = base.replacen("{", r#"{"reused_from":"yesterday","#, 1);
-        assert!(parse_audits(&bad).is_err(), "reused_from must be a timestamp");
+        assert!(
+            parse_audits(&bad).is_err(),
+            "reused_from must be a timestamp"
+        );
         let extra = base.replacen("{", r#"{"reused_by":"x","#, 1);
         assert!(parse_audits(&extra).is_err(), "unknown fields stay refused");
     }
@@ -743,6 +746,28 @@ mod tests {
     }
 
     #[test]
+    fn append_after_missing_final_newline_keeps_rows_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut lines = SAMPLE.lines();
+        let first_line = lines.next().unwrap();
+        let rest: Vec<&str> = lines.collect();
+        let p = dir.path().join("a.jsonl");
+        std::fs::write(&p, rest.join("\n")).unwrap();
+        append_audit(&p, &serde_json::from_str(first_line).unwrap()).unwrap();
+        let n = parse_audits(&std::fs::read_to_string(&p).unwrap())
+            .unwrap()
+            .len();
+        assert_eq!(n, rest.len() + 1);
+        let q = dir.path().join("b.jsonl");
+        std::fs::write(&q, rest.join("\n")).unwrap();
+        assert_eq!(append_audits(&q, first_line).unwrap(), (1, 0));
+        let n = parse_audits(&std::fs::read_to_string(&q).unwrap())
+            .unwrap()
+            .len();
+        assert_eq!(n, rest.len() + 1);
+    }
+
+    #[test]
     fn append_validates_and_refuses_duplicates() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("a.jsonl");
@@ -801,7 +826,8 @@ mod tests {
             .collect();
         keys.sort();
         let mut a = first();
-        a.apply_url.get_or_insert_with(|| "https://jobs.example.test/x".into());
+        a.apply_url
+            .get_or_insert_with(|| "https://jobs.example.test/x".into());
         a.reused_from = Some("2026-10-20T09:00:00+02:00".into());
         let full = serde_json::to_value(&a).unwrap();
         let mut rk: Vec<_> = full.as_object().unwrap().keys().cloned().collect();
