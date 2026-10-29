@@ -77,7 +77,7 @@ enum PulseCoreCmd {
 
 #[derive(Subcommand)]
 enum MissionsCmd {
-    /// Import the `| Mission |` table from a spec markdown into the mission store
+    /// Import the `| Mission |` table from a spec markdown into the mission store (exit 7: store exists, refused without --force)
     Import {
         #[arg(long)]
         spec: PathBuf,
@@ -553,7 +553,7 @@ fn pulse_import(cfg: &pc::PulseCfg, spec: &std::path::Path, force: bool) -> Resu
         Ok(st) => st,
         Err(e) if e.downcast_ref::<pc::RefusedWrite>().is_some() => {
             eprintln!("{e}");
-            std::process::exit(3);
+            std::process::exit(pc::REFUSED_WRITE_EXIT);
         }
         Err(e) => return Err(e),
     };
