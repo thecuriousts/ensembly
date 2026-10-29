@@ -407,7 +407,7 @@ enum AuditCmd {
         #[arg(long)]
         out_dir: Option<PathBuf>,
     },
-    /// Gate: print JSON status for a company name or domain; exit 0 pass, 3 flag, 4 block, 5 unaudited/stale
+    /// Print JSON status for a company name or domain; exit 0 pass, 3 flag, 4 block, 5 unaudited/stale
     Status {
         query: String,
         /// Evaluate staleness at this RFC 3339 time instead of now (tests/replays)
@@ -630,899 +630,1026 @@ fn run_pulse(
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let db_path = resolve_ops_db(cli.db.clone());
-    let memory_flags = MemoryFlags {
-        memory: cli.memory.clone(),
-        no_memory: cli.no_memory,
+    let ctx = Ctx {
+        db_path: resolve_ops_db(cli.db.clone()),
+        memory_flags: MemoryFlags {
+            memory: cli.memory.clone(),
+            no_memory: cli.no_memory,
+        },
+        memory_cli: cli.memory.clone(),
     };
+    dispatch(&ctx, cli.cmd)
+}
 
-    match cli.cmd {
-        Commands::Version => {
-            println!("{}", kernel_version());
-            println!("private_paths: {:?}", private_path_patterns());
-            println!("law: Node src/* legacy; ensembly-kernel is control SoT");
-        }
+/// Values every subcommand may need, lifted out of `Cli` before the match moves `cmd`.
+struct Ctx {
+    db_path: PathBuf,
+    memory_flags: MemoryFlags,
+    memory_cli: Option<PathBuf>,
+}
+
+fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
+    match cmd {
+        Commands::Version => cmd_version(),
         Commands::MigrateLocalPaths {
             dry_run,
             root,
             json,
-        } => {
-            let root = root.unwrap_or_else(|| PathBuf::from("."));
-            let report = migrate_local_paths_at(&root, dry_run)?;
-            if json {
-                println!("{}", serde_json::to_string_pretty(&report)?);
-            } else {
-                if report.copied.is_empty() && report.skipped_dest_exists.is_empty() {
-                    println!(
-                        "MIGRATE_LOCAL no legacy peram-* files to copy under {}",
-                        root.display()
-                    );
-                }
-                for a in &report.copied {
-                    let verb = if report.dry_run {
-                        "would-copy"
-                    } else {
-                        "copied"
-                    };
-                    println!(
-                        "MIGRATE_LOCAL {verb} {} → {}",
-                        a.from.display(),
-                        a.to.display()
-                    );
-                }
-                for a in &report.skipped_dest_exists {
-                    println!(
-                        "MIGRATE_LOCAL skip-dest-exists {} (left {})",
-                        a.to.display(),
-                        a.from.display()
-                    );
-                }
-                println!(
-                    "MIGRATE_LOCAL_OK copied={} skipped_dest={} skipped_missing={} dry_run={}",
-                    report.copied.len(),
-                    report.skipped_dest_exists.len(),
-                    report.skipped_src_missing.len(),
-                    report.dry_run
-                );
-                println!(
-                    "next (canonical host only): smoke runtime status on the new ops path, then\n  cargo run -p ensembly-kernel -- pulse-pack export --out ~/sync/pulse/bot.pulse.json --include-archive\n  # laptop: pulse-pack import that pack (defaults prefer ensembly-memory.json once present)\nKeep legacy copies until smoke passes. Do not dual-write ops. After verify, you may delete peram-* files."
-                );
-            }
-        }
+        } => cmd_migrate(dry_run, root, json),
         Commands::Turn {
             fixture,
             json,
             channel,
             location,
-        } => {
-            let store = OpsStore::open(&db_path)?;
-            // Live seed from ops life-state / wait-snapshot; --fixture is CI dogfood only.
-            // Fail-closed (CHANNEL_IR_FAIL) when empty — never silent grocery/rent SoT.
-            let actions = if let Some(f) = fixture {
-                load_actions_from_fixture(&f)?
-            } else {
-                seed_live_channel_actions(&store)?
-            };
-            let snap = ensure_snap(&store, &actions)?;
-            let mut plan = rank_now(
-                &context_at(Utc::now(), location.as_deref()),
-                &actions,
-                &[],
-                &snap,
-            );
-            // When durable life-state exists, drive FocusPlan from CP (read-only; no persist).
-            if let Ok(Some(life)) = store.load_life_state() {
-                let now = Utc::now();
-                let mut rt = Runtime::new(now);
-                rt.state = life;
-                rt.snapshot = snap.clone();
-                plan = rt.focus_plan(plan);
-            } else if ensembly_kernel::DepGraph::from_actions(&actions, &Default::default()).is_ok()
-            {
-                let now = Utc::now();
-                let mut rt = Runtime::new(now);
-                if rt.load_actions(&actions, now).is_ok() {
-                    plan = rt.focus_plan(plan);
-                    // Fail loud — dual SoT must not partially persist.
-                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
-                }
-            }
-            if channel {
-                let ir = build_channel_ir(&plan, &snap, Utc::now());
-                println!("{}", serde_json::to_string_pretty(&ir)?);
-            } else if json {
-                println!("{}", serde_json::to_string_pretty(&plan)?);
-            } else {
-                println!("# FocusPlan — {}", plan.at.to_rfc3339());
-                println!("biome: {}", plan.biome);
-                println!("location: {:?}", plan.location_label);
-                println!(
-                    "next physical: {}",
-                    plan.primary_physical
-                        .as_ref()
-                        .map(|p| format!("{} ({})", p.title, p.id))
-                        .unwrap_or_else(|| "—".into())
-                );
-                println!(
-                    "next auth: {}",
-                    plan.primary_auth
-                        .as_ref()
-                        .map(|p| format!("{} ({})", p.title, p.id))
-                        .unwrap_or_else(|| "—".into())
-                );
-                println!("places: {:?}", plan.places);
-                println!("coach: {}", plan.coach_line);
-                println!("db: {:?}", store.path());
-            }
-            if !channel {
-                eprintln!(
-                    "TURN_OK physical={} pending={} nextPhysical={} nextAuth={} biome={}",
-                    plan.physical_count,
-                    plan.pending_count,
-                    plan.primary_physical
-                        .as_ref()
-                        .map(|p| p.id.as_str())
-                        .unwrap_or("-"),
-                    plan.primary_auth
-                        .as_ref()
-                        .map(|p| p.id.as_str())
-                        .unwrap_or("-"),
-                    plan.biome
-                );
-            }
-        }
+        } => cmd_turn(&ctx.db_path, fixture, json, channel, location),
         Commands::Approve { id } => {
-            gate_via_runtime(
-                &db_path,
-                &memory_flags,
-                ManualCmd::Approve { id: id.clone() },
-                "approve",
-                &id,
-            )?;
+            manual_via_runtime(ctx, ManualCmd::Approve { id: id.clone() }, "approve", &id)
         }
         Commands::Deny { id } => {
-            gate_via_runtime(
-                &db_path,
-                &memory_flags,
-                ManualCmd::Deny { id: id.clone() },
-                "deny",
-                &id,
-            )?;
+            manual_via_runtime(ctx, ManualCmd::Deny { id: id.clone() }, "deny", &id)
         }
-        Commands::Claim { id } => {
-            gate_via_runtime(
-                &db_path,
-                &memory_flags,
-                ManualCmd::ClaimPhysical { id: id.clone() },
-                "claim",
-                &id,
-            )?;
-        }
-        Commands::Complete { id } => {
-            gate_via_runtime(
-                &db_path,
-                &memory_flags,
-                ManualCmd::CompletePhysical { id: id.clone() },
-                "complete",
-                &id,
-            )?;
-        }
-        Commands::DigitalFlow { sub } => match sub {
-            DfCmd::Cycle { payee, json } => {
-                let store = OpsStore::open(&db_path)?;
-                let now = Utc::now();
-                let existing = store.load_flow("flow-bill_pay")?;
-                let flow =
-                    existing.unwrap_or_else(|| DigitalFlow::bill_pay("flow-bill_pay", &payee, now));
-                let (flow, approval, executed) = run_cycle(&flow, "approve", "operator", now)?;
-                store.save_flow(&flow)?;
-                let mut snap = store
-                    .load_snapshot()?
-                    .unwrap_or_else(|| Snapshot::empty(now));
-                snap.pending.retain(|p| p.id != approval.id);
-                snap.pending.push(approval.clone());
-                snap.status = ensembly_kernel::derive_status(&snap.pending);
-                snap.phase = match snap.status {
-                    ensembly_kernel::SnapshotStatus::IdleWaiting => "HITL_WAIT".into(),
-                    ensembly_kernel::SnapshotStatus::Clear => "CLEAR".into(),
-                    ensembly_kernel::SnapshotStatus::Partial => "PARTIAL".into(),
-                };
-                snap.updated_at = now;
-                store.save_snapshot(&snap)?;
-                let body = serde_json::json!({
-                    "ok": true,
-                    "cmd": "cycle",
-                    "flow": {
-                        "id": flow.id,
-                        "place": flow.place,
-                        "status": format!("{:?}", flow.status),
-                        "title": flow.title,
-                        "lastResult": flow.last_result,
-                    },
-                    "approvalStatus": format!("{:?}", approval.status),
-                    "executed": executed,
-                    "mutated": false,
-                    "db": store.path(),
-                });
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&body)?);
-                } else {
-                    println!(
-                        "DIGITAL_FLOW ok place={} status={:?} approval={:?} executed={}",
-                        flow.place, flow.status, approval.status, executed
-                    );
-                }
-            }
-            DfCmd::Status { json } => {
-                let store = OpsStore::open(&db_path)?;
-                let flow = store.load_flow("flow-bill_pay")?;
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&flow)?);
-                } else {
-                    println!("{:?}", flow.map(|f| (f.id, f.status, f.place)));
-                }
-            }
-        },
-        Commands::Backup { out, unlock } => {
-            let store = OpsStore::open(&db_path)?;
-            let key = unlock_material(&unlock)?;
-            let pack = create_backup_pack(&store, &key)?;
-            write_backup_pack(&out, &pack)?;
-            println!("BACKUP_OK path={out:?} suite={}", pack.sealed_ops.suite);
-        }
-        Commands::RestoreDryRun { pack, unlock } => {
-            let key = unlock_material(&unlock)?;
-            let pack = read_backup_pack(&pack)?;
-            let report = restore_dry_run(&pack, &key)?;
-            println!("{}", serde_json::to_string_pretty(&report)?);
-            if !report.ok {
-                std::process::exit(2);
-            }
-        }
+        Commands::Claim { id } => manual_via_runtime(
+            ctx,
+            ManualCmd::ClaimPhysical { id: id.clone() },
+            "claim",
+            &id,
+        ),
+        Commands::Complete { id } => manual_via_runtime(
+            ctx,
+            ManualCmd::CompletePhysical { id: id.clone() },
+            "complete",
+            &id,
+        ),
+        Commands::DigitalFlow { sub } => cmd_digital_flow(&ctx.db_path, sub),
+        Commands::Backup { out, unlock } => cmd_backup(&ctx.db_path, &out, &unlock),
+        Commands::RestoreDryRun { pack, unlock } => cmd_restore_dry_run(&pack, &unlock),
         Commands::RestoreApply {
             pack,
             unlock,
             i_understand,
-        } => {
-            if !i_understand {
-                bail!(
-                    "restore-apply is destructive — re-run with --i-understand. \
-                     Canonical host only; laptop must not dual-write ops SoT."
-                );
-            }
-            let store = OpsStore::open(&db_path)?;
-            let key = unlock_material(&unlock)?;
-            let pack = read_backup_pack(&pack)?;
-            restore_apply(&store, &pack, &key)?;
-            println!(
-                "RESTORE_APPLY_OK db={:?} keys={}",
-                store.path(),
-                store.export_bundle()?.kv.len()
-            );
-            eprintln!("RESTORE_OK apply db={}", store.path().display());
-        }
-        Commands::OpsBundle { sub } => match sub {
-            OpsBundleCmd::Export { out, json } => {
-                let store = OpsStore::open(&db_path)?;
-                let bundle = store.export_bundle()?;
-                OpsStore::write_bundle_file(&out, &bundle)?;
-                let body = serde_json::json!({
-                    "ok": true,
-                    "cmd": "ops-bundle.export",
-                    "format": bundle.format,
-                    "schema_version": bundle.schema_version,
-                    "kv_keys": bundle.kv.len(),
-                    "path": out,
-                    "db": store.path(),
-                });
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&body)?);
-                } else {
-                    println!(
-                        "OPS_BUNDLE_EXPORT_OK path={out:?} keys={} schema={}",
-                        bundle.kv.len(),
-                        bundle.schema_version
-                    );
-                }
-            }
-            OpsBundleCmd::Import {
-                bundle,
-                dry_run,
-                json,
-            } => {
-                let read = OpsStore::read_bundle_file(&bundle)?;
-                if dry_run {
-                    let temp = OpsStore::open_in_memory()?;
-                    temp.import_bundle(&read)?;
-                    let body = serde_json::json!({
-                        "ok": true,
-                        "cmd": "ops-bundle.import",
-                        "dry_run": true,
-                        "kv_keys": read.kv.len(),
-                        "message": "dry-run OK — primary store not modified",
-                    });
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&body)?);
-                    } else {
-                        println!(
-                            "OPS_BUNDLE_IMPORT_DRY_RUN_OK keys={} (primary not modified)",
-                            read.kv.len()
-                        );
-                    }
-                } else {
-                    let store = OpsStore::open(&db_path)?;
-                    store.import_bundle(&read)?;
-                    let body = serde_json::json!({
-                        "ok": true,
-                        "cmd": "ops-bundle.import",
-                        "dry_run": false,
-                        "kv_keys": read.kv.len(),
-                        "db": store.path(),
-                    });
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&body)?);
-                    } else {
-                        println!(
-                            "OPS_BUNDLE_IMPORT_OK db={:?} keys={}",
-                            store.path(),
-                            read.kv.len()
-                        );
-                    }
-                    eprintln!("OPS_BUNDLE_OK import keys={}", read.kv.len());
-                }
-            }
-        },
+        } => cmd_restore_apply(&ctx.db_path, &pack, &unlock, i_understand),
+        Commands::OpsBundle { sub } => cmd_ops_bundle(&ctx.db_path, sub),
         Commands::Pulse {
             pulse_db,
             premflow_bin,
             missions_dir,
             now,
             sub,
-        } => run_pulse(pulse_db, premflow_bin, missions_dir, now, sub)?,
-        Commands::PulsePack { sub } => {
-            let memory_path = resolve_memory_path(cli.memory.clone());
-            let archive_sidecar = PathBuf::from(DEFAULT_ARCHIVE_SIDECAR);
-            match sub {
-                PulsePackCmd::Export {
-                    out,
-                    include_archive,
-                    archive_limit,
-                    json,
-                } => {
-                    let ops_db = if include_archive {
-                        Some(db_path.clone())
-                    } else {
-                        None
-                    };
-                    let pack = export_pulse_pack(&PulseExportOpts {
-                        memory_path: memory_path.clone(),
-                        archive_sidecar: archive_sidecar.clone(),
-                        ops_db,
-                        archive_limit,
-                        source_host: std::env::var("HOSTNAME")
-                            .or_else(|_| std::env::var("COMPUTERNAME"))
-                            .unwrap_or_else(|_| "unknown".into()),
-                    })?;
-                    write_pulse_pack(&out, &pack)?;
-                    let status = pack.status();
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&status)?);
-                    } else {
-                        println!(
-                            "PULSE_EXPORT_OK path={out:?} traces={} archive={} hash={} last_seen={}",
-                            status.memory_trace_count,
-                            status.archive_event_count,
-                            status.pack_hash,
-                            status
-                                .last_seen
-                                .map(|t| t.to_rfc3339())
-                                .unwrap_or_else(|| "-".into())
-                        );
-                    }
-                    eprintln!(
-                        "PULSE_OK export traces={} archive={}",
-                        status.memory_trace_count, status.archive_event_count
-                    );
-                }
-                PulsePackCmd::Import {
-                    pack,
-                    dry_run,
-                    archive_sidecar: archive_path,
-                    json,
-                } => {
-                    let read = read_pulse_pack(&pack)?;
-                    let report = import_pulse_pack(
-                        &read,
-                        &PulseImportOpts {
-                            memory_path: memory_path.clone(),
-                            archive_sidecar: archive_path
-                                .clone()
-                                .unwrap_or_else(|| archive_sidecar.clone()),
-                            dry_run,
-                        },
-                    )?;
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&report)?);
-                    } else {
-                        println!(
-                            "PULSE_IMPORT_OK dry_run={} traces_before={} traces_after={} archive_appended={} hash={}",
-                            report.dry_run,
-                            report.memory_trajectory_before,
-                            report.memory_trajectory_after,
-                            report.archive_appended,
-                            report.pack_hash
-                        );
-                    }
-                    eprintln!(
-                        "PULSE_OK import dry_run={} after={}",
-                        report.dry_run, report.memory_trajectory_after
-                    );
-                }
-                PulsePackCmd::Status {
-                    pack,
-                    archive_sidecar: archive_path,
-                    json,
-                } => {
-                    let sidecar = archive_path.unwrap_or(archive_sidecar);
-                    let from_pack = pack.is_some();
-                    let status = if let Some(p) = pack {
-                        read_pulse_pack(&p)?.status()
-                    } else {
-                        local_pulse_status(&memory_path, &sidecar)?
-                    };
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&status)?);
-                    } else {
-                        println!(
-                            "# Pulse status — {}",
-                            if from_pack { "pack" } else { "local" }
-                        );
-                        println!("format: {}", status.format);
-                        println!("traces: {}", status.memory_trace_count);
-                        println!("archive: {}", status.archive_event_count);
-                        println!(
-                            "last_seen: {}",
-                            status
-                                .last_seen
-                                .map(|t| t.to_rfc3339())
-                                .unwrap_or_else(|| "-".into())
-                        );
-                        println!("hash: {}", status.pack_hash);
-                        if let Some(h) = &status.memory_hash {
-                            println!("memory_hash: {}", h);
-                        }
-                    }
-                }
-            }
-        }
-        Commands::Runtime { sub } => {
-            let store = OpsStore::open(&db_path)?;
-            let now = Utc::now();
-            let mut rt = Runtime::new(now);
-            if let Some(life) = store.load_life_state()? {
-                rt.state = life;
-            }
-            if let Some(snap) = store.load_snapshot()? {
-                rt.snapshot = snap;
-            }
-            attach_memory(&mut rt, &memory_flags);
+        } => run_pulse(pulse_db, premflow_bin, missions_dir, now, sub),
+        Commands::PulsePack { sub } => cmd_pulse_pack(ctx, sub),
+        Commands::Runtime { sub } => cmd_runtime(ctx, sub),
+        Commands::Apps { ledger, sub } => cmd_apps(ledger, sub),
+        Commands::ChannelPulse { sub } => cmd_channel_pulse(&ctx.db_path, sub),
+    }
+}
 
-            match sub {
-                RuntimeCmd::Load { fixture, json } => {
-                    let actions = load_actions_from_fixture(&fixture)?;
-                    rt.load_actions(&actions, now)?;
-                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
-                    save_memory(&mut rt);
-                    let cp = rt.state.critical_path.as_ref();
-                    let body = serde_json::json!({
-                        "ok": true,
-                        "cmd": "runtime.load",
-                        "version": rt.state.version,
-                        "regime": format!("{:?}", rt.state.regime),
-                        "nodes": rt.state.graph.nodes.len(),
-                        "edges": rt.state.graph.edges.len(),
-                        "cp": cp.map(|c| &c.path),
-                        "explain": cp.map(|c| &c.explain),
-                        "monteCarlo": cp.and_then(|c| c.monte_carlo.as_ref()),
-                        "db": store.path(),
-                    });
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&body)?);
-                    } else {
-                        println!(
-                            "RUNTIME_LOAD ok nodes={} edges={} regime={:?} {}",
-                            rt.state.graph.nodes.len(),
-                            rt.state.graph.edges.len(),
-                            rt.state.regime,
-                            cp.map(|c| c.explain.as_str()).unwrap_or("-")
-                        );
-                    }
-                    eprintln!(
-                        "RUNTIME_OK load nodes={} cp_len={}",
-                        rt.state.graph.nodes.len(),
-                        cp.map(|c| c.path.len()).unwrap_or(0)
-                    );
-                }
-                RuntimeCmd::Status { json } => {
-                    let cp = rt.state.critical_path.as_ref();
-                    let body = serde_json::json!({
-                        "ok": true,
-                        "cmd": "runtime.status",
-                        "version": rt.state.version,
-                        "regime": format!("{:?}", rt.state.regime).to_ascii_lowercase(),
-                        "fingerprint": rt.state.fingerprint,
-                        "metrics": rt.state.metrics,
-                        "cp": cp,
-                        "pendingAuth": list_pending(&rt.snapshot).iter().map(|p| &p.id).collect::<Vec<_>>(),
-                        "db": store.path(),
-                    });
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&body)?);
-                    } else {
-                        println!("# LifeState v{}", rt.state.version);
-                        println!("regime: {:?}", rt.state.regime);
-                        println!(
-                            "CP: {}",
-                            cp.map(|c| c.explain.as_str())
-                                .unwrap_or("(none — run runtime load)")
-                        );
-                        println!(
-                            "metrics: hootl_done={} hitl_surfaces={} agent_failures={}",
-                            rt.state.metrics.hootl_completed,
-                            rt.state.metrics.hitl_surfaces,
-                            rt.state.metrics.agent_failures
-                        );
-                    }
-                }
-                RuntimeCmd::Tick { agent, json } => {
-                    let report = rt.tick(agent, now)?;
-                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
-                    save_memory(&mut rt);
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&report)?);
-                    } else {
-                        println!(
-                            "RUNTIME_TICK regime={:?} drained={} claim={:?} complete={:?} auth={:?} physical={:?} {}",
-                            report.regime,
-                            report.messages_drained,
-                            report.hootl_claim,
-                            report.hootl_complete,
-                            report.next_auth,
-                            report.next_physical,
-                            report.cp_explain
-                        );
-                    }
-                    eprintln!(
-                        "RUNTIME_OK tick regime={:?} claim={} complete={} auth={}",
-                        report.regime,
-                        report.hootl_claim.as_deref().unwrap_or("-"),
-                        report.hootl_complete.as_deref().unwrap_or("-"),
-                        report.next_auth.as_deref().unwrap_or("-")
-                    );
-                }
-                RuntimeCmd::Approve { id, json } => {
-                    // Normalize: approve uses action id (pay-rent); auth- prefix accepted then stripped.
-                    let action_id = ensembly_kernel::runtime::action_id_of(&id).to_string();
-                    rt.enqueue_manual(
-                        ManualCmd::Approve {
-                            id: action_id.clone(),
-                        },
-                        now,
-                    );
-                    let report = rt.tick(false, now)?;
-                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
-                    save_memory(&mut rt);
-                    let body = serde_json::json!({ "ok": true, "decision": "approve", "id": action_id, "tick": report });
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&body)?);
-                    } else {
-                        println!("RUNTIME_APPROVE id={action_id} regime={:?}", report.regime);
-                    }
-                }
-                RuntimeCmd::Deny { id, json } => {
-                    let action_id = ensembly_kernel::runtime::action_id_of(&id).to_string();
-                    rt.enqueue_manual(
-                        ManualCmd::Deny {
-                            id: action_id.clone(),
-                        },
-                        now,
-                    );
-                    let report = rt.tick(false, now)?;
-                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
-                    save_memory(&mut rt);
-                    let body = serde_json::json!({ "ok": true, "decision": "deny", "id": action_id, "tick": report });
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&body)?);
-                    } else {
-                        println!("RUNTIME_DENY id={action_id}");
-                    }
-                }
-                RuntimeCmd::Claim { id, json } => {
-                    rt.enqueue_manual(ManualCmd::ClaimPhysical { id: id.clone() }, now);
-                    let report = rt.tick(false, now)?;
-                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
-                    save_memory(&mut rt);
-                    let body = serde_json::json!({ "ok": true, "decision": "claim", "id": id, "tick": report });
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&body)?);
-                    } else {
-                        println!("RUNTIME_CLAIM id={id}");
-                    }
-                }
-                RuntimeCmd::Complete { id, json } => {
-                    rt.enqueue_manual(ManualCmd::CompletePhysical { id: id.clone() }, now);
-                    let report = rt.tick(false, now)?;
-                    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
-                    save_memory(&mut rt);
-                    let body = serde_json::json!({ "ok": true, "decision": "complete", "id": id, "tick": report });
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&body)?);
-                    } else {
-                        println!("RUNTIME_COMPLETE id={id} regime={:?}", report.regime);
-                    }
-                }
-                RuntimeCmd::Reflect { json } => {
-                    let Some(sink) = rt.memory.as_mut() else {
-                        bail!("reflect needs episodic memory — remove --no-memory (default path: {DEFAULT_MEMORY_PATH})");
-                    };
-                    let entries = sink.memory.doc().trajectory.len();
-                    match sink.reflect() {
-                        None => {
-                            let msg = format!(
-                                "not enough trajectory to reflect (have {entries}, need >= 5) — run runtime load/tick first"
-                            );
-                            if json {
-                                println!(
-                                    "{}",
-                                    serde_json::to_string_pretty(
-                                        &serde_json::json!({ "ok": false, "reason": msg })
-                                    )?
-                                );
-                            } else {
-                                println!("REFLECT_SKIP {msg}");
-                            }
-                        }
-                        Some(r) => {
-                            save_memory(&mut rt);
-                            if json {
-                                println!("{}", serde_json::to_string_pretty(&r)?);
-                            } else {
-                                println!(
-                                    "REFLECT coherence={:.1}% entries={} skills={} new_skills={:?}",
-                                    r.coherence * 100.0,
-                                    r.trajectory_length,
-                                    r.known_skills,
-                                    r.new_skills
-                                );
-                                for p in &r.goal_proposals {
-                                    println!(
-                                        "  proposal [{}] {} (priority {:.1})",
-                                        p.goal_type, p.description, p.priority
-                                    );
-                                }
-                            }
-                            eprintln!(
-                                "REFLECT_OK coherence={:.2} skills={} proposals={}",
-                                r.coherence,
-                                r.known_skills,
-                                r.goal_proposals.len()
-                            );
-                        }
-                    }
-                }
-                RuntimeCmd::Dive { probe_budget, json } => {
-                    use ensembly_kernel::critical_path::compute_critical_path;
-                    use ensembly_kernel::plan_dive;
-                    if rt.state.graph.nodes.is_empty() {
-                        bail!("runtime dive needs a loaded graph — run `runtime load --fixture …` first");
-                    }
-                    let cp = match rt.state.critical_path.clone() {
-                        Some(c) => c,
-                        None => compute_critical_path(&rt.state.graph, 0)
-                            .map_err(|e| anyhow::anyhow!(e))?,
-                    };
-                    let dive = plan_dive(&rt.state.graph, &cp, probe_budget);
-                    if json {
-                        println!("{}", serde_json::to_string_pretty(&dive)?);
-                    } else {
-                        println!("# UncertaintyDive v{}", dive.version);
-                        println!("coach: {}", dive.coach_line);
-                        println!(
-                            "simulate: σ={:.2} E={:.1} cp=[{}]",
-                            dive.simulate.pert_sigma,
-                            dive.simulate.length_expected,
-                            dive.simulate.cp_path.join(" → ")
-                        );
-                        if let Some(a) = &dive.next_auth {
-                            println!("auth black hole: {} — {}", a.id, a.reason);
-                        }
-                        if let Some(p) = &dive.next_physical {
-                            println!("physical beacon: {} — {}", p.id, p.reason);
-                        }
-                        if let Some(p) = &dive.next_probe {
-                            println!(
-                                "next probe: {} (score={:.1}) — {}",
-                                p.id, p.uncertainty_score, p.reason
-                            );
-                        } else {
-                            println!("next probe: (none)");
-                        }
-                        println!(
-                            "guards: budget={} refuse_auto_auth={} claim_via_cp={}",
-                            dive.trauma_guards.probe_budget,
-                            dive.trauma_guards.refuse_auto_auth,
-                            dive.trauma_guards.claim_via_cp_only
-                        );
-                    }
-                    eprintln!(
-                        "RUNTIME_OK dive candidates={} probe={}",
-                        dive.candidates.len(),
-                        dive.next_probe
-                            .as_ref()
-                            .map(|p| p.id.as_str())
-                            .unwrap_or("-")
-                    );
-                }
+fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(v)?);
+    Ok(())
+}
+
+fn cmd_version() -> Result<()> {
+    println!("{}", kernel_version());
+    println!("private_paths: {:?}", private_path_patterns());
+    println!("law: Node src/* legacy; ensembly-kernel is control SoT");
+    Ok(())
+}
+
+fn cmd_migrate(dry_run: bool, root: Option<PathBuf>, json: bool) -> Result<()> {
+    let root = root.unwrap_or_else(|| PathBuf::from("."));
+    let report = migrate_local_paths_at(&root, dry_run)?;
+    if json {
+        return print_json(&report);
+    }
+    if report.copied.is_empty() && report.skipped_dest_exists.is_empty() {
+        println!(
+            "MIGRATE_LOCAL no legacy peram-* files to copy under {}",
+            root.display()
+        );
+    }
+    for a in &report.copied {
+        let verb = if report.dry_run {
+            "would-copy"
+        } else {
+            "copied"
+        };
+        println!(
+            "MIGRATE_LOCAL {verb} {} → {}",
+            a.from.display(),
+            a.to.display()
+        );
+    }
+    for a in &report.skipped_dest_exists {
+        println!(
+            "MIGRATE_LOCAL skip-dest-exists {} (left {})",
+            a.to.display(),
+            a.from.display()
+        );
+    }
+    println!(
+        "MIGRATE_LOCAL_OK copied={} skipped_dest={} skipped_missing={} dry_run={}",
+        report.copied.len(),
+        report.skipped_dest_exists.len(),
+        report.skipped_src_missing.len(),
+        report.dry_run
+    );
+    println!(
+        "next (canonical host only): smoke runtime status on the new ops path, then\n  cargo run -p ensembly-kernel -- pulse-pack export --out ~/sync/pulse/bot.pulse.json --include-archive\n  # laptop: pulse-pack import that pack (defaults prefer ensembly-memory.json once present)\nKeep legacy copies until smoke passes. Do not dual-write ops. After verify, you may delete peram-* files."
+    );
+    Ok(())
+}
+
+/// Drive FocusPlan from durable life-state when present, else from a valid
+/// action graph (then persist the runtime pair).
+fn turn_focus(
+    store: &OpsStore,
+    actions: &[Action],
+    snap: &Snapshot,
+    plan: ensembly_kernel::turn::FocusPlan,
+) -> Result<ensembly_kernel::turn::FocusPlan> {
+    // When durable life-state exists, drive FocusPlan from CP (read-only; no persist).
+    if let Ok(Some(life)) = store.load_life_state() {
+        let now = Utc::now();
+        let mut rt = Runtime::new(now);
+        rt.state = life;
+        rt.snapshot = snap.clone();
+        return Ok(rt.focus_plan(plan));
+    }
+    if ensembly_kernel::DepGraph::from_actions(actions, &Default::default()).is_err() {
+        return Ok(plan);
+    }
+    let now = Utc::now();
+    let mut rt = Runtime::new(now);
+    if rt.load_actions(actions, now).is_err() {
+        return Ok(plan);
+    }
+    let plan = rt.focus_plan(plan);
+    // Fail loud — dual SoT must not partially persist.
+    store.save_runtime_pair(&rt.state, &rt.snapshot)?;
+    Ok(plan)
+}
+
+fn title_and_id(p: &Option<ensembly_kernel::turn::FocusItem>) -> String {
+    p.as_ref()
+        .map(|p| format!("{} ({})", p.title, p.id))
+        .unwrap_or_else(|| "—".into())
+}
+
+fn id_or_dash(p: &Option<ensembly_kernel::turn::FocusItem>) -> &str {
+    p.as_ref().map(|p| p.id.as_str()).unwrap_or("-")
+}
+
+fn print_turn_text(plan: &ensembly_kernel::turn::FocusPlan, store: &OpsStore) {
+    println!("# FocusPlan — {}", plan.at.to_rfc3339());
+    println!("biome: {}", plan.biome);
+    println!("location: {:?}", plan.location_label);
+    println!("next physical: {}", title_and_id(&plan.primary_physical));
+    println!("next auth: {}", title_and_id(&plan.primary_auth));
+    println!("places: {:?}", plan.places);
+    println!("coach: {}", plan.coach_line);
+    println!("db: {:?}", store.path());
+}
+
+fn manual_via_runtime(ctx: &Ctx, cmd: ManualCmd, decision: &str, id: &str) -> Result<()> {
+    gate_via_runtime(&ctx.db_path, &ctx.memory_flags, cmd, decision, id)
+}
+
+fn cmd_turn(
+    db_path: &PathBuf,
+    fixture: Option<PathBuf>,
+    json: bool,
+    channel: bool,
+    location: Option<String>,
+) -> Result<()> {
+    let store = OpsStore::open(db_path)?;
+    // Live seed from ops life-state / wait-snapshot; --fixture is CI dogfood only.
+    // Fail-closed (CHANNEL_IR_FAIL) when empty — never silent grocery/rent SoT.
+    let actions = match fixture {
+        Some(f) => load_actions_from_fixture(&f)?,
+        None => seed_live_channel_actions(&store)?,
+    };
+    let snap = ensure_snap(&store, &actions)?;
+    let plan = rank_now(
+        &context_at(Utc::now(), location.as_deref()),
+        &actions,
+        &[],
+        &snap,
+    );
+    let plan = turn_focus(&store, &actions, &snap, plan)?;
+    if channel {
+        return print_json(&build_channel_ir(&plan, &snap, Utc::now()));
+    }
+    if json {
+        print_json(&plan)?;
+    } else {
+        print_turn_text(&plan, &store);
+    }
+    eprintln!(
+        "TURN_OK physical={} pending={} nextPhysical={} nextAuth={} biome={}",
+        plan.physical_count,
+        plan.pending_count,
+        id_or_dash(&plan.primary_physical),
+        id_or_dash(&plan.primary_auth),
+        plan.biome
+    );
+    Ok(())
+}
+
+fn cmd_digital_flow(db_path: &PathBuf, sub: DfCmd) -> Result<()> {
+    match sub {
+        DfCmd::Cycle { payee, json } => df_cycle(db_path, &payee, json),
+        DfCmd::Status { json } => {
+            let store = OpsStore::open(db_path)?;
+            let flow = store.load_flow("flow-bill_pay")?;
+            if json {
+                print_json(&flow)?;
+            } else {
+                println!("{:?}", flow.map(|f| (f.id, f.status, f.place)));
             }
+            Ok(())
         }
-        Commands::Apps { ledger, sub } => {
-            use ensembly_kernel::application_ledger as al;
-            let ledger = ledger.unwrap_or_else(|| PathBuf::from(al::DEFAULT_LEDGER_PATH));
-            let read = |p: &PathBuf| -> Result<Vec<al::Row>> {
-                let text = std::fs::read_to_string(p)
-                    .map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))?;
-                al::parse_ledger(&text)
-            };
-            match sub {
-                AppsCmd::Audit { store, sub } => {
-                    use ensembly_kernel::company_audit as ca;
-                    let store = store.unwrap_or_else(|| PathBuf::from(ca::DEFAULT_AUDIT_PATH));
-                    let read_store = || -> Result<Vec<ca::Audit>> {
-                        match std::fs::read_to_string(&store) {
-                            Ok(t) => ca::parse_audits(&t),
-                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-                            Err(e) => Err(anyhow::anyhow!("read {}: {e}", store.display())),
-                        }
-                    };
-                    match sub {
-                        AuditCmd::Validate { file } => {
-                            let rows = match file {
-                                Some(f) => {
-                                    ca::parse_audits(&std::fs::read_to_string(&f).map_err(
-                                        |e| anyhow::anyhow!("read {}: {e}", f.display()),
-                                    )?)?
-                                }
-                                None => read_store()?,
-                            };
-                            println!(
-                                "ok: {} audits, {} companies",
-                                rows.len(),
-                                ca::current_audits(&rows).len()
-                            );
-                            for i in ca::dangling_reuse(&rows) {
-                                eprintln!("warning: audit {} ({}) has a reused_from that names no earlier stored audit of that domain", i + 1, rows[i].domain);
-                            }
-                        }
-                        AuditCmd::Append { file } => {
-                            let text = if file.as_os_str() == "-" {
-                                let mut t = String::new();
-                                std::io::Read::read_to_string(&mut std::io::stdin(), &mut t)?;
-                                t
-                            } else {
-                                std::fs::read_to_string(&file)
-                                    .map_err(|e| anyhow::anyhow!("read {}: {e}", file.display()))?
-                            };
-                            let (n, skipped) = ca::append_audits(&store, &text)?;
-                            println!("appended {n}, skipped {skipped} already stored");
-                        }
-                        AuditCmd::Export { out_dir } => {
-                            let rows = read_store()?;
-                            let dir =
-                                out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
-                            ca::write_exports(&rows, &dir)?;
-                            println!(
-                                "exported {} companies to {}",
-                                ca::current_audits(&rows).len(),
-                                dir.display()
-                            );
-                        }
-                        AuditCmd::Status { query, now } => {
-                            let rows = read_store()?;
-                            let now = match now {
-                                Some(t) => chrono::DateTime::parse_from_rfc3339(&t)
-                                    .map_err(|e| anyhow::anyhow!("--now: {e}"))?,
-                                None => chrono::Local::now().fixed_offset(),
-                            };
-                            let (status, audit) = ca::status_for(&rows, &query, now);
-                            let out = serde_json::json!({
-                                "query": query,
-                                "status": status,
-                                "company": audit.as_ref().map(|a| a.company.clone()),
-                                "domain": audit.as_ref().map(|a| a.domain.clone()),
-                                "verdict": audit.as_ref().map(|a| a.effective_verdict()),
-                                "audited_at": audit.as_ref().map(|a| a.audited_at.clone()),
-                                "stale_after_days": ca::STALE_AFTER_DAYS,
-                            });
-                            println!("{out}");
-                            std::process::exit(ca::exit_code(status));
-                        }
-                    }
-                }
-                AppsCmd::Validate => {
-                    let rows = read(&ledger)?;
-                    println!(
-                        "ok: {} rows, {} current applications",
-                        rows.len(),
-                        al::current_rows(&rows).len()
-                    );
-                }
-                AppsCmd::Append {
-                    company,
-                    role,
-                    link,
-                    apply_url,
-                    status,
-                    submit_time,
-                    submit_time_unknown,
-                    cv_version,
-                } => {
-                    let status: al::Status =
-                        serde_json::from_value(serde_json::Value::String(status))
-                            .map_err(|e| anyhow::anyhow!("status: {e}"))?;
-                    let row = al::Row {
-                        company,
-                        role,
-                        link,
-                        apply_url,
-                        status,
-                        submit_time,
-                        submit_time_unknown: submit_time_unknown.then_some(true),
-                        cv_version,
-                    };
-                    al::append_row(&ledger, &row)?;
-                    println!("appended: {} ({})", row.link, row.status.as_str());
-                }
-                AppsCmd::Export { out_dir } => {
-                    let rows = read(&ledger)?;
-                    let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
-                    al::write_exports(&rows, &dir)?;
-                    println!(
-                        "exported {} applications to {}",
-                        al::current_rows(&rows).len(),
-                        dir.display()
-                    );
-                }
-            }
-        }
-        Commands::ChannelPulse { sub } => match sub {
-            ChannelPulseCmd::Reconcile {
-                out,
-                fixture,
-                location,
-                json,
-                verbose,
-            } => {
-                let store = OpsStore::open(&db_path)?;
-                // Prefer durable live seed; --fixture only for isolated CI dogfood.
-                // Empty ops → CHANNEL_IR_FAIL (non-zero), never silent grocery projection.
-                let actions = if let Some(f) = fixture {
-                    load_actions_from_fixture(&f)?
-                } else {
-                    seed_live_channel_actions(&store)?
-                };
-                let pulse_path = out.unwrap_or_else(|| PathBuf::from(DEFAULT_CHANNEL_PULSE_PATH));
-                let report =
-                    reconcile_channel_pulse(&store, &actions, location.as_deref(), &pulse_path)?;
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&report)?);
-                } else if verbose && report.wrote {
-                    eprintln!(
-                        "CHANNEL_PULSE_OK wrote={} path={:?} hash={}",
-                        report.wrote, report.pulse_path, report.content_hash
-                    );
-                }
-            }
+    }
+}
+
+fn phase_of(status: &ensembly_kernel::SnapshotStatus) -> String {
+    match status {
+        ensembly_kernel::SnapshotStatus::IdleWaiting => "HITL_WAIT".into(),
+        ensembly_kernel::SnapshotStatus::Clear => "CLEAR".into(),
+        ensembly_kernel::SnapshotStatus::Partial => "PARTIAL".into(),
+    }
+}
+
+fn df_cycle(db_path: &PathBuf, payee: &str, json: bool) -> Result<()> {
+    let store = OpsStore::open(db_path)?;
+    let now = Utc::now();
+    let existing = store.load_flow("flow-bill_pay")?;
+    let flow = existing.unwrap_or_else(|| DigitalFlow::bill_pay("flow-bill_pay", payee, now));
+    let (flow, approval, executed) = run_cycle(&flow, "approve", "operator", now)?;
+    store.save_flow(&flow)?;
+    let mut snap = store
+        .load_snapshot()?
+        .unwrap_or_else(|| Snapshot::empty(now));
+    snap.pending.retain(|p| p.id != approval.id);
+    snap.pending.push(approval.clone());
+    snap.status = ensembly_kernel::derive_status(&snap.pending);
+    snap.phase = phase_of(&snap.status);
+    snap.updated_at = now;
+    store.save_snapshot(&snap)?;
+    let body = serde_json::json!({
+        "ok": true,
+        "cmd": "cycle",
+        "flow": {
+            "id": flow.id,
+            "place": flow.place,
+            "status": format!("{:?}", flow.status),
+            "title": flow.title,
+            "lastResult": flow.last_result,
         },
+        "approvalStatus": format!("{:?}", approval.status),
+        "executed": executed,
+        "mutated": false,
+        "db": store.path(),
+    });
+    if json {
+        return print_json(&body);
+    }
+    println!(
+        "DIGITAL_FLOW ok place={} status={:?} approval={:?} executed={}",
+        flow.place, flow.status, approval.status, executed
+    );
+    Ok(())
+}
+
+fn cmd_backup(db_path: &PathBuf, out: &PathBuf, unlock: &Option<String>) -> Result<()> {
+    let store = OpsStore::open(db_path)?;
+    let key = unlock_material(unlock)?;
+    let pack = create_backup_pack(&store, &key)?;
+    write_backup_pack(out, &pack)?;
+    println!("BACKUP_OK path={out:?} suite={}", pack.sealed_ops.suite);
+    Ok(())
+}
+
+fn cmd_restore_dry_run(pack: &PathBuf, unlock: &Option<String>) -> Result<()> {
+    let key = unlock_material(unlock)?;
+    let pack = read_backup_pack(pack)?;
+    let report = restore_dry_run(&pack, &key)?;
+    print_json(&report)?;
+    if !report.ok {
+        std::process::exit(2);
+    }
+    Ok(())
+}
+
+fn cmd_restore_apply(
+    db_path: &PathBuf,
+    pack: &PathBuf,
+    unlock: &Option<String>,
+    i_understand: bool,
+) -> Result<()> {
+    if !i_understand {
+        bail!(
+            "restore-apply is destructive — re-run with --i-understand. \
+             Canonical host only; laptop must not dual-write ops SoT."
+        );
+    }
+    let store = OpsStore::open(db_path)?;
+    let key = unlock_material(unlock)?;
+    let pack = read_backup_pack(pack)?;
+    restore_apply(&store, &pack, &key)?;
+    println!(
+        "RESTORE_APPLY_OK db={:?} keys={}",
+        store.path(),
+        store.export_bundle()?.kv.len()
+    );
+    eprintln!("RESTORE_OK apply db={}", store.path().display());
+    Ok(())
+}
+
+fn cmd_ops_bundle(db_path: &PathBuf, sub: OpsBundleCmd) -> Result<()> {
+    match sub {
+        OpsBundleCmd::Export { out, json } => bundle_export(db_path, &out, json),
+        OpsBundleCmd::Import {
+            bundle,
+            dry_run: true,
+            json,
+        } => bundle_import_dry(&bundle, json),
+        OpsBundleCmd::Import {
+            bundle,
+            dry_run: false,
+            json,
+        } => bundle_import(db_path, &bundle, json),
+    }
+}
+
+fn bundle_export(db_path: &PathBuf, out: &PathBuf, json: bool) -> Result<()> {
+    let store = OpsStore::open(db_path)?;
+    let bundle = store.export_bundle()?;
+    OpsStore::write_bundle_file(out, &bundle)?;
+    let body = serde_json::json!({
+        "ok": true,
+        "cmd": "ops-bundle.export",
+        "format": bundle.format,
+        "schema_version": bundle.schema_version,
+        "kv_keys": bundle.kv.len(),
+        "path": out,
+        "db": store.path(),
+    });
+    if json {
+        return print_json(&body);
+    }
+    println!(
+        "OPS_BUNDLE_EXPORT_OK path={out:?} keys={} schema={}",
+        bundle.kv.len(),
+        bundle.schema_version
+    );
+    Ok(())
+}
+
+fn bundle_import_dry(bundle: &PathBuf, json: bool) -> Result<()> {
+    let read = OpsStore::read_bundle_file(bundle)?;
+    let temp = OpsStore::open_in_memory()?;
+    temp.import_bundle(&read)?;
+    let body = serde_json::json!({
+        "ok": true,
+        "cmd": "ops-bundle.import",
+        "dry_run": true,
+        "kv_keys": read.kv.len(),
+        "message": "dry-run OK — primary store not modified",
+    });
+    if json {
+        return print_json(&body);
+    }
+    println!(
+        "OPS_BUNDLE_IMPORT_DRY_RUN_OK keys={} (primary not modified)",
+        read.kv.len()
+    );
+    Ok(())
+}
+
+fn bundle_import(db_path: &PathBuf, bundle: &PathBuf, json: bool) -> Result<()> {
+    let read = OpsStore::read_bundle_file(bundle)?;
+    let store = OpsStore::open(db_path)?;
+    store.import_bundle(&read)?;
+    let body = serde_json::json!({
+        "ok": true,
+        "cmd": "ops-bundle.import",
+        "dry_run": false,
+        "kv_keys": read.kv.len(),
+        "db": store.path(),
+    });
+    if json {
+        print_json(&body)?;
+    } else {
+        println!(
+            "OPS_BUNDLE_IMPORT_OK db={:?} keys={}",
+            store.path(),
+            read.kv.len()
+        );
+    }
+    eprintln!("OPS_BUNDLE_OK import keys={}", read.kv.len());
+    Ok(())
+}
+
+fn rfc3339_or_dash(t: Option<chrono::DateTime<Utc>>) -> String {
+    t.map(|t| t.to_rfc3339()).unwrap_or_else(|| "-".into())
+}
+
+fn cmd_pulse_pack(ctx: &Ctx, sub: PulsePackCmd) -> Result<()> {
+    let memory_path = resolve_memory_path(ctx.memory_cli.clone());
+    let archive_sidecar = PathBuf::from(DEFAULT_ARCHIVE_SIDECAR);
+    match sub {
+        PulsePackCmd::Export {
+            out,
+            include_archive,
+            archive_limit,
+            json,
+        } => {
+            let ops_db = include_archive.then(|| ctx.db_path.clone());
+            pp_export(
+                memory_path,
+                archive_sidecar,
+                ops_db,
+                archive_limit,
+                &out,
+                json,
+            )
+        }
+        PulsePackCmd::Import {
+            pack,
+            dry_run,
+            archive_sidecar: archive_path,
+            json,
+        } => {
+            let opts = PulseImportOpts {
+                memory_path,
+                archive_sidecar: archive_path.unwrap_or(archive_sidecar),
+                dry_run,
+            };
+            pp_import(&pack, &opts, json)
+        }
+        PulsePackCmd::Status {
+            pack,
+            archive_sidecar: archive_path,
+            json,
+        } => pp_status(
+            pack,
+            &memory_path,
+            &archive_path.unwrap_or(archive_sidecar),
+            json,
+        ),
+    }
+}
+
+fn pp_export(
+    memory_path: PathBuf,
+    archive_sidecar: PathBuf,
+    ops_db: Option<PathBuf>,
+    archive_limit: usize,
+    out: &PathBuf,
+    json: bool,
+) -> Result<()> {
+    let pack = export_pulse_pack(&PulseExportOpts {
+        memory_path,
+        archive_sidecar,
+        ops_db,
+        archive_limit,
+        source_host: std::env::var("HOSTNAME")
+            .or_else(|_| std::env::var("COMPUTERNAME"))
+            .unwrap_or_else(|_| "unknown".into()),
+    })?;
+    write_pulse_pack(out, &pack)?;
+    let status = pack.status();
+    if json {
+        print_json(&status)?;
+    } else {
+        println!(
+            "PULSE_EXPORT_OK path={out:?} traces={} archive={} hash={} last_seen={}",
+            status.memory_trace_count,
+            status.archive_event_count,
+            status.pack_hash,
+            rfc3339_or_dash(status.last_seen)
+        );
+    }
+    eprintln!(
+        "PULSE_OK export traces={} archive={}",
+        status.memory_trace_count, status.archive_event_count
+    );
+    Ok(())
+}
+
+fn pp_import(pack: &PathBuf, opts: &PulseImportOpts, json: bool) -> Result<()> {
+    let read = read_pulse_pack(pack)?;
+    let report = import_pulse_pack(&read, opts)?;
+    if json {
+        print_json(&report)?;
+    } else {
+        println!(
+            "PULSE_IMPORT_OK dry_run={} traces_before={} traces_after={} archive_appended={} hash={}",
+            report.dry_run,
+            report.memory_trajectory_before,
+            report.memory_trajectory_after,
+            report.archive_appended,
+            report.pack_hash
+        );
+    }
+    eprintln!(
+        "PULSE_OK import dry_run={} after={}",
+        report.dry_run, report.memory_trajectory_after
+    );
+    Ok(())
+}
+
+fn pp_status(
+    pack: Option<PathBuf>,
+    memory_path: &std::path::Path,
+    sidecar: &std::path::Path,
+    json: bool,
+) -> Result<()> {
+    let from_pack = pack.is_some();
+    let status = match pack {
+        Some(p) => read_pulse_pack(&p)?.status(),
+        None => local_pulse_status(memory_path, sidecar)?,
+    };
+    if json {
+        return print_json(&status);
+    }
+    println!(
+        "# Pulse status — {}",
+        if from_pack { "pack" } else { "local" }
+    );
+    println!("format: {}", status.format);
+    println!("traces: {}", status.memory_trace_count);
+    println!("archive: {}", status.archive_event_count);
+    println!("last_seen: {}", rfc3339_or_dash(status.last_seen));
+    println!("hash: {}", status.pack_hash);
+    if let Some(h) = &status.memory_hash {
+        println!("memory_hash: {}", h);
+    }
+    Ok(())
+}
+
+fn cmd_runtime(ctx: &Ctx, sub: RuntimeCmd) -> Result<()> {
+    let store = OpsStore::open(&ctx.db_path)?;
+    let now = Utc::now();
+    let mut rt = Runtime::new(now);
+    if let Some(life) = store.load_life_state()? {
+        rt.state = life;
+    }
+    if let Some(snap) = store.load_snapshot()? {
+        rt.snapshot = snap;
+    }
+    attach_memory(&mut rt, &ctx.memory_flags);
+    let mut r = Rt { store, rt, now };
+    match sub {
+        RuntimeCmd::Load { fixture, json } => runtime_load(&mut r, &fixture, json),
+        RuntimeCmd::Status { json } => runtime_status(&r, json),
+        RuntimeCmd::Tick { agent, json } => runtime_tick(&mut r, agent, json),
+        RuntimeCmd::Approve { id, json } => runtime_approve(&mut r, &id, json),
+        RuntimeCmd::Deny { id, json } => runtime_deny(&mut r, &id, json),
+        RuntimeCmd::Claim { id, json } => runtime_claim(&mut r, id, json),
+        RuntimeCmd::Complete { id, json } => runtime_complete(&mut r, id, json),
+        RuntimeCmd::Reflect { json } => runtime_reflect(&mut r.rt, json),
+        RuntimeCmd::Dive { probe_budget, json } => runtime_dive(&r.rt, probe_budget, json),
+    }
+}
+
+/// An opened runtime with its store, for the `runtime` subcommands.
+struct Rt {
+    store: OpsStore,
+    rt: Runtime,
+    now: chrono::DateTime<Utc>,
+}
+
+impl Rt {
+    /// Persist the runtime pair, then memory (same order as every mutating subcommand).
+    fn persist(&mut self) -> Result<()> {
+        self.store
+            .save_runtime_pair(&self.rt.state, &self.rt.snapshot)?;
+        save_memory(&mut self.rt);
+        Ok(())
+    }
+
+    /// Enqueue one manual command, tick without the agent, persist.
+    fn manual(&mut self, cmd: ManualCmd) -> Result<ensembly_kernel::runtime::TickReport> {
+        self.rt.enqueue_manual(cmd, self.now);
+        let report = self.rt.tick(false, self.now)?;
+        self.persist()?;
+        Ok(report)
+    }
+}
+
+fn runtime_load(r: &mut Rt, fixture: &std::path::Path, json: bool) -> Result<()> {
+    let actions = load_actions_from_fixture(fixture)?;
+    r.rt.load_actions(&actions, r.now)?;
+    r.persist()?;
+    let rt = &r.rt;
+    let cp = rt.state.critical_path.as_ref();
+    let body = serde_json::json!({
+        "ok": true,
+        "cmd": "runtime.load",
+        "version": rt.state.version,
+        "regime": format!("{:?}", rt.state.regime),
+        "nodes": rt.state.graph.nodes.len(),
+        "edges": rt.state.graph.edges.len(),
+        "cp": cp.map(|c| &c.path),
+        "explain": cp.map(|c| &c.explain),
+        "monteCarlo": cp.and_then(|c| c.monte_carlo.as_ref()),
+        "db": r.store.path(),
+    });
+    if json {
+        print_json(&body)?;
+    } else {
+        println!(
+            "RUNTIME_LOAD ok nodes={} edges={} regime={:?} {}",
+            rt.state.graph.nodes.len(),
+            rt.state.graph.edges.len(),
+            rt.state.regime,
+            cp.map(|c| c.explain.as_str()).unwrap_or("-")
+        );
+    }
+    eprintln!(
+        "RUNTIME_OK load nodes={} cp_len={}",
+        rt.state.graph.nodes.len(),
+        cp.map(|c| c.path.len()).unwrap_or(0)
+    );
+    Ok(())
+}
+
+fn runtime_status(r: &Rt, json: bool) -> Result<()> {
+    let rt = &r.rt;
+    let cp = rt.state.critical_path.as_ref();
+    let body = serde_json::json!({
+        "ok": true,
+        "cmd": "runtime.status",
+        "version": rt.state.version,
+        "regime": format!("{:?}", rt.state.regime).to_ascii_lowercase(),
+        "fingerprint": rt.state.fingerprint,
+        "metrics": rt.state.metrics,
+        "cp": cp,
+        "pendingAuth": list_pending(&rt.snapshot).iter().map(|p| &p.id).collect::<Vec<_>>(),
+        "db": r.store.path(),
+    });
+    if json {
+        return print_json(&body);
+    }
+    println!("# LifeState v{}", rt.state.version);
+    println!("regime: {:?}", rt.state.regime);
+    println!(
+        "CP: {}",
+        cp.map(|c| c.explain.as_str())
+            .unwrap_or("(none — run runtime load)")
+    );
+    println!(
+        "metrics: hootl_done={} hitl_surfaces={} agent_failures={}",
+        rt.state.metrics.hootl_completed,
+        rt.state.metrics.hitl_surfaces,
+        rt.state.metrics.agent_failures
+    );
+    Ok(())
+}
+
+fn runtime_tick(r: &mut Rt, agent: bool, json: bool) -> Result<()> {
+    let report = r.rt.tick(agent, r.now)?;
+    r.persist()?;
+    if json {
+        print_json(&report)?;
+    } else {
+        println!(
+            "RUNTIME_TICK regime={:?} drained={} claim={:?} complete={:?} auth={:?} physical={:?} {}",
+            report.regime,
+            report.messages_drained,
+            report.hootl_claim,
+            report.hootl_complete,
+            report.next_auth,
+            report.next_physical,
+            report.cp_explain
+        );
+    }
+    eprintln!(
+        "RUNTIME_OK tick regime={:?} claim={} complete={} auth={}",
+        report.regime,
+        report.hootl_claim.as_deref().unwrap_or("-"),
+        report.hootl_complete.as_deref().unwrap_or("-"),
+        report.next_auth.as_deref().unwrap_or("-")
+    );
+    Ok(())
+}
+
+fn runtime_approve(r: &mut Rt, id: &str, json: bool) -> Result<()> {
+    // Normalize: approve uses action id (pay-rent); auth- prefix accepted then stripped.
+    let action_id = ensembly_kernel::runtime::action_id_of(id).to_string();
+    let report = r.manual(ManualCmd::Approve {
+        id: action_id.clone(),
+    })?;
+    if json {
+        return print_json(
+            &serde_json::json!({ "ok": true, "decision": "approve", "id": action_id, "tick": report }),
+        );
+    }
+    println!("RUNTIME_APPROVE id={action_id} regime={:?}", report.regime);
+    Ok(())
+}
+
+fn runtime_deny(r: &mut Rt, id: &str, json: bool) -> Result<()> {
+    let action_id = ensembly_kernel::runtime::action_id_of(id).to_string();
+    let report = r.manual(ManualCmd::Deny {
+        id: action_id.clone(),
+    })?;
+    if json {
+        return print_json(
+            &serde_json::json!({ "ok": true, "decision": "deny", "id": action_id, "tick": report }),
+        );
+    }
+    println!("RUNTIME_DENY id={action_id}");
+    Ok(())
+}
+
+fn runtime_claim(r: &mut Rt, id: String, json: bool) -> Result<()> {
+    let report = r.manual(ManualCmd::ClaimPhysical { id: id.clone() })?;
+    if json {
+        return print_json(
+            &serde_json::json!({ "ok": true, "decision": "claim", "id": id, "tick": report }),
+        );
+    }
+    println!("RUNTIME_CLAIM id={id}");
+    Ok(())
+}
+
+fn runtime_complete(r: &mut Rt, id: String, json: bool) -> Result<()> {
+    let report = r.manual(ManualCmd::CompletePhysical { id: id.clone() })?;
+    if json {
+        return print_json(
+            &serde_json::json!({ "ok": true, "decision": "complete", "id": id, "tick": report }),
+        );
+    }
+    println!("RUNTIME_COMPLETE id={id} regime={:?}", report.regime);
+    Ok(())
+}
+
+fn runtime_reflect(rt: &mut Runtime, json: bool) -> Result<()> {
+    let Some(sink) = rt.memory.as_mut() else {
+        bail!("reflect needs episodic memory — remove --no-memory (default path: {DEFAULT_MEMORY_PATH})");
+    };
+    let entries = sink.memory.doc().trajectory.len();
+    let Some(r) = sink.reflect() else {
+        let msg = format!(
+            "not enough trajectory to reflect (have {entries}, need >= 5) — run runtime load/tick first"
+        );
+        if json {
+            return print_json(&serde_json::json!({ "ok": false, "reason": msg }));
+        }
+        println!("REFLECT_SKIP {msg}");
+        return Ok(());
+    };
+    save_memory(rt);
+    if json {
+        print_json(&r)?;
+    } else {
+        println!(
+            "REFLECT coherence={:.1}% entries={} skills={} new_skills={:?}",
+            r.coherence * 100.0,
+            r.trajectory_length,
+            r.known_skills,
+            r.new_skills
+        );
+        for p in &r.goal_proposals {
+            println!(
+                "  proposal [{}] {} (priority {:.1})",
+                p.goal_type, p.description, p.priority
+            );
+        }
+    }
+    eprintln!(
+        "REFLECT_OK coherence={:.2} skills={} proposals={}",
+        r.coherence,
+        r.known_skills,
+        r.goal_proposals.len()
+    );
+    Ok(())
+}
+
+fn print_dive_text(dive: &ensembly_kernel::DiveReport) {
+    println!("# UncertaintyDive v{}", dive.version);
+    println!("coach: {}", dive.coach_line);
+    println!(
+        "simulate: σ={:.2} E={:.1} cp=[{}]",
+        dive.simulate.pert_sigma,
+        dive.simulate.length_expected,
+        dive.simulate.cp_path.join(" → ")
+    );
+    if let Some(a) = &dive.next_auth {
+        println!("auth black hole: {} — {}", a.id, a.reason);
+    }
+    if let Some(p) = &dive.next_physical {
+        println!("physical beacon: {} — {}", p.id, p.reason);
+    }
+    match &dive.next_probe {
+        Some(p) => println!(
+            "next probe: {} (score={:.1}) — {}",
+            p.id, p.uncertainty_score, p.reason
+        ),
+        None => println!("next probe: (none)"),
+    }
+    println!(
+        "guards: budget={} refuse_auto_auth={} claim_via_cp={}",
+        dive.trauma_guards.probe_budget,
+        dive.trauma_guards.refuse_auto_auth,
+        dive.trauma_guards.claim_via_cp_only
+    );
+}
+
+fn runtime_dive(rt: &Runtime, probe_budget: u32, json: bool) -> Result<()> {
+    use ensembly_kernel::critical_path::compute_critical_path;
+    use ensembly_kernel::plan_dive;
+    if rt.state.graph.nodes.is_empty() {
+        bail!("runtime dive needs a loaded graph — run `runtime load --fixture …` first");
+    }
+    let cp = match rt.state.critical_path.clone() {
+        Some(c) => c,
+        None => compute_critical_path(&rt.state.graph, 0).map_err(|e| anyhow::anyhow!(e))?,
+    };
+    let dive = plan_dive(&rt.state.graph, &cp, probe_budget);
+    if json {
+        print_json(&dive)?;
+    } else {
+        print_dive_text(&dive);
+    }
+    eprintln!(
+        "RUNTIME_OK dive candidates={} probe={}",
+        dive.candidates.len(),
+        dive.next_probe
+            .as_ref()
+            .map(|p| p.id.as_str())
+            .unwrap_or("-")
+    );
+    Ok(())
+}
+
+fn read_file(p: &PathBuf) -> Result<String> {
+    std::fs::read_to_string(p).map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))
+}
+
+fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
+    use ensembly_kernel::application_ledger as al;
+    let ledger = ledger.unwrap_or_else(|| PathBuf::from(al::DEFAULT_LEDGER_PATH));
+    let read = |p: &PathBuf| -> Result<Vec<al::Row>> { al::parse_ledger(&read_file(p)?) };
+    match sub {
+        AppsCmd::Audit { store, sub } => cmd_audit(store, sub),
+        AppsCmd::Validate => {
+            let rows = read(&ledger)?;
+            println!(
+                "ok: {} rows, {} current applications",
+                rows.len(),
+                al::current_rows(&rows).len()
+            );
+            Ok(())
+        }
+        AppsCmd::Append {
+            company,
+            role,
+            link,
+            apply_url,
+            status,
+            submit_time,
+            submit_time_unknown,
+            cv_version,
+        } => {
+            let status: al::Status = serde_json::from_value(serde_json::Value::String(status))
+                .map_err(|e| anyhow::anyhow!("status: {e}"))?;
+            let row = al::Row {
+                company,
+                role,
+                link,
+                apply_url,
+                status,
+                submit_time,
+                submit_time_unknown: submit_time_unknown.then_some(true),
+                cv_version,
+            };
+            al::append_row(&ledger, &row)?;
+            println!("appended: {} ({})", row.link, row.status.as_str());
+            Ok(())
+        }
+        AppsCmd::Export { out_dir } => {
+            let rows = read(&ledger)?;
+            let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
+            al::write_exports(&rows, &dir)?;
+            println!(
+                "exported {} applications to {}",
+                al::current_rows(&rows).len(),
+                dir.display()
+            );
+            Ok(())
+        }
+    }
+}
+
+fn read_audit_store(store: &PathBuf) -> Result<Vec<ensembly_kernel::company_audit::Audit>> {
+    use ensembly_kernel::company_audit as ca;
+    match std::fs::read_to_string(store) {
+        Ok(t) => ca::parse_audits(&t),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(anyhow::anyhow!("read {}: {e}", store.display())),
+    }
+}
+
+fn cmd_audit(store: Option<PathBuf>, sub: AuditCmd) -> Result<()> {
+    use ensembly_kernel::application_ledger as al;
+    use ensembly_kernel::company_audit as ca;
+    let store = store.unwrap_or_else(|| PathBuf::from(ca::DEFAULT_AUDIT_PATH));
+    match sub {
+        AuditCmd::Validate { file } => audit_validate(&store, file),
+        AuditCmd::Append { file } => {
+            let text = if file.as_os_str() == "-" {
+                let mut t = String::new();
+                std::io::Read::read_to_string(&mut std::io::stdin(), &mut t)?;
+                t
+            } else {
+                read_file(&file)?
+            };
+            let (n, skipped) = ca::append_audits(&store, &text)?;
+            println!("appended {n}, skipped {skipped} already stored");
+            Ok(())
+        }
+        AuditCmd::Export { out_dir } => {
+            let rows = read_audit_store(&store)?;
+            let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
+            ca::write_exports(&rows, &dir)?;
+            println!(
+                "exported {} companies to {}",
+                ca::current_audits(&rows).len(),
+                dir.display()
+            );
+            Ok(())
+        }
+        AuditCmd::Status { query, now } => audit_status(&store, &query, now),
+    }
+}
+
+fn audit_validate(store: &PathBuf, file: Option<PathBuf>) -> Result<()> {
+    use ensembly_kernel::company_audit as ca;
+    let rows = match file {
+        Some(f) => ca::parse_audits(&read_file(&f)?)?,
+        None => read_audit_store(store)?,
+    };
+    println!(
+        "ok: {} audits, {} companies",
+        rows.len(),
+        ca::current_audits(&rows).len()
+    );
+    for i in ca::dangling_reuse(&rows) {
+        eprintln!("warning: audit {} ({}) has a reused_from that names no earlier stored audit of that domain", i + 1, rows[i].domain);
+    }
+    Ok(())
+}
+
+fn audit_status(store: &PathBuf, query: &str, now: Option<String>) -> Result<()> {
+    use ensembly_kernel::company_audit as ca;
+    let rows = read_audit_store(store)?;
+    let now = match now {
+        Some(t) => {
+            chrono::DateTime::parse_from_rfc3339(&t).map_err(|e| anyhow::anyhow!("--now: {e}"))?
+        }
+        None => chrono::Local::now().fixed_offset(),
+    };
+    let (status, audit) = ca::status_for(&rows, query, now);
+    let out = serde_json::json!({
+        "query": query,
+        "status": status,
+        "company": audit.as_ref().map(|a| a.company.clone()),
+        "domain": audit.as_ref().map(|a| a.domain.clone()),
+        "verdict": audit.as_ref().map(|a| a.effective_verdict()),
+        "audited_at": audit.as_ref().map(|a| a.audited_at.clone()),
+        "stale_after_days": ca::STALE_AFTER_DAYS,
+    });
+    println!("{out}");
+    std::process::exit(ca::exit_code(status));
+}
+
+fn cmd_channel_pulse(db_path: &PathBuf, sub: ChannelPulseCmd) -> Result<()> {
+    let ChannelPulseCmd::Reconcile {
+        out,
+        fixture,
+        location,
+        json,
+        verbose,
+    } = sub;
+    let store = OpsStore::open(db_path)?;
+    // Prefer durable live seed; --fixture only for isolated CI dogfood.
+    // Empty ops → CHANNEL_IR_FAIL (non-zero), never silent grocery projection.
+    let actions = match fixture {
+        Some(f) => load_actions_from_fixture(&f)?,
+        None => seed_live_channel_actions(&store)?,
+    };
+    let pulse_path = out.unwrap_or_else(|| PathBuf::from(DEFAULT_CHANNEL_PULSE_PATH));
+    let report = reconcile_channel_pulse(&store, &actions, location.as_deref(), &pulse_path)?;
+    if json {
+        print_json(&report)?;
+    } else if verbose && report.wrote {
+        eprintln!(
+            "CHANNEL_PULSE_OK wrote={} path={:?} hash={}",
+            report.wrote, report.pulse_path, report.content_hash
+        );
     }
     Ok(())
 }

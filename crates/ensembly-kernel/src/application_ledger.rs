@@ -314,7 +314,10 @@ pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> anyhow::Result<()> {
 pub fn write_exports(rows: &[Row], dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
     write_atomic(&dir.join("applications.csv"), export_csv(rows).as_bytes())?;
-    write_atomic(&dir.join("applications.md"), export_markdown(rows).as_bytes())?;
+    write_atomic(
+        &dir.join("applications.md"),
+        export_markdown(rows).as_bytes(),
+    )?;
     Ok(())
 }
 
@@ -626,11 +629,16 @@ pub(crate) mod tests {
 
     const SCHEMA: &str = include_str!("../../../schemas/application-ledger-row.schema.json");
 
-    #[test]
-    fn schema_matches_rust_rules_and_accepts_the_sample() {
-        let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
-        let props = schema["properties"].as_object().unwrap();
-        // every field Rust can write is in the schema, and nothing else
+    fn str_array(v: &serde_json::Value) -> Vec<&str> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect()
+    }
+
+    /// Every field Rust can write is in the schema, and nothing else.
+    fn assert_schema_keys_match_rust(props: &serde_json::Map<String, serde_json::Value>) {
         let full = r#"{"company":"A","role":"R","link":"https://x.test/1","apply_url":"https://x.test/1/application","status":"rejected","submit_time":null,"submit_time_unknown":true,"cv_version":"v"}"#;
         let full: serde_json::Value =
             serde_json::to_value(&parse_ledger(full).unwrap()[0]).unwrap();
@@ -639,13 +647,10 @@ pub(crate) mod tests {
         rust_keys.sort();
         schema_keys.sort();
         assert_eq!(rust_keys, schema_keys);
-        // status enum == Rust Status
-        let statuses: Vec<&str> = props["status"]["enum"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap())
-            .collect();
+    }
+
+    /// Status enum == Rust Status.
+    fn assert_status_enum_matches_rust(props: &serde_json::Map<String, serde_json::Value>) {
         let all = [
             Status::Prepared,
             Status::Submitted,
@@ -654,9 +659,14 @@ pub(crate) mod tests {
             Status::Withdrawn,
             Status::SilentClosed,
         ];
-        assert_eq!(statuses, all.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-        // submit_time pattern agrees with the Rust time check
-        let re = regex::Regex::new(props["submit_time"]["pattern"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            str_array(&props["status"]["enum"]),
+            all.iter().map(|s| s.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    /// The submit_time pattern agrees with the Rust time check.
+    fn assert_time_pattern_agrees(re: &regex::Regex) {
         for (t, ok) in [
             ("2026-10-20T09:15:00+02:00", true),
             ("2026-10-20T09:15+02:00", false),
@@ -666,31 +676,40 @@ pub(crate) mod tests {
             assert_eq!(re.is_match(t), ok, "schema {t}");
             assert_eq!(check_submit_time(t).is_ok(), ok, "rust {t}");
         }
-        // every sample line satisfies required + known keys + patterns
-        let required: Vec<&str> = schema["required"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap())
-            .collect();
+    }
+
+    /// One sample line satisfies required + known keys + patterns.
+    fn assert_line_fits_schema(line: &str, schema: &serde_json::Value, time_re: &regex::Regex) {
+        let props = schema["properties"].as_object().unwrap();
         let link_re = regex::Regex::new(props["link"]["pattern"].as_str().unwrap()).unwrap();
-        let mut n = 0;
-        for line in SAMPLE.lines().filter(|l| !l.trim().is_empty()) {
-            let v: serde_json::Value = serde_json::from_str(line).unwrap();
-            let o = v.as_object().unwrap();
-            for k in &required {
-                assert!(o.contains_key(*k), "{k} missing: {line}");
-            }
-            for k in o.keys() {
-                assert!(props.contains_key(k), "{k} not in schema");
-            }
-            assert!(link_re.is_match(o["link"].as_str().unwrap()));
-            if let Some(t) = o["submit_time"].as_str() {
-                assert!(re.is_match(t), "{t}");
-            }
-            n += 1;
+        let v: serde_json::Value = serde_json::from_str(line).unwrap();
+        let o = v.as_object().unwrap();
+        for k in str_array(&schema["required"]) {
+            assert!(o.contains_key(k), "{k} missing: {line}");
         }
-        assert!(n >= 3, "sample must not be empty");
+        assert!(
+            o.keys().all(|k| props.contains_key(k)),
+            "key not in schema: {line}"
+        );
+        assert!(link_re.is_match(o["link"].as_str().unwrap()));
+        if let Some(t) = o["submit_time"].as_str() {
+            assert!(time_re.is_match(t), "{t}");
+        }
+    }
+
+    #[test]
+    fn schema_matches_rust_rules_and_accepts_the_sample() {
+        let schema: serde_json::Value = serde_json::from_str(SCHEMA).unwrap();
+        let props = schema["properties"].as_object().unwrap();
+        assert_schema_keys_match_rust(props);
+        assert_status_enum_matches_rust(props);
+        let re = regex::Regex::new(props["submit_time"]["pattern"].as_str().unwrap()).unwrap();
+        assert_time_pattern_agrees(&re);
+        let lines: Vec<&str> = SAMPLE.lines().filter(|l| !l.trim().is_empty()).collect();
+        for line in &lines {
+            assert_line_fits_schema(line, &schema, &re);
+        }
+        assert!(lines.len() >= 3, "sample must not be empty");
     }
 
     #[test]
@@ -783,9 +802,11 @@ pub(crate) mod tests {
     fn write_exports_replaces_files_atomically() {
         let dir = tempfile::tempdir().unwrap();
         let rows = parse_ledger(SAMPLE).unwrap();
-        assert_replaced_atomically(dir.path(), &["applications.csv", "applications.md"], &|| {
-            write_exports(&rows, dir.path()).unwrap()
-        });
+        assert_replaced_atomically(
+            dir.path(),
+            &["applications.csv", "applications.md"],
+            &|| write_exports(&rows, dir.path()).unwrap(),
+        );
     }
 
     #[test]

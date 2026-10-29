@@ -562,7 +562,10 @@ pub fn write_exports(rows: &[Audit], dir: &Path) -> anyhow::Result<()> {
     std::fs::create_dir_all(dir)?;
     let write = crate::application_ledger::write_atomic;
     write(&dir.join("company-audits.csv"), export_csv(rows).as_bytes())?;
-    write(&dir.join("company-audits.md"), export_markdown(rows).as_bytes())?;
+    write(
+        &dir.join("company-audits.md"),
+        export_markdown(rows).as_bytes(),
+    )?;
     Ok(())
 }
 
