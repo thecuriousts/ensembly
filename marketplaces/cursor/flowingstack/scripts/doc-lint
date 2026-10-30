@@ -229,7 +229,10 @@ def main():
     a.add_argument("--stdin-md", action="store_true")
     o = a.parse_args()
     root = plugin_root(o.root)
-    phrases = [p.strip().lower() for p in open(os.path.join(root, "banned-phrases.txt")) if p.strip()]
+    own = os.path.join(root, "banned-phrases.txt")
+    if not os.path.exists(own):
+        own = os.path.join(plugin_root(), "banned-phrases.txt")
+    phrases = [p.strip().lower() for p in open(own) if p.strip()]
     for p in o.paths:
         if os.path.isabs(p) or ".." in p.split("/"):
             print(f"{p}: path must be relative to plugin root", file=sys.stderr)
