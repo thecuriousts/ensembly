@@ -3,6 +3,6 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 src=${2:?usage: check --src DIR}
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s test
-scripts/doc-lint --all
+scripts/doc-lint --all --repo-root ../../..
 scripts/privacy-scan --all --repo-root ../../..
 scripts/sync-from-upstream --src "$src" --check

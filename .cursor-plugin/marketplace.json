@@ -1,0 +1,5 @@
+{
+  "name": "flowingstack",
+  "owner": {"name": "thecuriousts"},
+  "plugins": [{"name": "flowingstack", "source": "marketplaces/cursor/flowingstack"}]
+}

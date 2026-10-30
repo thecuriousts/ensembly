@@ -214,6 +214,7 @@ def main():
     a.add_argument("paths", nargs="*")
     a.add_argument("--root")
     a.add_argument("--all", action="store_true")
+    a.add_argument("--repo-root")
     a.add_argument("--baseline")
     a.add_argument("--write-baseline")
     a.add_argument("--stdin-md", action="store_true")
@@ -232,6 +233,8 @@ def main():
             full = rel(root, p)
             paths += [os.path.relpath(os.path.join(root, p, q), root) for q in walk(full, "\0")] if os.path.isdir(full) else [p]
         docs = [lint(root, p, phrases) for p in paths]
+        if o.repo_root and os.path.exists(os.path.join(o.repo_root, ".cursor-plugin", "marketplace.json")):
+            docs.append(lint(o.repo_root, os.path.join(".cursor-plugin", "marketplace.json"), phrases))
     base_file = o.baseline or ("lint-baseline.tsv" if o.all and os.path.exists(os.path.join(root, "lint-baseline.tsv")) else None)
     base = set()
     if base_file:

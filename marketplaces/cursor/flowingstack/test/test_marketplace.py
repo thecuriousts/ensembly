@@ -33,7 +33,7 @@ class Scope(unittest.TestCase):
             write(os.path.join(t, ".cursor-plugin", "marketplace.json"), '{"name": "x"}\n')
             code, out = run("doc-lint", "--root", plug, "--repo-root", t, "--all")
             self.assertEqual(code, 0, out)
-            self.assertIn("files 2 ", out)
+            self.assertIn("files 3 ", out)
             write(os.path.join(t, ".cursor-plugin", "marketplace.json"), '{"description": "x."}\n')
             self.assertEqual(run("doc-lint", "--root", plug, "--repo-root", t, "--all")[0], 1)
 
