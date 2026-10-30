@@ -5,6 +5,18 @@
   skills --> lint["doc-lint"] --> priv["privacy-scan"] --> ok["exit 0"]
 ```
 
+## Diagrams
+
+| Page | Shows | Image |
+|---|---|---|
+| [flow](docs/flow.md) | end to end flow | [svg](docs/img/flow-1.svg) |
+| [states](docs/states.md) | contract, eval, ledger, review | [svg](docs/img/states-4.svg) |
+| [skills](docs/skills.md) | skill graph | [svg](docs/img/skills-1.svg) |
+| [connections](docs/connections.md) | scripts and files | [svg](docs/img/connections-1.svg) |
+| [sequence](docs/sequence.md) | brief to ship | [svg](docs/img/sequence-1.svg) |
+| [install](docs/install.md) | install and sync | [svg](docs/img/install-1.svg) |
+| [harness](docs/harness.md) | Cursor, Grok Bot, other lanes | [svg](docs/img/harness-1.svg) |
+
 ## Flow
 
 ```mermaid

@@ -21,7 +21,30 @@ agent:L --> R:skills
 ```
 
 ```mermaid
-%%{init: {"theme": "base", "themeVariables": {"lineColor": "#495057", "fontFamily": "Inter"}}}%%
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
+  b["brief"] --> bl["brief-lint"] --> hub["flowingstack"] --> ir["intelli-route"]
+  ir --> tc["task-contract"] --> cc["contract-check"] --> lo["ledger open"]
+  lo --> ef["eval-freeze lock"] --> tdd["red then green"] --> er["eval-replay"]
+  er --> gr{"grill round 3 or fewer"}
+  gr -->|changes| tdd
+  gr -->|round 4| esc["escalate"] --> p
+  gr -->|approve| lc["ledger close claim"] --> sh["ship"] --> p(["person lands"])
+  cc -->|no check| x["blocked"]
+  classDef src fill:#d0ebff,stroke:#1971c2,color:#0b2e4f
+  classDef run fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  classDef stop fill:#ffe3e3,stroke:#e03131,color:#4a0a0a
+  classDef out fill:#fff3bf,stroke:#f08c00,color:#4a3000
+  classDef who fill:#e5dbff,stroke:#7048e8,color:#2b1a5e
+  class b,hub,ir src
+  class bl,tc,cc,lo,ef,tdd,er,gr run
+  class x,esc stop
+  class lc,sh out
+  class p who
+```
+
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
 flowchart LR
   pin["pins.tsv"] --> sync["sync-from-upstream"] --> sk["skills"]
   task["task"] --> tc["task-contract"] --> cc["contract-check"] --> led["ledger"]

@@ -9,6 +9,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import baseline
 from rootpath import inside, plugin_root, rel, walk
 
+KINDS = {"block", "C4Component", "classDiagram", "erDiagram", "flowchart", "graph", "gantt", "gitGraph", "kanban",
+         "mindmap", "pie", "quadrantChart", "requirementDiagram", "sankey-beta", "sequenceDiagram", "stateDiagram-v2",
+         "timeline", "journey", "xychart-beta", "architecture-beta"}
 PELE = {"agentflow-beta", "architecture-beta", "swimlane-beta", "sequenceDiagram", "stateDiagram-v2", "C4Component"}
 CODE = {".py": ("#", 0.10), ".mjs": ("//", 0.10), ".js": ("//", 0.10), ".ts": ("//", 0.10), ".rs": ("//", 0.10),
         ".sh": ("#", 0.15), ".yml": ("#", 0.05), ".yaml": ("#", 0.05), ".toml": ("#", 0.05)}
@@ -47,6 +50,8 @@ class Doc:
             l = lines[n]
             if fence is not None:
                 kinds.append((n, "fence", l, section))
+                if fence == "mermaid" and first is None and l.strip() and not l.strip().startswith(("%%", "```")):
+                    first = l.split()[0] in KINDS
                 if fence == "mermaid" and not themed and l.strip():
                     themed = re.match(r"%%\{\s*init:.*\btheme\b", l.strip()) is not None
                 if l.startswith("```"):
@@ -57,7 +62,7 @@ class Doc:
             if l.startswith("```"):
                 fence = l[3:].split()[0] if l[3:].split() else ""
                 start, themed = n, False
-                if first is None:
+                if first is None and fence != "mermaid":
                     first = fence in PELE
                 kinds.append((n, "fence", l, section))
             elif not l.strip():

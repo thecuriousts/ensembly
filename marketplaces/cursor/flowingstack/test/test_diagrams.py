@@ -14,7 +14,7 @@ PAGES = {
     "sequence.md": ["sequenceDiagram"],
     "install.md": ["flowchart"],
 }
-FENCE = re.compile(r"^```(mermaid|[a-zA-Z0-9-]+-beta)\n(.*?)^```", re.M | re.S)
+FENCE = re.compile(r"^```(mermaid|[a-zA-Z0-9-]+-beta)[^\n]*\n(.*?)^```", re.M | re.S)
 
 
 def docs():
