@@ -38,7 +38,7 @@ class MustNotFire(unittest.TestCase):
 
 class Passive(unittest.TestCase):
     def test_passive_warns_only(self):
-        code, out = run("doc-lint", "--stdin-md", stdin="# x\n\n```agentflow-beta LR\n  a --> b\n  b --> c\n```\n\nThe row was written\n")
+        code, out = run("doc-lint", "--stdin-md", stdin="# x\n\n```agentflow-beta LR\n  a --> b\n  b --> c\n```\n\nThe row was added\n")
         self.assertEqual(code, 0, out)
         self.assertIn("warn: passive", out)
 

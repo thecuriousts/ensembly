@@ -1,0 +1,4 @@
+test/test_privacy_scan.py
+test/fixtures/privacy/*
+.git/*
+*__pycache__/*

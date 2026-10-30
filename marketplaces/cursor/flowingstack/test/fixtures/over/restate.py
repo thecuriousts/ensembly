@@ -1,5 +1,5 @@
 def f(x):
-    # add one to x
+    # return x plus 1
     return x + 1
 
 

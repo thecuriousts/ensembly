@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from rootpath import plugin_root, rel
+
+MAGIC = (b"\x7fELF", b"\xfe\xed\xfa", b"\xce\xfa\xed\xfe", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe")
+HEAD = """# NOTICE
+
+```agentflow-beta LR
+  up["p10ns11y/plugins at pin"] --> sync["sync-from-upstream"] --> dest["vendored copy"]
+```
+
+| Repo | Commit | Path | Dest |
+|---|---|---|---|
+"""
+
+
+def git(src, *a):
+    return subprocess.run(["git", "-C", src, *a], check=True, capture_output=True).stdout
+
+
+def pins(root, f):
+    rows = []
+    for l in open(rel(root, f)):
+        if not l.strip():
+            continue
+        r = l.rstrip("\n").split("\t")
+        if len(r) != 4 or not re.fullmatch(r"[0-9a-f]{40}", r[1]) or any(os.path.isabs(x) or ".." in x.split("/") for x in r[2:]):
+            raise ValueError(l.strip())
+        rows.append(r)
+    return rows
+
+
+def want(src, sha, path, dest):
+    out = {}
+    for e in git(src, "ls-tree", "-r", "-z", sha, "--", path).split(b"\0"):
+        if not e:
+            continue
+        meta, name = e.decode().split("\t", 1)
+        mode, _, obj = meta.split()
+        r = os.path.relpath(name, path)
+        if mode == "120000":
+            raise RuntimeError(f"{name}: symlink")
+        data = git(src, "cat-file", "blob", obj)
+        if b"\0" in data or data.startswith(MAGIC):
+            raise RuntimeError(f"{name}: binary")
+        out[dest if r == "." else os.path.join(dest, r)] = (data, mode == "100755")
+    return out
+
+
+def have(root, dest):
+    out = {}
+    if os.path.isfile(os.path.join(root, dest)):
+        return {dest: open(os.path.join(root, dest), "rb").read()}
+    for d, _, fs in os.walk(os.path.join(root, dest)):
+        for n in fs:
+            p = os.path.join(d, n)
+            out[os.path.relpath(p, root)] = open(p, "rb").read()
+    return out
+
+
+def main():
+    a = argparse.ArgumentParser()
+    a.add_argument("--root")
+    a.add_argument("--pins", default="pins.tsv")
+    a.add_argument("--src", required=True)
+    a.add_argument("--check", action="store_true")
+    o = a.parse_args()
+    root = plugin_root(o.root)
+    try:
+        rows = pins(root, o.pins)
+    except ValueError as e:
+        print(f"bad pin: {e}", file=sys.stderr)
+        return 2
+    notice = HEAD + "".join(f"| {r[0]} | `{r[1]}` | {r[2]} | {r[3]} |\n" for r in rows)
+    drift = []
+    try:
+        for repo, sha, path, dest in rows:
+            w = want(o.src, sha, path, dest)
+            if o.check:
+                h = have(root, dest)
+                drift += [p for p in sorted(set(w) | set(h)) if w.get(p, (None,))[0] != h.get(p)]
+                continue
+            shutil.rmtree(os.path.join(root, dest), ignore_errors=True)
+            for p, (data, x) in w.items():
+                os.makedirs(os.path.dirname(os.path.join(root, p)), exist_ok=True)
+                with open(os.path.join(root, p), "wb") as f:
+                    f.write(data)
+                os.chmod(os.path.join(root, p), 0o755 if x else 0o644)
+    except RuntimeError as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 1
+    np = os.path.join(root, "NOTICE.md")
+    if o.check:
+        if not os.path.exists(np) or open(np).read() != notice:
+            drift.append("NOTICE.md")
+        print("\n".join([f"drift: {p}" for p in drift] + [f"pins {len(rows)} drift {len(drift)}"]))
+        return 1 if drift else 0
+    with open(np, "w") as f:
+        f.write(notice)
+    print(f"pins {len(rows)} synced")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

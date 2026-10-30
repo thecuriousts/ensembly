@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 import unittest
 
-from lib import run
+from lib import read, run
 
 
 def git(cwd, *a):
@@ -38,9 +38,15 @@ class Sync(unittest.TestCase):
 
     def test_copy_then_check_clean(self):
         self.assertEqual(self.sync()[0], 0)
-        with open(os.path.join(self.root, "skills", "harvest", "SKILL.md")) as f:
-            self.assertEqual(f.read(), "harvest\n")
-        self.assertIn(self.sha[:7], open(os.path.join(self.root, "NOTICE.md")).read())
+        self.assertEqual(read(os.path.join(self.root, "skills", "harvest", "SKILL.md")), "harvest\n")
+        self.assertIn(self.sha[:7], read(os.path.join(self.root, "NOTICE.md")))
+        self.assertEqual(self.sync("--check")[0], 0)
+
+    def test_single_file_pin(self):
+        self.pin(self.sha, "skills/h/references/H.md", "tstack/skills/harvest/SKILL.md")
+        code, out = self.sync()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(read(os.path.join(self.root, "skills", "h", "references", "H.md")), "harvest\n")
         self.assertEqual(self.sync("--check")[0], 0)
 
     def test_drift_fails_check(self):
@@ -85,7 +91,7 @@ class Sync(unittest.TestCase):
 class Pins(unittest.TestCase):
     def test_real_pins_are_full_shas(self):
         from lib import ROOT
-        rows = [r.split("\t") for r in open(os.path.join(ROOT, "pins.tsv")).read().splitlines()]
+        rows = [r.split("\t") for r in read(os.path.join(ROOT, "pins.tsv")).splitlines()]
         self.assertTrue(rows)
         for r in rows:
             self.assertEqual(len(r), 4)

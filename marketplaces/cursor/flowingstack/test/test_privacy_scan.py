@@ -2,12 +2,12 @@ import os
 import tempfile
 import unittest
 
-from lib import run
+from lib import run, write
 
 RED = {
     "home": "see /home/someone/x", "mac-home": "see /Users/someone/x", "box": "under /workspace/dev/x",
     "store": "in /cursor/stores/abc", "cgnat": "ssh 100.101.2.3", "email": "Co-authored-by: A <a.b@gmail.com>",
-    "phone": "call +46 70 123 45 67", "finance": "the IBAN is here", "health": "a diagnosis note",
+    "phone": "call +46 70 123 45 67", "finance": "the IBAN is here", "health": "a prescription note",
     "cv": "attach my CV", "kanithanj": "kanithanj rows", "ensembly": "Ensembly member data",
 }
 OK = ["laptop-1 and mac-mini", "Co-authored-by: A <1+a@users.noreply.github.com>", "ip 10.0.0.1 and 100.1.2.3",
@@ -42,9 +42,33 @@ class Files(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("binary", out)
 
+    def test_baseline_suppresses_path_rule(self):
+        code, out = run("privacy-scan", "--baseline", os.path.join("test", "fixtures", "privacy", "baseline.tsv"),
+                        os.path.join("test", "fixtures", "privacy", "cv.md"))
+        self.assertEqual(code, 0, out)
+        self.assertIn("baselined 1", out)
+
     def test_own_tree_clean(self):
         code, out = run("privacy-scan", "--all")
         self.assertEqual(code, 0, out)
+
+
+class Scope(unittest.TestCase):
+    def test_outside_plugin_root_never_scanned(self):
+        with tempfile.TemporaryDirectory() as t:
+            plug = os.path.join(t, "marketplaces", "cursor", "flowingstack")
+            os.makedirs(os.path.join(plug, "skills"))
+            os.makedirs(os.path.join(t, "crates", "core"))
+            os.makedirs(os.path.join(t, ".cursor-plugin"))
+            write(os.path.join(plug, "skills", "a.md"), "clean\n")
+            write(os.path.join(t, "crates", "core", "lib.rs"), "see /home/someone\n")
+            write(os.path.join(t, "outside.md"), "call +46 70 123 45 67\n")
+            write(os.path.join(t, ".cursor-plugin", "marketplace.json"), '{"name": "x"}\n')
+            code, out = run("privacy-scan", "--root", plug, "--repo-root", t, "--all")
+            self.assertEqual(code, 0, out)
+            self.assertIn("scanned 2 ", out)
+            write(os.path.join(t, ".cursor-plugin", "marketplace.json"), '{"o": "a@gmail.com"}\n')
+            self.assertEqual(run("privacy-scan", "--root", plug, "--repo-root", t, "--all")[0], 1)
 
 
 if __name__ == "__main__":
