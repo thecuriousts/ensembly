@@ -1,5 +1,6 @@
 import hashlib
 import os
+import pathlib
 import tempfile
 import unittest
 
@@ -44,7 +45,7 @@ class Score(unittest.TestCase):
         self.assertEqual(grill("unknown.tsv")[0], 2)
 
     def test_rubric_fixed_and_hashed(self):
-        h = hashlib.sha256(open(os.path.join(ROOT, "references", "rubric.md"), "rb").read()).hexdigest()[:12]
+        h = hashlib.sha256(pathlib.Path(ROOT, "references", "rubric.md").read_bytes()).hexdigest()[:12]
         self.assertIn(f"rubric={h}", grill("none.tsv")[1])
         self.assertNotEqual(grill("none.tsv", "coder", "grill", "--rubric", "x")[0], 0)
 
