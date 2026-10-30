@@ -65,6 +65,24 @@ class Freeze(unittest.TestCase):
         self.assertEqual(self.ef("override", self.d, "--id", "a", "--contract", "c", "--expected", "bug",
                                  "--area", "x", "--bug-class", "y", "--time", "2026-10")[0], 2)
 
+    def ov(self, **kw):
+        f = {"id": "o2", "contract": "c", "expected": "bug", "area": "a", "bug-class": "b", "time": "2026-10", **kw}
+        return self.ef("override", self.d, *[x for k, v in f.items() for x in ("--" + k, v)])
+
+    def test_override_id_cannot_leave_frozen_dir(self):
+        for bad in ("../../x", "../x", "a/b", os.path.join(self.t.name, "abs"), "..", ".", ""):
+            with self.subTest(bad):
+                self.assertEqual(self.ov(id=bad)[0], 2)
+        self.assertFalse(os.path.exists(os.path.join(self.t.name, "x.case")))
+        self.assertFalse(os.path.exists(os.path.join(self.t.name, "evals", "x.case")))
+        self.assertFalse(os.path.exists(os.path.join(self.t.name, "abs.case")))
+
+    def test_override_refuses_control_chars(self):
+        for i, (k, c) in enumerate((k, c) for k in ("expected", "contract", "area", "bug-class", "time") for c in "\n\t\r"):
+            with self.subTest(k=k, c=repr(c)):
+                self.assertEqual(self.ov(**{"id": f"o{i}", k: "bug" + c + "id: evil"})[0], 2)
+                self.assertFalse(os.path.exists(os.path.join(self.d, "pending", f"o{i}.case")))
+
     def test_split(self):
         code, out = self.ef("split", self.d, "--by", "area")
         self.assertEqual(code, 0)
