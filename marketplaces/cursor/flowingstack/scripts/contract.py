@@ -1,4 +1,7 @@
 import re
+import sys
+
+from rootpath import plugin_root, rel
 
 KINDS = {"test": "bug", "acceptance": "feature", "unchanged": "refactor", "metric": "perf", "heldout": "eval"}
 
@@ -18,3 +21,16 @@ def route(c):
     if r is None or not rest.strip() or (r == "perf" and not re.search(r"\d", rest)):
         return "empty"
     return r
+
+
+def main(argv):
+    if len(argv) != 1:
+        print("usage: contract-check FILE", file=sys.stderr)
+        return 1
+    c = parse(open(rel(plugin_root(), argv[0]), encoding="utf-8").read())
+    if not all(c.get(k) for k in ("id", "input", "output")):
+        print("refused: id, input, output required", file=sys.stderr)
+        return 2
+    r = route(c)
+    print(f"id={c['id']} route={r}")
+    return 1 if r == "empty" else 0

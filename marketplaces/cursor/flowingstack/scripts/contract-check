@@ -3,16 +3,6 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from contract import parse, route
-from rootpath import plugin_root, rel
+from contract import main
 
-if len(sys.argv) != 2:
-    sys.exit("usage: contract-check FILE")
-p = rel(plugin_root(), sys.argv[1])
-c = parse(open(p, encoding="utf-8").read())
-if not c.get("id") or not c.get("input") or not c.get("output"):
-    print("refused: id, input, output required", file=sys.stderr)
-    sys.exit(2)
-r = route(c)
-print(f"id={c['id']} route={r}")
-sys.exit(1 if r == "empty" else 0)
+sys.exit(main(sys.argv[1:]))
