@@ -119,6 +119,14 @@ class GitHub(unittest.TestCase):
                         self.assertTrue(os.path.exists(os.path.join(ROOT, "docs", "img", k[digest(b)])))
 
 
+class BareType(unittest.TestCase):
+    def test_no_fence_info_string_is_a_bare_mermaid_type(self):
+        for f in plugin_md():
+            for kind, b in ANY_FENCE.findall(read(f)):
+                with self.subTest(os.path.relpath(f, ROOT)):
+                    self.assertNotIn(kind, GITHUB | {"stateDiagram"}, "wrap as mermaid fence")
+
+
 class Harness(unittest.TestCase):
     def test_grok_bot_format_note(self):
         s = read(os.path.join(ROOT, "docs", "harness.md"))

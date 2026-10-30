@@ -10,7 +10,9 @@ last-reviewed: 2026-10-30
 
 ## Flow
 
-```stateDiagram-v2
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+stateDiagram-v2
   [*] --> Open: ledger open
   Open --> Claimed: ledger claim
   Claimed --> Claimed: status change
