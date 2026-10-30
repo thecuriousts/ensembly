@@ -70,6 +70,10 @@ class Provisional(unittest.TestCase):
         self.assertIn("noise floor", r)
         self.assertIn("first real-work evaluation", r)
 
+    def test_blocker_score_documented(self):
+        r = read(os.path.join(ROOT, "references", "rubric.md"))
+        self.assertRegex(r, r"(?m)^\| blocker \| 0, the verdict decides \|$")
+
 
 class Peers(unittest.TestCase):
     def test_names_installed_peer_skills(self):
