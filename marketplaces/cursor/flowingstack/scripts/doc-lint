@@ -238,6 +238,9 @@ def main():
         if os.path.isabs(p) or ".." in p.split("/"):
             print(f"{p}: path must be relative to plugin root", file=sys.stderr)
             return 2
+        if not os.path.exists(os.path.join(root, p)):
+            print(f"{p}: not found under plugin root", file=sys.stderr)
+            return 2
     if o.stdin_md:
         docs = [lint(root, "stdin.md", phrases, sys.stdin.read())]
     else:
