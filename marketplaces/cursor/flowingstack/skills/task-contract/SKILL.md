@@ -10,10 +10,18 @@ last-reviewed: 2026-10-30
 
 ## Flow
 
-```agentflow-beta LR
-  c["contract.yml"]@{ shape: input } --> k["contract-check"]@{ shape: task }
-  k --> r["route"]@{ shape: task } --> l["ledger open --contract-file"]@{ shape: task }
-  k --> e["route empty"]@{ shape: action }
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
+  c["contract.yml"] --> k["contract-check"]
+  k --> r["route"] --> l["ledger open --contract-file"]
+  k --> e["route empty"]
+  classDef input fill:#d0ebff,stroke:#1971c2,color:#0b2e4f
+  classDef task fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  classDef action fill:#fff3bf,stroke:#f08c00,color:#4a3000
+  class c input
+  class k,r,l task
+  class e action
 ```
 
 ## Contract

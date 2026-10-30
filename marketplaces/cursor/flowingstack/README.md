@@ -1,8 +1,12 @@
 # flowingstack
 
-```agentflow-beta LR
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
   src["p10ns11y/plugins at pin"] --> sync["sync-from-upstream"] --> skills["skills"]
   skills --> lint["doc-lint"] --> priv["privacy-scan"] --> ok["exit 0"]
+  classDef task fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  class src,sync,skills,lint,priv,ok task
 ```
 
 ## Diagrams

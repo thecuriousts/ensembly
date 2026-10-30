@@ -1,24 +1,33 @@
 # flowingstack flow
 
-```architecture-beta
-%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffe8cc", "primaryBorderColor": "#e8590c", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
-group up(cloud)[p10ns11y plugins at pin]
-group plug(server)[flowingstack]
-group host(internet)[Cursor]
-service vendored(disk)[vendored skills] in up
-service sync(server)[sync from upstream] in plug
-service skills(disk)[skills] in plug
-service scripts(server)[scripts] in plug
-service checks(server)[check] in plug
-service market(internet)[marketplace json] in host
-service agent(internet)[agent] in host
-vendored:R --> L:sync
-sync:R --> L:skills
-skills:B --> T:scripts
-scripts:R --> L:checks
-market:B --> T:skills
-agent:L --> R:skills
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ffe8cc", "primaryBorderColor": "#e8590c", "primaryTextColor": "#4a1d00", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
+  subgraph up["p10ns11y plugins at pin"]
+    vendored[("vendored skills")]
+  end
+  subgraph plug["flowingstack"]
+    sync["sync from upstream"] --> skills[("skills")]
+    skills --> scripts["scripts"] --> checks["check"]
+  end
+  subgraph host["Cursor"]
+    market(["marketplace json"])
+    agent(["agent"])
+  end
+  vendored --> sync
+  market --> skills
+  agent --> skills
+  classDef src fill:#d0ebff,stroke:#1971c2,color:#0b2e4f
+  classDef run fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  classDef out fill:#fff3bf,stroke:#f08c00,color:#4a3000
+  classDef host fill:#e5dbff,stroke:#7048e8,color:#2b1a5e
+  class vendored src
+  class sync,skills,scripts run
+  class checks out
+  class market,agent host
 ```
+
+Pele source image: [architecture](img/flow-architecture.svg)
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%

@@ -1,7 +1,11 @@
 # NOTICE
 
-```agentflow-beta LR
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
   up["p10ns11y/plugins at pin"] --> sync["sync-from-upstream"] --> dest["vendored copy"]
+  classDef task fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  class up,sync,dest task
 ```
 
 | Repo | Commit | Path | Dest |

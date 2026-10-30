@@ -10,9 +10,17 @@ last-reviewed: 2026-10-30
 
 ## Flow
 
-```agentflow-beta LR
-  g["goal"]@{ shape: input } --> a["AGENTS.md decide"]@{ shape: task } --> r["bin/route --signals"]@{ shape: task }
-  r --> e["route, loads ≤ 4, effort"]@{ shape: action }
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
+  g["goal"] --> a["AGENTS.md decide"] --> r["bin/route --signals"]
+  r --> e["route, loads ≤ 4, effort"]
+  classDef input fill:#d0ebff,stroke:#1971c2,color:#0b2e4f
+  classDef task fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  classDef action fill:#fff3bf,stroke:#f08c00,color:#4a3000
+  class g input
+  class a,r task
+  class e action
 ```
 
 ## Contract

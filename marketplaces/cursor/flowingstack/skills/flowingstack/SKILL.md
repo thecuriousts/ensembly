@@ -10,14 +10,22 @@ last-reviewed: 2026-10-30
 
 ## Flow
 
-```agentflow-beta LR
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
 %%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
-  g["goal"]@{ shape: input } --> r["intelli-route"]@{ shape: task }
-  r --> p["plan: task-contract, eval-freeze"]@{ shape: task }
-  r --> u["run: run-ledger, tomato-loop, harvest"]@{ shape: task }
-  r --> c["check: grill-rubric, doctor"]@{ shape: task }
-  r --> s["capture: capture-sweep"]@{ shape: task }
-  p & u & c & s --> o["≤ 4 skills loaded"]@{ shape: action }
+  g["goal"] --> r["intelli-route"]
+  r --> p["plan: task-contract, eval-freeze"]
+  r --> u["run: run-ledger, tomato-loop, harvest"]
+  r --> c["check: grill-rubric, doctor"]
+  r --> s["capture: capture-sweep"]
+  p & u & c & s --> o["≤ 4 skills loaded"]
+  classDef input fill:#d0ebff,stroke:#1971c2,color:#0b2e4f
+  classDef task fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  classDef action fill:#fff3bf,stroke:#f08c00,color:#4a3000
+  class g input
+  class r,p,u,c,s task
+  class o action
 ```
 
 ## Contract

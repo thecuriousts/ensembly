@@ -10,12 +10,20 @@ last-reviewed: 2026-10-30
 
 ## Flow
 
-```agentflow-beta LR
-  d["diff and contract"]@{ shape: input } --> p["interrogate, blast-radius if installed"]@{ shape: task }
-  p --> f["findings TSV"]@{ shape: task } --> g["scripts/grill"]@{ shape: task }
-  g --> ok["approve"]@{ shape: action }
-  g --> ch["changes"]@{ shape: action }
-  g --> sc["screen only"]@{ shape: action }
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
+  d["diff and contract"] --> p["interrogate, blast-radius if installed"]
+  p --> f["findings TSV"] --> g["scripts/grill"]
+  g --> ok["approve"]
+  g --> ch["changes"]
+  g --> sc["screen only"]
+  classDef input fill:#d0ebff,stroke:#1971c2,color:#0b2e4f
+  classDef task fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  classDef action fill:#fff3bf,stroke:#f08c00,color:#4a3000
+  class d input
+  class p,f,g task
+  class ok,ch,sc action
 ```
 
 ## Contract

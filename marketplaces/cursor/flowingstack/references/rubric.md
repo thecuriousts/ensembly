@@ -1,7 +1,15 @@
 # rubric
 
-```agentflow-beta LR
-  f["findings TSV"]@{ shape: input } --> s["score"]@{ shape: task } --> v["verdict"]@{ shape: action }
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
+  f["findings TSV"] --> s["score"] --> v["verdict"]
+  classDef input fill:#d0ebff,stroke:#1971c2,color:#0b2e4f
+  classDef task fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  classDef action fill:#fff3bf,stroke:#f08c00,color:#4a3000
+  class f input
+  class s task
+  class v action
 ```
 
 | id | criterion | weight |

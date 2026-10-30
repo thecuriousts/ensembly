@@ -54,7 +54,7 @@ class Pages(unittest.TestCase):
 
 
 class Rendered(unittest.TestCase):
-    def test_every_block_rendered_or_known_good(self):
+    def test_every_docs_block_rendered(self):
         k = known()
         for f in docs():
             for kind, b in blocks(f):
@@ -64,8 +64,6 @@ class Rendered(unittest.TestCase):
     def test_rendered_images_exist_and_readme_links_them(self):
         readme = read(os.path.join(ROOT, "README.md"))
         for img in set(known().values()):
-            if img == "known-good":
-                continue
             with self.subTest(img):
                 self.assertTrue(os.path.exists(os.path.join(ROOT, "docs", "img", img)))
         for page in PAGES:
@@ -74,6 +72,51 @@ class Rendered(unittest.TestCase):
 
     def test_doc_links_resolve(self):
         self.assertEqual(broken("docs") + [b for b in broken(".") if b.startswith("README")], [])
+
+
+GITHUB = {"flowchart", "graph", "sequenceDiagram", "stateDiagram-v2", "classDiagram", "erDiagram", "gantt", "pie",
+          "journey", "gitGraph", "mindmap", "timeline"}
+ANY_FENCE = re.compile(r"^```([^\s`]*)[^\n]*\n(.*?)^```", re.M | re.S)
+
+
+def plugin_md():
+    for d, subs, files in os.walk(ROOT):
+        subs[:] = [s for s in subs if s not in ("test", ".git", "node_modules")]
+        for n in files:
+            if n.endswith(".md") or n == "sync-from-upstream":
+                yield os.path.join(d, n)
+
+
+def first_token(body):
+    for l in body.splitlines():
+        if l.strip() and not l.strip().startswith("%%"):
+            return l.split()[0]
+    return ""
+
+
+class GitHub(unittest.TestCase):
+    def test_no_pele_only_fences(self):
+        for f in plugin_md():
+            for kind, b in ANY_FENCE.findall(read(f)):
+                with self.subTest(os.path.relpath(f, ROOT)):
+                    self.assertFalse(kind.endswith("-beta"), f"{kind} fence does not render on GitHub")
+
+    def test_mermaid_first_token_github_supported(self):
+        for f in plugin_md():
+            for kind, b in ANY_FENCE.findall(read(f)):
+                if kind == "mermaid":
+                    with self.subTest(os.path.relpath(f, ROOT)):
+                        self.assertIn(first_token(b), GITHUB)
+
+    def test_every_mermaid_block_rendered_by_mmdc(self):
+        k = known()
+        self.assertNotIn("known-good", k.values())
+        for f in plugin_md():
+            for kind, b in ANY_FENCE.findall(read(f)):
+                if kind == "mermaid":
+                    with self.subTest(f"{os.path.relpath(f, ROOT)} {b[:40]!r}"):
+                        self.assertIn(digest(b), k, "run scripts/render-diagrams")
+                        self.assertTrue(os.path.exists(os.path.join(ROOT, "docs", "img", k[digest(b)])))
 
 
 class Harness(unittest.TestCase):

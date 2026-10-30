@@ -9,7 +9,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from rootpath import plugin_root
 
-FENCE = re.compile(r"^```(mermaid|[a-zA-Z0-9-]+-beta)[^\n]*\n(.*?)^```", re.M | re.S)
+FENCE = re.compile(r"^```(mermaid)[^\n]*\n(.*?)^```", re.M | re.S)
 MMDC = os.environ.get("MMDC", "npx -y @mermaid-js/mermaid-cli@11").split()
 
 
@@ -19,6 +19,12 @@ def pages(root):
     for n in sorted(os.listdir(d)):
         if n.endswith(".md"):
             yield n[:-3], os.path.join(d, n)
+    for d, subs, files in os.walk(root):
+        subs[:] = sorted(s for s in subs if s not in ("docs", "test", ".git", "node_modules"))
+        for n in sorted(files):
+            p = os.path.join(d, n)
+            if (n.endswith(".md") or n == "sync-from-upstream") and p != os.path.join(root, "README.md"):
+                yield os.path.relpath(p, root).replace(os.sep, "-").removesuffix(".md").lower(), p
 
 
 def render(body, out):
@@ -33,18 +39,15 @@ def main():
     root = plugin_root()
     img = os.path.join(root, "docs", "img")
     os.makedirs(img, exist_ok=True)
-    rows, bad = ["# digest\timage (known-good: Pele-only fence)"], []
+    rows, bad = ["# digest\timage"], []
     for stem, path in pages(root):
-        n = {"mermaid": 0, "beta": 0}
-        for kind, body in FENCE.findall(open(path).read()):
-            key = "mermaid" if kind == "mermaid" else "beta"
-            n[key] += 1
-            name = f"{stem}-{n[key]}.svg" if key == "mermaid" else f"{stem}-beta-{n[key]}.svg"
+        for i, (kind, body) in enumerate(FENCE.findall(open(path).read()), 1):
+            name = f"{stem}-{i}.svg"
             ok, err = render(body, os.path.join(img, name))
-            if not ok and key == "mermaid":
-                bad.append(f"{os.path.relpath(path, root)} block {n[key]}: {err.strip()}")
+            if not ok:
+                bad.append(f"{os.path.relpath(path, root)} block {i}: {err.strip()}")
                 continue
-            rows.append(f"{hashlib.sha256(body.encode()).hexdigest()[:16]}\t{name if ok else 'known-good'}")
+            rows.append(f"{hashlib.sha256(body.encode()).hexdigest()[:16]}\t{name}")
     open(os.path.join(img, "rendered.tsv"), "w").write("\n".join(rows) + "\n")
     print("\n".join(bad + [f"blocks {len(rows) - 1} failed {len(bad)}"]))
     return 1 if bad else 0

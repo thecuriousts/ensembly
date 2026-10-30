@@ -10,10 +10,18 @@ last-reviewed: 2026-10-30
 
 ## Flow
 
-```agentflow-beta LR
-  p["project"]@{ shape: input } --> d["scripts/doctor"]@{ shape: task }
-  d --> r["report ok, missing, fail"]@{ shape: task }
-  r --> s["/setup-pstack by the agent"]@{ shape: action }
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+flowchart LR
+  p["project"] --> d["scripts/doctor"]
+  d --> r["report ok, missing, fail"]
+  r --> s["/setup-pstack by the agent"]
+  classDef input fill:#d0ebff,stroke:#1971c2,color:#0b2e4f
+  classDef task fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
+  classDef action fill:#fff3bf,stroke:#f08c00,color:#4a3000
+  class p input
+  class d,r task
+  class s action
 ```
 
 ## Contract
