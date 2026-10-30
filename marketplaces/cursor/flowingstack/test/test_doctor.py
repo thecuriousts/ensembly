@@ -49,6 +49,15 @@ class Doctor(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertNotIn("missing", out)
 
+    def test_house_verify_skill_nested_or_verification_name_found(self):
+        for f in (".agents/skills/ledger-verification/SKILL.md", ".cursor/skills/house/verify-ledger/SKILL.md"):
+            with self.subTest(f=f):
+                q = os.path.join(self.t.name, f.split("/")[1] + "-p")
+                os.makedirs(os.path.dirname(os.path.join(q, f)), exist_ok=True)
+                write(os.path.join(q, f), "v\n")
+                out = run("doctor", "--project", q, "--plugins-dir", self.plug, "--disk-percent", "33")[1]
+                self.assertRegex(out, r"(?m)^ok verify-skill$")
+
     def test_nested_plugin_cache_layout_found(self):
         d = os.path.join(self.plug, "pstack", "1ba91fc", "skills", "setup-pstack")
         os.makedirs(d)

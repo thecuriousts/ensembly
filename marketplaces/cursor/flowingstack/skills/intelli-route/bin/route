@@ -18,7 +18,7 @@ REVIEWS = {"", "approve", "request_changes", "REQUEST_CHANGES"}
 BOOLS = ("novel", "hard", "cross_cutting", "first_build", "security", "data_loss", "reversible", "pressure")
 KEYS = {
     "kind", "novel", "hard", "cross_cutting", "first_build", "security", "data_loss",
-    "reversible", "files", "spread", "blast", "review", "pressure",
+    "reversible", "files", "spread", "blast", "review", "pressure", "task",
 }
 PROTECTED = {
     "security", "data-loss", "blast auth", "blast money", "blast data",
@@ -35,7 +35,10 @@ def die(msg, code):
 
 
 def house_map():
-    """Monorepo: REPO/pstack-map. Plugin cache: <cache>/pstack-map/<version>, same version first, else newest."""
+    """Plugin: sibling skills/pstack-map. Monorepo: REPO/pstack-map. Cache: <cache>/pstack-map/<version>."""
+    sibling = REPO / "pstack-map" / "references" / "map.md"
+    if sibling.is_file():
+        return sibling
     flat = REPO / "pstack-map" / MAP
     if flat.is_file():
         return flat
@@ -118,7 +121,11 @@ def normalize(raw):
     blast = raw.get("blast", [])
     if not isinstance(blast, list) or any(not isinstance(item, str) or item not in BLASTS for item in blast):
         die("signals blast must list ci, auth, money, or data", 2)
+    task = raw.get("task", "")
+    if not isinstance(task, str):
+        die("signals task must be a string", 2)
     out = {
+        "task": task,
         "kind": kind,
         "review": review,
         "blast": blast,
@@ -220,13 +227,25 @@ def parse_args(argv):
     return situation, {} if signals is None else signals
 
 
+def task_signal(task, manifest):
+    """First manifest signal whose match regex hits the task text, else None."""
+    for row in manifest.get("signals", []):
+        if task and re.search(row["match"], task, re.I):
+            return row
+    return None
+
+
 def main():
     situation, signals = parse_args(sys.argv)
     effort, reason = effort_for(signals)
-    if situation is None:
-        sys.stdout.write(json.dumps({"effort": effort, "reason": reason}) + "\n")
-        return
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    if situation is None:
+        emit = {"effort": effort, "reason": reason}
+        row = task_signal(signals.get("task", ""), manifest)
+        if row:
+            emit.update(signal=row["id"], loads=row["loads"][: manifest["max_loads"]], principles=row["principles"])
+        sys.stdout.write(json.dumps(emit) + "\n")
+        return
     if "tstack" not in manifest.get("routes", {}):
         die("missing routes.tstack", 1)
     skipped = []

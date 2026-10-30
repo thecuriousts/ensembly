@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""Model-check formal/flowingstack.tla with TLC, or run the Bend trial.
+Exit 0 proved, 1 counterexample or failed law, 2 bad args or jar hash mismatch, 3 tool missing (skip, never pass)."""
+
+import argparse
+import hashlib
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.request
+
+ROOT = os.environ.get("FLOWINGSTACK_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+FORMAL = os.path.join(ROOT, "formal")
+JAR = "tla2tools-1.8.0.jar"
+URL = "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar"
+SHA = "011267fca25d0752cf18894dd585cd28b96960c112ea8a20b823ea770e7e10cd"
+SKIP = 3
+
+
+def skip(why):
+    print("skip: " + why)
+    sys.exit(SKIP)
+
+
+def sha(path):
+    return hashlib.sha256(open(path, "rb").read()).hexdigest()
+
+
+def cache_dir():
+    if os.environ.get("FLOWINGSTACK_CACHE"):
+        return os.environ["FLOWINGSTACK_CACHE"]
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(base, "flowingstack")
+
+
+def jar():
+    env = os.environ.get("TLA2TOOLS")
+    if env and os.path.isfile(env):
+        return env
+    path = os.path.join(cache_dir(), JAR)
+    if not os.path.isfile(path):
+        if os.environ.get("FLOWINGSTACK_OFFLINE"):
+            skip("tla2tools.jar not found; set TLA2TOOLS")
+        try:
+            os.makedirs(cache_dir(), exist_ok=True)
+            urllib.request.urlretrieve(URL, path + ".part")
+            os.replace(path + ".part", path)
+        except OSError as e:
+            skip("tla2tools.jar download failed: %s" % e)
+    if sha(path) != SHA:
+        print("tla2tools.jar sha256 mismatch: " + path)
+        sys.exit(2)
+    return path
+
+
+def java():
+    j = os.environ.get("JAVA") or shutil.which("java")
+    if not j or not os.path.isfile(j):
+        skip("java not found; set JAVA or install a JRE")
+    return j
+
+
+def summary(out):
+    """Pure: TLC stdout -> (ok, line)."""
+    gen = re.search(r"(\d+) states generated, (\d+) distinct states found", out)
+    depth = re.search(r"depth of the complete state graph search is (\d+)", out)
+    if "No error has been found" in out and gen:
+        return True, "tlc ok states=%s distinct=%s depth=%s" % (gen.group(1), gen.group(2), depth.group(1) if depth else "?")
+    bad = re.findall(r"(?:Invariant|Temporal property|Action property) (\w+) is violated", out) or re.findall(r"Error: .*", out)
+    return False, "tlc fail " + " ".join(bad)
+
+
+def tlc(spec):
+    j, t = java(), jar()
+    d = tempfile.mkdtemp()
+    try:
+        name = os.path.basename(spec)
+        shutil.copy(spec, os.path.join(d, name))
+        cfg = os.path.join(os.path.dirname(spec), name[:-4] + ".cfg")
+        shutil.copy(cfg if os.path.isfile(cfg) else os.path.join(FORMAL, "flowingstack.cfg"), os.path.join(d, name[:-4] + ".cfg"))
+        p = subprocess.run([j, "-XX:+UseParallelGC", "-cp", t, "tlc2.TLC", "-workers", "1", "-metadir", os.path.join(d, "meta"),
+                            "-config", name[:-4] + ".cfg", name], cwd=d, capture_output=True, text=True)
+        ok, line = summary(p.stdout + p.stderr)
+        if not ok:
+            sys.stdout.write(p.stdout[-4000:])
+        print(line)
+        return 0 if ok else 1
+    finally:
+        shutil.rmtree(d)
+
+
+def bend(path):
+    b = os.environ.get("BEND") or shutil.which("bend")
+    if not b or not os.path.isfile(b):
+        skip("bend not found; ledger.bend stays unchecked")
+    p = subprocess.run([b, path], capture_output=True, text=True)
+    sys.stdout.write(p.stdout + p.stderr)
+    print("bend ok" if p.returncode == 0 else "bend fail")
+    return 0 if p.returncode == 0 else 1
+
+
+def main():
+    a = argparse.ArgumentParser()
+    a.add_argument("--spec", default=os.path.join(FORMAL, "flowingstack.tla"))
+    a.add_argument("--bend", nargs="?", const=os.path.join(FORMAL, "bend", "ledger.bend"))
+    o = a.parse_args()
+    for f in filter(None, (o.spec, o.bend)):
+        if not os.path.isfile(f):
+            print("missing " + f)
+            sys.exit(2)
+    sys.exit(bend(o.bend) if o.bend else tlc(o.spec))
+
+
+if __name__ == "__main__":
+    main()

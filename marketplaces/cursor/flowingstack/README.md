@@ -20,6 +20,7 @@ flowchart LR
 | [sequence](docs/sequence.md) | brief to ship | [svg](docs/img/sequence-1.svg) |
 | [install](docs/install.md) | install and sync | [svg](docs/img/install-1.svg) |
 | [harness](docs/harness.md) | Cursor, Grok Bot, other lanes | [svg](docs/img/harness-1.svg) |
+| [formal](docs/formal.md) | statechart, TLC, Kani, Bend | [svg](docs/img/formal-1.svg) |
 
 ## Flow
 
@@ -88,6 +89,8 @@ A5  hits(path, rule) > count → all live, exit 1; row without count → exit 2
 | `scripts/privacy-scan --all [--repo-root D]` | clean | hit | — |
 | `scripts/sync-from-upstream --src D [--check]` | synced or no drift | drift, binary, symlink | bad pin |
 | `scripts/check --src D` | all three clean | any fail | bad args |
+| `scripts/formal-check [--bend]` | proved | counterexample | — (3 = tool missing, skip) |
+| `skills/intelli-route/bin/route WHEN \| --signals JSON` | route; `task` matching formal-verification adds loads | missing map or when | bad signals |
 | `python3 -m unittest discover -s test` | green | red | — |
 
 Every script and how they connect: [docs/flow.md](docs/flow.md).

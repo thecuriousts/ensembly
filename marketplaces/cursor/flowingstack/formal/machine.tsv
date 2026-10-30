@@ -1,0 +1,12 @@
+# machine	from	to	label	replay
+verified	drafted	contracted	contract-check exit 0	contract-ok
+verified	contracted	frozen	eval-freeze lock	eval-lock
+verified	frozen	running	ledger open	ledger-open
+verified	running	review	grill	grill-changes
+verified	review	review	changes under 3	grill-changes
+verified	review	approved	exit 0	grill-approve
+verified	review	escalated	round 3 changes	close-escalate
+verified	approved	shipped	ship ready	ship-ready
+verified	approved	escalated	eval tampered	ship-blocked
+verified	shipped	closed	ledger close	ledger-close
+verified	escalated	closed	ledger close escalate	close-escalate

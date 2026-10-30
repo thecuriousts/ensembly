@@ -33,7 +33,7 @@ def checks(o, disk):
     yield "model-rule", has(p, ".cursor", "rules", "pstack-models.mdc"), "run /setup-pstack"
     yield "agents-md", has(p, "AGENTS.md"), "add AGENTS.md"
     yield "ci", has(p, ".github", "workflows", "*.y*ml"), "add a CI workflow"
-    yield "verify-skill", has(p, ".cursor", "skills", "*verify*", "SKILL.md") or has(p, "skills", "*verify*", "SKILL.md"), "add a verify skill"
+    yield "verify-skill", any(has(p, d, "**", g, "SKILL.md") for d in (".cursor/skills", ".agents/skills", "skills") for g in ("*verify*", "*verification*")), "add a verify skill"
     yield "hooks", has(p, ".cursor", "hooks.json"), "add .cursor/hooks.json"
     yield "aliases", bool(re.search(r"\blaptop-\d\b|\bmac-mini\b", text(os.path.join(p, "AGENTS.md")) + text(os.path.join(p, "docs", "host-aliases.md")))), "name host aliases"
     for name in ("pstack", "craft"):
