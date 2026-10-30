@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from lib import FIX, run, write
+from lib import FIX, ROOT, run, write
 
 OVER = {
     "prose-first.md": "order", "ratio.md": "ratio", "prose-cap.md": "prose-cap",
@@ -81,8 +81,14 @@ class Root(unittest.TestCase):
         code, out = run("doc-lint", os.path.join("test", "fixtures", "ok", "clean.py"), cwd="/")
         self.assertEqual(code, 0, out)
 
-    def test_absolute_path_refused(self):
-        code, out = run("doc-lint", os.path.join(FIX, "ok", "clean.py"))
+    def test_absolute_path_inside_root_accepted(self):
+        code, out = run("doc-lint", os.path.join(ROOT, "test", "fixtures", "ok", "clean.py"))
+        self.assertEqual(code, 0, out)
+
+    def test_absolute_path_outside_root_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            write(os.path.join(d, "x.md"), "# x\n")
+            code, out = run("doc-lint", os.path.join(d, "x.md"))
         self.assertEqual(code, 2, out)
 
     def test_root_lints_repo_markdown_without_plugin_files(self):

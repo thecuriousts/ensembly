@@ -83,6 +83,14 @@ class Freeze(unittest.TestCase):
                 self.assertEqual(self.ov(**{"id": f"o{i}", k: "bug" + c + "id: evil"})[0], 2)
                 self.assertFalse(os.path.exists(os.path.join(self.d, "pending", f"o{i}.case")))
 
+    def test_bug_class_spelled_as_in_case_file(self):
+        self.ef("lock", self.d)
+        code, out = self.ef("override", self.d, "--id", "o3", "--contract", "c", "--expected", "bug",
+                            "--area", "a", "--bug_class", "logic", "--time", "2026-10")
+        self.assertEqual(code, 0, out)
+        self.assertIn("bug_class: logic", read(os.path.join(self.d, "pending", "o3.case")))
+        self.assertIn("logic\t2", self.ef("split", self.d, "--by", "bug-class")[1])
+
     def test_split(self):
         code, out = self.ef("split", self.d, "--by", "area")
         self.assertEqual(code, 0)

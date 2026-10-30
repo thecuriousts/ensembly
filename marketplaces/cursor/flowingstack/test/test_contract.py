@@ -34,6 +34,10 @@ class Contract(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("route=empty", out)
 
+    def test_absolute_path_inside_root_accepted(self):
+        code, out = run("contract-check", os.path.join(ROOT, FIX, "bug.yml"))
+        self.assertEqual(code, 0, out)
+
     def test_missing_counter_metric_refused(self):
         code, out = check("nocounter.yml")
         self.assertEqual(code, 2, out)
