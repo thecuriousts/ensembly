@@ -13,6 +13,7 @@ OVER = {
     "restate.py": "comment-restate", "dense.py": "comment-density", "dense.mjs": "comment-density",
     "dense.sh": "comment-density", "comment.json": "json-comment", "desc.json": "punct",
     "dense.yml": "comment-density", "mermaid-plain.md": "mermaid-theme",
+    "comment-line.py": "comment-line", "comment-line.sh": "comment-line", "comment-line.js": "comment-line",
 }
 
 
