@@ -50,6 +50,14 @@ class Score(unittest.TestCase):
         self.assertNotEqual(grill("none.tsv", "coder", "grill", "--rubric", "x")[0], 0)
 
 
+class Provisional(unittest.TestCase):
+    def test_weights_threshold_factors_marked_provisional(self):
+        r = read(os.path.join(ROOT, "references", "rubric.md"))
+        self.assertIn("provisional", r)
+        self.assertIn("noise floor", r)
+        self.assertIn("kanithanj #23", r)
+
+
 class Peers(unittest.TestCase):
     def test_names_installed_peer_skills(self):
         with tempfile.TemporaryDirectory() as t:
