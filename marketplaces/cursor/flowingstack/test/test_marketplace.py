@@ -35,6 +35,18 @@ class Marketplace(unittest.TestCase):
         self.assertNotIn("author", p)
         self.assertEqual(run("doc-lint", os.path.join(".cursor-plugin", "plugin.json"))[0], 0)
 
+    def test_plugin_manifest_fields(self):
+        p = json.loads(read(os.path.join(ROOT, ".cursor-plugin", "plugin.json")))
+        self.assertRegex(p.get("version", ""), r"^\d+\.\d+\.\d+$")
+        self.assertEqual(p.get("license"), "MIT")
+        self.assertTrue(p.get("keywords") and all(isinstance(k, str) and k for k in p["keywords"]))
+
+    def test_marketplace_entry_fields(self):
+        m = json.loads(read(os.path.join(REPO, ".cursor-plugin", "marketplace.json")))
+        e = [p for p in m["plugins"] if p["name"] == "flowingstack"][0]
+        self.assertTrue(10 <= len(e.get("description", "")) <= 200)
+        self.assertLessEqual(set(e), {"name", "source", "description", "minClientVersions"})
+
 
 class Scope(unittest.TestCase):
     def test_doc_lint_never_reads_outside_root(self):
