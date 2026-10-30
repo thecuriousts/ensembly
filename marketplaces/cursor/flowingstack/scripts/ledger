@@ -3,6 +3,7 @@ import argparse
 import datetime
 import os
 import sys
+import tempfile
 import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -88,8 +89,17 @@ def main():
     q.add_argument("name", choices=sorted(QUERIES))
     o = a.parse_args()
     v = vars(o)
-    if any("\t" in str(x) or "\n" in str(x) for x in v.values()):
+    if o.cmd == "open" and o.contract_file:
+        c = parse_contract(open(o.contract_file, encoding="utf-8").read())
+        v["contract"], v["route"] = c.get("id", ""), contract_route(c)
+    if any(ch in str(x) for x in v.values() for ch in "\t\n\r"):
         print("tab or newline in value", file=sys.stderr)
+        return 2
+    if o.cmd == "close" and not all(v[k].isdigit() for k in ("switches", "failed_fixes", "override", "rounds")):
+        print("refused: switches, failed-fixes, override, rounds must be whole numbers", file=sys.stderr)
+        return 2
+    if o.cmd == "claim" and not o.source.strip():
+        print("refused: source required", file=sys.stderr)
         return 2
     rows = parse(o.ledger)
     known = {r[1] for r in rows if r[0] == "open"}
@@ -97,12 +107,17 @@ def main():
         print("\n".join(rid for rid, r in runs(rows).items() if QUERIES[o.name](r)))
         return 0
     if o.cmd == "compact":
-        with open(o.ledger, "w", encoding="utf-8") as f:
-            f.writelines("\t".join([r[0], r[1], r[2]] + r[4]) + "\n" for r in compact(rows))
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(o.ledger)), prefix=".ledger-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.writelines("\t".join([r[0], r[1], r[2]] + r[4]) + "\n" for r in compact(rows))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, o.ledger)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
         return 0
-    if o.cmd == "open" and o.contract_file:
-        c = parse_contract(open(o.contract_file, encoding="utf-8").read())
-        v["contract"], v["route"] = c.get("id", ""), contract_route(c)
     if o.cmd == "open":
         if not o.contract or len(items(o.loads)) > 4 or o.pstack not in PSTACK:
             print("refused: contract required, loads ≤ 4, pstack ∈ installed|missing", file=sys.stderr)
