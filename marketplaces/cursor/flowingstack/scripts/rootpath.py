@@ -7,9 +7,12 @@ def plugin_root(arg=None):
 
 
 def rel(root, p):
-    if os.path.isabs(p) or ".." in p.split("/"):
-        sys.exit(f"{p}: path must be relative to plugin root, no ..")
-    return os.path.join(root, p)
+    full = os.path.join(root, p)
+    r = os.path.realpath(root)
+    if os.path.isabs(p) or ".." in p.split("/") or os.path.commonpath([r, os.path.realpath(full)]) != r:
+        print(f"{p}: path must be relative to plugin root, no ..", file=sys.stderr)
+        sys.exit(2)
+    return full
 
 
 def walk(root, ignore_file):

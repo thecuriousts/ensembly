@@ -2,14 +2,18 @@
 import argparse
 import hashlib
 import os
+import re
 import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from contract import parse
+from rootpath import rel
 
 LOCK = "FROZEN.sha256"
 SPLIT = ("area", "bug_class", "time")
+FIELDS = ("id", "area", "bug_class", "time", "contract", "expected")
+SAFE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*")
 
 
 def cases(d):
@@ -43,12 +47,16 @@ def verify(o):
 
 
 def override(o):
+    if not SAFE_ID.fullmatch(o.id) or any(re.search(r"[\t\n\r]", getattr(o, k)) for k in FIELDS):
+        print("refused: id ∈ [A-Za-z0-9._-], no .., no tab, newline or CR in any field", file=sys.stderr)
+        return 2
+    case = rel(os.path.join(o.dir, "pending"), o.id + ".case")
     if os.path.exists(os.path.join(o.dir, o.id + ".case")) or os.path.exists(os.path.join(o.dir, "pending", o.id + ".case")):
         print(f"refused: {o.id} exists", file=sys.stderr)
         return 2
     os.makedirs(os.path.join(o.dir, "pending"), exist_ok=True)
-    with open(os.path.join(o.dir, "pending", o.id + ".case"), "w") as f:
-        f.write("".join(f"{k}: {getattr(o, k)}\n" for k in ("id", "area", "bug_class", "time", "contract", "expected")))
+    with open(case, "w") as f:
+        f.write("".join(f"{k}: {getattr(o, k)}\n" for k in FIELDS))
     return 0
 
 
