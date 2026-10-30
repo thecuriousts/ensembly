@@ -48,6 +48,7 @@ A6  C.counter names one metric that must not regress
 |---|---|
 | `scripts/contract-check test/fixtures/contract/bug.yml` | `route=bug`, exit 0 |
 | `scripts/contract-check test/fixtures/contract/nocheck.yml` | `route=empty`, exit 1 |
+| `scripts/brief-lint test/fixtures/brief/nopr.md` | `brief missing: pr-body`, exit 1 |
 | `python3 -m unittest discover -s test -p 'test_contract*'` | green |
 
 ## Notes

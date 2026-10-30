@@ -44,6 +44,7 @@ flowchart LR
 |---|---|---|---|
 | `sync-from-upstream` | `pins.tsv` and upstream at sha | `skills/` and `NOTICE.md` | drift, binary or symlink |
 | `contract-check` | contract yml | route line | route is empty |
+| `brief-lint` | builder brief | missing list | no skills, snapshot or PR body rule of 120 words or fewer |
 | `eval-freeze` | held-out set | frozen hash | frozen set changed |
 | `grill` | findings tsv | verdict | blocker found |
 | `ledger` | run rows | ledger tsv | bad row |
