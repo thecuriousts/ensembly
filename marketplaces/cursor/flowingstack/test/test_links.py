@@ -32,5 +32,11 @@ class IntelliRoute(unittest.TestCase):
         self.assertEqual(broken(os.path.join("skills", "intelli-route")), [])
 
 
+
+class Plugin(unittest.TestCase):
+    def test_every_relative_link_resolves(self):
+        self.assertEqual(broken("."), [])
+
+
 if __name__ == "__main__":
     unittest.main()

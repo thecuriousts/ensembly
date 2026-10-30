@@ -81,6 +81,25 @@ class Sync(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertIn("symlink", out)
 
+    def rewrite(self, row):
+        with open(os.path.join(self.root, "rewrites.tsv"), "w") as f:
+            f.write(row)
+
+    def test_rewrite_applied_and_checked(self):
+        self.rewrite("skills/harvest/SKILL.md\tharvest\treap\n")
+        code, out = self.sync()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(read(os.path.join(self.root, "skills", "harvest", "SKILL.md")), "reap\n")
+        self.assertIn("| skills/harvest/SKILL.md | `harvest` | `reap` |", read(os.path.join(self.root, "NOTICE.md")))
+        self.assertEqual(self.sync("--check")[0], 0)
+
+    def test_stale_rewrite_refused(self):
+        self.rewrite("skills/harvest/SKILL.md\tsow\treap\n")
+        code, out = self.sync()
+        self.assertEqual(code, 1, out)
+        self.assertIn("rewrite", out)
+        self.assertEqual(self.sync("--check")[0], 1)
+
     def test_bad_pins_refused(self):
         for sha, dest in [("main", "skills/harvest"), (self.sha, "../x"), (self.sha, "/abs")]:
             with self.subTest(dest=dest, sha=sha):
