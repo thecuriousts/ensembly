@@ -28,8 +28,8 @@ def main(argv):
         print("usage: contract-check FILE", file=sys.stderr)
         return 1
     c = parse(open(rel(plugin_root(), argv[0]), encoding="utf-8").read())
-    if not all(c.get(k) for k in ("id", "input", "output")):
-        print("refused: id, input, output required", file=sys.stderr)
+    if not all(c.get(k) for k in ("id", "input", "output", "counter")):
+        print("refused: id, input, output, counter required", file=sys.stderr)
         return 2
     r = route(c)
     print(f"id={c['id']} route={r}")

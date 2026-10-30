@@ -20,16 +20,17 @@ last-reviewed: 2026-10-30
 
 ```text
 // Signature
-C        contract: id input output check reversible blast
+C        contract: id input output check reversible blast counter
 k(C)     check kind before the first colon
 R        bug | feature | refactor | perf | eval | empty
 
 // Axioms
-A1  C.id = ∅ ∨ C.input = ∅ ∨ C.output = ∅ → exit 2
+A1  C.id = ∅ ∨ C.input = ∅ ∨ C.output = ∅ ∨ C.counter = ∅ → exit 2
 A2  C.check = ∅ → route = empty ∧ exit 1
 A3  k = metric ∧ no number → route = empty
 A4  route = empty → route ≠ light
 A5  ledger row cites C.id
+A6  C.counter names one metric that must not regress
 ```
 
 | check kind | route |
