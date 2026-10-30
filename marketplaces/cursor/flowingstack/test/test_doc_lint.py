@@ -12,7 +12,7 @@ OVER = {
     "trail.md": "redundant", "bold.md": "redundant", "html.md": "html-comment",
     "restate.py": "comment-restate", "dense.py": "comment-density", "dense.mjs": "comment-density",
     "dense.sh": "comment-density", "comment.json": "json-comment", "desc.json": "punct",
-    "dense.yml": "comment-density",
+    "dense.yml": "comment-density", "mermaid-plain.md": "mermaid-theme",
 }
 
 
