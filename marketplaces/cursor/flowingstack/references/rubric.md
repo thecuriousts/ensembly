@@ -15,7 +15,7 @@
 
 | severity | factor |
 |---|---|
-| blocker | verdict changes |
+| blocker | 0, the verdict decides |
 | major | 1.0 |
 | minor | 0.3 |
 
