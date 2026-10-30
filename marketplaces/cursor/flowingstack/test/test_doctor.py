@@ -49,6 +49,12 @@ class Doctor(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertNotIn("missing", out)
 
+    def test_nested_plugin_cache_layout_found(self):
+        d = os.path.join(self.plug, "pstack", "1ba91fc", "skills", "setup-pstack")
+        os.makedirs(d)
+        write(os.path.join(d, "SKILL.md"), "s\n")
+        self.assertRegex(self.doc()[1], r"(?m)^ok pstack$")
+
     def test_disk_at_70_fails(self):
         self.full()
         code, out = run("doctor", "--project", self.p, "--plugins-dir", self.plug, "--disk-percent", "70")
