@@ -111,3 +111,4 @@ Prototype (parked)            → game/watch/Node — optional client experiment
 | [RENAME.md](RENAME.md) | `peram-*` → `ensembly-*` crate map; on-disk paths stay |
 
 **Footer:** Build the kernel you will still trust in 90 days — because harnesses come and go.
+Agent rules: .cursor/rules/ (pstack model roles, tstack skills-first workflow).
