@@ -6,7 +6,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from rootpath import plugin_root
+from rootpath import plugin_root, rel
 
 FACTOR = {"blocker": 0.0, "major": 1.0, "minor": 0.3}
 PEERS = ("interrogate", "blast-radius")
@@ -41,7 +41,7 @@ def main():
     root = plugin_root(o.root)
     raw = open(os.path.join(root, "references", "rubric.md"), "rb").read()
     weights = rubric(raw.decode())
-    f = o.findings if os.path.isabs(o.findings) else os.path.join(root, o.findings)
+    f = rel(root, o.findings)
     findings = []
     for l in open(f, encoding="utf-8"):
         c = l.rstrip("\n").split("\t")
