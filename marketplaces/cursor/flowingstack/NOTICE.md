@@ -21,9 +21,13 @@
 | p10ns11y/plugins | `be043b2ee1f7e52b441837b0aa0dfe13d634c724` | tstack/connectors | connectors |
 | p10ns11y/plugins | `be043b2ee1f7e52b441837b0aa0dfe13d634c724` | tstack/references/cards.md | references/cards.md |
 | p10ns11y/plugins | `be043b2ee1f7e52b441837b0aa0dfe13d634c724` | tstack/references/state.md | references/state.md |
+| p10ns11y/plugins | `be043b2ee1f7e52b441837b0aa0dfe13d634c724` | intelli-route/manifest.json | skills/intelli-route/manifest.json |
+| p10ns11y/plugins | `be043b2ee1f7e52b441837b0aa0dfe13d634c724` | intelli-route/README.md | skills/intelli-route/README.md |
 
 | Dest | From | To |
 |---|---|---|
 | skills/capture-sweep/SKILL.md | `](../../../flows/specs/capture-sweep.md)` | `](https://github.com/p10ns11y/plugins/blob/be043b2ee1f7e52b441837b0aa0dfe13d634c724/flows/specs/capture-sweep.md)` |
 | skills/capture-sweep/SKILL.md | `](../../../flows/portable/capture-sweep.md)` | `](https://github.com/p10ns11y/plugins/blob/be043b2ee1f7e52b441837b0aa0dfe13d634c724/flows/portable/capture-sweep.md)` |
 | skills/aihero-map/references/map.md | `](../../../../pstack-map/skills/pstack-map/references/map.md)` | `](../../pstack-map/references/map.md)` |
+| skills/intelli-route/README.md | `](../pstack-map/skills/pstack-map/references/map.md)` | `](../pstack-map/references/map.md)` |
+| skills/intelli-route/README.md | `](bot/intelli-route.md)` | `](https://github.com/p10ns11y/plugins/blob/be043b2ee1f7e52b441837b0aa0dfe13d634c724/intelli-route/bot/intelli-route.md)` |
