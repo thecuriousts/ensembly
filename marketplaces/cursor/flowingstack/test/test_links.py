@@ -38,5 +38,14 @@ class Plugin(unittest.TestCase):
         self.assertEqual(broken("."), [])
 
 
+
+class Flow(unittest.TestCase):
+    def test_readme_links_flow_and_flow_lints(self):
+        self.assertIn("](docs/flow.md)", read(os.path.join(ROOT, "README.md")))
+        from lib import run
+        code, out = run("doc-lint", os.path.join("docs", "flow.md"))
+        self.assertEqual(code, 0, out)
+
+
 if __name__ == "__main__":
     unittest.main()
