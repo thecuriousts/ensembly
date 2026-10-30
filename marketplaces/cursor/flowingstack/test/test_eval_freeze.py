@@ -105,6 +105,9 @@ class Freeze(unittest.TestCase):
         code, out = self.ef("diff-check", "--repo", repo, "--base", base, "evals/v1")
         self.assertEqual(code, 1, out)
         self.assertIn("evals/v1/c.case", out)
+        code, out = self.ef("diff-check", "--repo", repo, "--base", base, self.d)
+        self.assertEqual(code, 1, out)
+        self.assertIn("evals/v1/c.case", out)
 
 
 class Skill(unittest.TestCase):
