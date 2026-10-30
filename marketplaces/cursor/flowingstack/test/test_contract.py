@@ -34,6 +34,11 @@ class Contract(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("route=empty", out)
 
+    def test_missing_counter_metric_refused(self):
+        code, out = check("nocounter.yml")
+        self.assertEqual(code, 2, out)
+        self.assertIn("counter", out)
+
     def test_missing_id_refused(self):
         self.assertEqual(check("noid.yml")[0], 2)
 
@@ -50,7 +55,7 @@ class Contract(unittest.TestCase):
 
     def test_template_has_required_keys(self):
         t = read(os.path.join(ROOT, "templates", "contract.yml"))
-        for k in ("id:", "input:", "output:", "check:", "reversible:", "blast:"):
+        for k in ("id:", "input:", "output:", "check:", "reversible:", "blast:", "counter:"):
             self.assertIn(k, t)
 
 
