@@ -84,6 +84,12 @@ class Peers(unittest.TestCase):
             self.assertIn("uses: interrogate", out)
             self.assertIn("missing: blast-radius", out)
 
+    def test_relative_skills_dir_resolves_from_plugin_root(self):
+        with tempfile.TemporaryDirectory() as t:
+            code, out = run("grill", "--findings", os.path.join(FIX, "none.tsv"), "--author", "a", "--reviewer", "b",
+                            "--skills-dir", os.path.join("test", "fixtures", "peers"), cwd=t)
+            self.assertIn("uses: interrogate", out)
+
 
 class Skill(unittest.TestCase):
     def test_skill_layout(self):
