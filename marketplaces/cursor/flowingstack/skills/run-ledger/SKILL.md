@@ -36,12 +36,13 @@ A3  close(t) ∨ claim(t) → row(t) ∈ L
 A4  claim.status ∈ S ∧ claim.source ≠ ∅
 A5  compact(L) keeps first open, last close, last claim per text
 A6  value ∌ tab, newline
+A7  rounds > 3 → escalate ≠ ∅ ∨ exit 2
 ```
 
 | Command | Pre | Post | Exit |
 |---|---|---|---|
 | `ledger open --contract c --route r --loads a,b --pstack installed` | c ≠ ∅, A2 | row appended, run id printed | 0 or 2 |
-| `ledger close t --opened a,b,c --switches n --failed-fixes n --override 0/1 --unrun x` | A3 | close row | 0 or 2 |
+| `ledger close t --opened a,b,c --switches n --failed-fixes n --override 0/1 --unrun x --rounds n --escalate why` | A3, A7 | close row | 0 or 2 |
 | `ledger claim t --text x --status s --source y` | A3, A4 | claim row | 0 or 2 |
 | `ledger compact` | — | A5 | 0 |
 | `ledger query q` | q ∈ Q | run ids | 0 or 2 |

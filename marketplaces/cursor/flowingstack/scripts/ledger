@@ -11,6 +11,7 @@ from contract import parse as parse_contract, route as contract_route
 
 STATUS = {"verified", "unverified", "doubted"}
 PSTACK = {"installed", "missing"}
+MAX_ROUNDS = 3
 
 
 def parse(path):
@@ -80,6 +81,7 @@ def main():
         c.add_argument("--" + k, default="0")
     c.add_argument("--unrun", default="")
     c.add_argument("--stages", default="")
+    c.add_argument("--escalate", default="")
     m = s.add_parser("claim")
     m.add_argument("run")
     for k in ("text", "status", "source"):
@@ -97,6 +99,9 @@ def main():
         return 2
     if o.cmd == "close" and not all(v[k].isdigit() for k in ("switches", "failed_fixes", "override", "rounds")):
         print("refused: switches, failed-fixes, override, rounds must be whole numbers", file=sys.stderr)
+        return 2
+    if o.cmd == "close" and int(o.rounds) > MAX_ROUNDS and not o.escalate.strip():
+        print(f"refused: rounds > {MAX_ROUNDS} needs --escalate REASON", file=sys.stderr)
         return 2
     if o.cmd == "claim" and not o.source.strip():
         print("refused: source required", file=sys.stderr)
@@ -130,7 +135,7 @@ def main():
     elif o.cmd == "close":
         rid = o.run
         line = row("close", rid, [("opened", o.opened), ("stages", o.stages), ("rounds", o.rounds), ("switches", o.switches),
-                                  ("failed_fixes", o.failed_fixes), ("override", o.override), ("unrun", o.unrun)])
+                                  ("failed_fixes", o.failed_fixes), ("override", o.override), ("unrun", o.unrun), ("escalate", o.escalate)])
     else:
         if o.status not in STATUS:
             print("refused: status ∈ verified|unverified|doubted", file=sys.stderr)
