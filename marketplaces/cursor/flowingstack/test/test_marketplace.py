@@ -18,6 +18,14 @@ class Marketplace(unittest.TestCase):
         self.assertEqual(len(e), 1)
         self.assertEqual(os.path.join(REPO, e[0]["source"]), ROOT)
 
+    def test_plugin_manifest_name_matches_root_entry(self):
+        m = json.loads(read(os.path.join(REPO, ".cursor-plugin", "marketplace.json")))
+        e = [x for x in m["plugins"] if os.path.join(REPO, x["source"]) == ROOT]
+        p = json.loads(read(os.path.join(ROOT, ".cursor-plugin", "plugin.json")))
+        self.assertEqual(p["name"], e[0]["name"])
+        self.assertEqual(p["name"], "flowingstack")
+        self.assertTrue(os.path.isdir(os.path.join(ROOT, p["skills"])))
+
 
 class Scope(unittest.TestCase):
     def test_doc_lint_never_reads_outside_root(self):
