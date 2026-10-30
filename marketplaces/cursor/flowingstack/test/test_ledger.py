@@ -53,6 +53,18 @@ class Ledger(unittest.TestCase):
         self.assertEqual(self.led("open", "--contract-file", c, "--loads", "a", "--pstack", "installed")[0], 2)
         self.assertFalse(os.path.exists(self.f))
 
+    def test_rounds_over_three_refused(self):
+        rid = self.open_run()[1].strip()
+        code, out = self.led("close", rid, "--rounds", "4", "--override", "1")
+        self.assertEqual(code, 2, out)
+        self.assertNotIn("close", read(self.f))
+
+    def test_rounds_over_three_with_escalation_recorded(self):
+        rid = self.open_run()[1].strip()
+        code, out = self.led("close", rid, "--rounds", "4", "--escalate", "person approved round 4")
+        self.assertEqual(code, 0, out)
+        self.assertIn("escalate=person approved round 4", read(self.f))
+
     def test_empty_source_refused(self):
         rid = self.open_run()[1].strip()
         code, out = self.led("claim", rid, "--text", "t", "--status", "verified", "--source", "")
