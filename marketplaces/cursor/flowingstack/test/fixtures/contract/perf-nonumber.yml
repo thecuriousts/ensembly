@@ -1,0 +1,4 @@
+id: c-perf2
+input: page
+output: faster
+check: metric: faster please

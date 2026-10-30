@@ -1,0 +1,4 @@
+id: c-feat
+input: spec
+output: endpoint
+check: acceptance: new route returns 200

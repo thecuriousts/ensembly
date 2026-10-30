@@ -1,0 +1,4 @@
+id: c-perf
+input: page
+output: faster page
+check: metric: p95 ms 120
