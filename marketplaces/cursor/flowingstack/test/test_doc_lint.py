@@ -52,6 +52,29 @@ class Baseline(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("baselined 1", out)
 
+    def test_growth_past_baselined_count_fails(self):
+        with tempfile.TemporaryDirectory() as t:
+            doc = open(os.path.join(FIX, "over", "filler.md")).read()
+            write(os.path.join(t, "a.md"), doc)
+            write(os.path.join(t, "b.tsv"), "a.md\tfiller\t1\n")
+            self.assertEqual(run("doc-lint", "--root", t, "--baseline", "b.tsv", "a.md")[0], 0)
+            write(os.path.join(t, "a.md"), doc + "\nWe leverage the queue\n")
+            code, out = run("doc-lint", "--root", t, "--baseline", "b.tsv", "a.md")
+            self.assertEqual(code, 1, out)
+            self.assertIn("a.md:14: filler", out)
+
+    def test_baseline_row_without_count_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            write(os.path.join(t, "a.md"), open(os.path.join(FIX, "over", "filler.md")).read())
+            write(os.path.join(t, "b.tsv"), "a.md\tfiller\n")
+            self.assertEqual(run("doc-lint", "--root", t, "--baseline", "b.tsv", "a.md")[0], 2)
+
+    def test_write_baseline_records_counts(self):
+        with tempfile.TemporaryDirectory() as t:
+            write(os.path.join(t, "a.md"), open(os.path.join(FIX, "over", "filler.md")).read() + "\nWe leverage the queue\n")
+            run("doc-lint", "--root", t, "--write-baseline", "b.tsv", "a.md")
+            self.assertEqual(open(os.path.join(t, "b.tsv")).read(), "a.md\tfiller\t2\n")
+
 
 class Root(unittest.TestCase):
     def test_paths_resolve_from_plugin_root_not_cwd(self):

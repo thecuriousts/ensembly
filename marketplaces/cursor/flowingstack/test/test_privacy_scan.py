@@ -48,6 +48,22 @@ class Files(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("baselined 1", out)
 
+    def test_growth_past_baselined_count_fails(self):
+        with tempfile.TemporaryDirectory() as t:
+            write(os.path.join(t, "a.md"), "attach my CV\n")
+            write(os.path.join(t, "b.tsv"), "a.md\tcv\t1\n")
+            self.assertEqual(run("privacy-scan", "--root", t, "--baseline", "b.tsv", "a.md")[0], 0)
+            write(os.path.join(t, "a.md"), "attach my CV\nand a second CV\n")
+            code, out = run("privacy-scan", "--root", t, "--baseline", "b.tsv", "a.md")
+            self.assertEqual(code, 1, out)
+            self.assertIn("a.md:2: cv", out)
+
+    def test_baseline_row_without_count_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            write(os.path.join(t, "a.md"), "attach my CV\n")
+            write(os.path.join(t, "b.tsv"), "a.md\tcv\n")
+            self.assertEqual(run("privacy-scan", "--root", t, "--baseline", "b.tsv", "a.md")[0], 2)
+
     def test_own_tree_clean(self):
         code, out = run("privacy-scan", "--all")
         self.assertEqual(code, 0, out)
