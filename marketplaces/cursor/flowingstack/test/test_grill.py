@@ -50,6 +50,19 @@ class Score(unittest.TestCase):
         self.assertNotEqual(grill("none.tsv", "coder", "grill", "--rubric", "x")[0], 0)
 
 
+class Scope(unittest.TestCase):
+    def test_findings_outside_root_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            f = os.path.join(t, "f.tsv")
+            with open(f, "w") as w:
+                w.write("R6\tminor\n")
+            for p in (f, os.path.join("test", "..", "..", "flowingstack", FIX, "none.tsv")):
+                with self.subTest(p):
+                    code, out = run("grill", "--findings", p, "--author", "a", "--reviewer", "b")
+                    self.assertEqual(code, 2, out)
+                    self.assertNotIn("score=", out)
+
+
 class Provisional(unittest.TestCase):
     def test_weights_threshold_factors_marked_provisional(self):
         r = read(os.path.join(ROOT, "references", "rubric.md"))

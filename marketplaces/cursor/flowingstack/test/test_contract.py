@@ -34,6 +34,17 @@ class Contract(unittest.TestCase):
     def test_missing_id_refused(self):
         self.assertEqual(check("noid.yml")[0], 2)
 
+    def test_paths_outside_root_refused(self):
+        with tempfile.TemporaryDirectory() as t:
+            f = os.path.join(t, "bug.yml")
+            with open(f, "w") as w:
+                w.write(read(os.path.join(ROOT, FIX, "bug.yml")))
+            for p in (f, os.path.join("test", "..", "..", "flowingstack", FIX, "bug.yml")):
+                with self.subTest(p):
+                    code, out = run("contract-check", p)
+                    self.assertEqual(code, 2, out)
+                    self.assertNotIn("route=", out)
+
     def test_template_has_required_keys(self):
         t = read(os.path.join(ROOT, "templates", "contract.yml"))
         for k in ("id:", "input:", "output:", "check:", "reversible:", "blast:"):
