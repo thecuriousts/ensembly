@@ -55,6 +55,26 @@ class Doctor(unittest.TestCase):
         write(os.path.join(d, "SKILL.md"), "s\n")
         self.assertRegex(self.doc()[1], r"(?m)^ok pstack$")
 
+    def test_cursor_cache_layout_found(self):
+        a = os.path.join(self.plug, "acme-market", "id-7f3a", "0c1d2e3")
+        os.makedirs(os.path.join(a, ".cursor-plugin"))
+        write(os.path.join(a, ".cursor-plugin", "plugin.json"), '{"name": "pstack"}\n')
+        b = os.path.join(self.plug, "acme-market", "id-9b2c", "4f5a6b7", "skills", "craft")
+        os.makedirs(b)
+        write(os.path.join(b, "SKILL.md"), "c\n")
+        out = self.doc()[1]
+        self.assertRegex(out, r"(?m)^ok pstack$")
+        self.assertRegex(out, r"(?m)^ok craft$")
+
+    def test_other_plugin_names_not_matched(self):
+        a = os.path.join(self.plug, "acme-market", "id-1", "abc")
+        os.makedirs(os.path.join(a, "skills", "craftsman"))
+        write(os.path.join(a, "plugin.json"), '{"name": "pstack-lite"}\n')
+        write(os.path.join(a, "skills", "craftsman", "SKILL.md"), "x\n")
+        out = self.doc()[1]
+        self.assertRegex(out, r"(?m)^missing pstack\b")
+        self.assertRegex(out, r"(?m)^missing craft\b")
+
     def test_disk_at_70_fails(self):
         self.full()
         code, out = run("doctor", "--project", self.p, "--plugins-dir", self.plug, "--disk-percent", "70")
