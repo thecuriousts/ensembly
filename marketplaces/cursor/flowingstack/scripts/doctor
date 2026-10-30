@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import glob
+import json
 import os
 import re
 import shutil
@@ -15,6 +16,18 @@ def text(p):
     return open(p, encoding="utf-8").read() if os.path.isfile(p) else ""
 
 
+def manifest_name(p):
+    try:
+        return json.loads(text(p)).get("name")
+    except (ValueError, AttributeError):
+        return None
+
+
+def installed(d, name):
+    return (has(d, name, "**", "SKILL.md") or has(d, name, "SKILL.md") or has(d, "**", "skills", name, "SKILL.md")
+            or any(manifest_name(p) == name for p in glob.glob(os.path.join(d, "**", "plugin.json"), recursive=True, include_hidden=True)))
+
+
 def checks(o, disk):
     p = o.project
     yield "model-rule", has(p, ".cursor", "rules", "pstack-models.mdc"), "run /setup-pstack"
@@ -24,7 +37,7 @@ def checks(o, disk):
     yield "hooks", has(p, ".cursor", "hooks.json"), "add .cursor/hooks.json"
     yield "aliases", bool(re.search(r"\blaptop-\d\b|\bmac-mini\b", text(os.path.join(p, "AGENTS.md")) + text(os.path.join(p, "docs", "host-aliases.md")))), "name host aliases"
     for name in ("pstack", "craft"):
-        yield name, any(has(d, name, "**", "SKILL.md") or has(d, name, "SKILL.md") for d in o.plugins_dir), f"/add-plugin {name}"
+        yield name, any(installed(d, name) for d in o.plugins_dir), f"/add-plugin {name}"
 
 
 def main():
