@@ -26,6 +26,15 @@ class Marketplace(unittest.TestCase):
         self.assertEqual(p["name"], "flowingstack")
         self.assertTrue(os.path.isdir(os.path.join(ROOT, p["skills"])))
 
+    def test_plugin_manifest_description(self):
+        p = json.loads(read(os.path.join(ROOT, ".cursor-plugin", "plugin.json")))
+        d = p.get("description", "")
+        self.assertTrue(10 <= len(d) <= 200, d)
+        for w in ("thecuriousts", "p10ns11y", "author"):
+            self.assertNotIn(w, d.lower())
+        self.assertNotIn("author", p)
+        self.assertEqual(run("doc-lint", os.path.join(".cursor-plugin", "plugin.json"))[0], 0)
+
 
 class Scope(unittest.TestCase):
     def test_doc_lint_never_reads_outside_root(self):
