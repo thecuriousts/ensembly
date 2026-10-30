@@ -86,9 +86,10 @@ def main():
     for name in ("lock", "verify", "split", "override"):
         p = s.add_parser(name)
         p.add_argument("dir")
-    s.choices["split"].add_argument("--by", choices=SPLIT, required=True)
+    s.choices["split"].add_argument("--by", type=lambda v: v.replace("-", "_"), choices=SPLIT, required=True)
     for k in ("id", "contract", "expected", "area", "bug-class", "time"):
-        s.choices["override"].add_argument("--" + k, required=True)
+        names = ["--" + k] + (["--" + k.replace("-", "_")] if "-" in k else [])
+        s.choices["override"].add_argument(*names, required=True)
     d = s.add_parser("diff-check")
     d.add_argument("--repo", required=True)
     d.add_argument("--base", required=True)

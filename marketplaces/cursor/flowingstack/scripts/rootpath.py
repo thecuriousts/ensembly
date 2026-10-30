@@ -6,7 +6,15 @@ def plugin_root(arg=None):
     return os.path.abspath(arg or os.environ.get("FLOWINGSTACK_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+def inside(root, p):
+    r = os.path.realpath(root)
+    if os.path.isabs(p) and os.path.commonpath([r, os.path.realpath(p)]) == r:
+        return os.path.relpath(os.path.realpath(p), r)
+    return p
+
+
 def rel(root, p):
+    p = inside(root, p)
     full = os.path.join(root, p)
     r = os.path.realpath(root)
     if os.path.isabs(p) or ".." in p.split("/") or os.path.commonpath([r, os.path.realpath(full)]) != r:

@@ -101,7 +101,7 @@ class Root(unittest.TestCase):
             code, out = run("doc-lint", "--root", d, "../note.md")
             self.assertEqual(code, 2, out)
             code, out = run("doc-lint", "--root", d, os.path.join(d, "note.md"))
-            self.assertEqual(code, 2, out)
+            self.assertEqual(code, 0, out)
 
     def test_all_is_clean_on_own_tree(self):
         code, out = run("doc-lint", "--all")

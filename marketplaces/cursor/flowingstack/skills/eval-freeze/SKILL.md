@@ -40,7 +40,7 @@ A5  id ∈ F ∪ pending → override refused
 |---|---|---|---|
 | `eval-freeze lock F` | locked | — | A1 broken |
 | `eval-freeze verify F` | A2 | mismatch or unlocked | — |
-| `eval-freeze override F --id --contract --expected --area --bug-class --time` | pending case | — | A5 |
+| `eval-freeze override F --id --contract --expected --area --bug_class --time` | pending case | — | A5 |
 | `eval-freeze split F --by area` | counts | — | — |
 | `eval-freeze diff-check --repo R --base B F` | no frozen change | A3 | — |
 

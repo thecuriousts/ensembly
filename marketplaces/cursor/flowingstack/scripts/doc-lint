@@ -7,7 +7,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import baseline
-from rootpath import plugin_root, rel, walk
+from rootpath import inside, plugin_root, rel, walk
 
 PELE = {"agentflow-beta", "architecture-beta", "swimlane-beta", "sequenceDiagram", "stateDiagram-v2", "C4Component"}
 CODE = {".py": ("#", 0.10), ".mjs": ("//", 0.10), ".js": ("//", 0.10), ".ts": ("//", 0.10), ".rs": ("//", 0.10),
@@ -234,6 +234,7 @@ def main():
     if not os.path.exists(own):
         own = os.path.join(plugin_root(), "banned-phrases.txt")
     phrases = [p.strip().lower() for p in open(own) if p.strip()]
+    o.paths = [inside(root, p) for p in o.paths]
     for p in o.paths:
         if os.path.isabs(p) or ".." in p.split("/"):
             print(f"{p}: path must be relative to plugin root", file=sys.stderr)
