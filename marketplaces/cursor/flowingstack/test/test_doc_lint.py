@@ -1,7 +1,8 @@
 import os
+import tempfile
 import unittest
 
-from lib import FIX, run
+from lib import FIX, run, write
 
 OVER = {
     "prose-first.md": "order", "ratio.md": "ratio", "prose-cap.md": "prose-cap",
@@ -60,6 +61,18 @@ class Root(unittest.TestCase):
     def test_absolute_path_refused(self):
         code, out = run("doc-lint", os.path.join(FIX, "ok", "clean.py"))
         self.assertEqual(code, 2, out)
+
+    def test_root_lints_repo_markdown_without_plugin_files(self):
+        with tempfile.TemporaryDirectory() as d:
+            write(os.path.join(d, "note.md"), "# x\n\n```agentflow-beta LR\n  a --> b\n```\n")
+            code, out = run("doc-lint", "--root", d, "note.md")
+            self.assertEqual(code, 0, out)
+            code, out = run("doc-lint", "--root", d, "--all")
+            self.assertEqual(code, 0, out)
+            code, out = run("doc-lint", "--root", d, "../note.md")
+            self.assertEqual(code, 2, out)
+            code, out = run("doc-lint", "--root", d, os.path.join(d, "note.md"))
+            self.assertEqual(code, 2, out)
 
     def test_all_is_clean_on_own_tree(self):
         code, out = run("doc-lint", "--all")
