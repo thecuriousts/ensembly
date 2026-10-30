@@ -45,11 +45,16 @@ class Doc:
             l = lines[n]
             if fence is not None:
                 kinds.append((n, "fence", l, section))
+                if fence == "mermaid" and not themed and l.strip():
+                    themed = re.match(r"%%\{\s*init:.*\btheme\b", l.strip()) is not None
                 if l.startswith("```"):
+                    if fence == "mermaid" and not themed:
+                        self.f(start + 1, "mermaid-theme", "no %%{init: {theme}} line")
                     fence = None
                 continue
             if l.startswith("```"):
                 fence = l[3:].split()[0] if l[3:].split() else ""
+                start, themed = n, False
                 if first is None:
                     first = fence in PELE
                 kinds.append((n, "fence", l, section))
