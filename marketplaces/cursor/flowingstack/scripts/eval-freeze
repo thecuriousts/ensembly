@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+import argparse
+import hashlib
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from contract import parse
+
+LOCK = "FROZEN.sha256"
+SPLIT = ("area", "bug_class", "time")
+
+
+def cases(d):
+    return sorted(n for n in os.listdir(d) if n.endswith(".case"))
+
+
+def digest(d):
+    return {n: hashlib.sha256(open(os.path.join(d, n), "rb").read()).hexdigest() for n in cases(d)}
+
+
+def lock(o):
+    bad = [n for n in cases(o.dir) if any(not parse(open(os.path.join(o.dir, n)).read()).get(k) for k in SPLIT + ("id", "expected"))]
+    if bad:
+        print("refused: missing id, expected, area, bug_class or time: " + " ".join(bad), file=sys.stderr)
+        return 2
+    with open(os.path.join(o.dir, LOCK), "w") as f:
+        f.writelines(f"{h}  {n}\n" for n, h in digest(o.dir).items())
+    return 0
+
+
+def verify(o):
+    p = os.path.join(o.dir, LOCK)
+    if not os.path.exists(p):
+        print(f"unlocked: {o.dir}")
+        return 1
+    want = dict(reversed(l.split()) for l in open(p) if l.strip())
+    have = digest(o.dir)
+    bad = sorted(n for n in set(want) | set(have) if want.get(n) != have.get(n))
+    print("\n".join([f"mismatch: {n}" for n in bad] + [f"cases {len(have)} mismatch {len(bad)}"]))
+    return 1 if bad else 0
+
+
+def override(o):
+    if os.path.exists(os.path.join(o.dir, o.id + ".case")) or os.path.exists(os.path.join(o.dir, "pending", o.id + ".case")):
+        print(f"refused: {o.id} exists", file=sys.stderr)
+        return 2
+    os.makedirs(os.path.join(o.dir, "pending"), exist_ok=True)
+    with open(os.path.join(o.dir, "pending", o.id + ".case"), "w") as f:
+        f.write("".join(f"{k}: {getattr(o, k)}\n" for k in ("id", "area", "bug_class", "time", "contract", "expected")))
+    return 0
+
+
+def split(o):
+    counts = {}
+    for n in cases(o.dir):
+        k = parse(open(os.path.join(o.dir, n)).read()).get(o.by, "Unknown")
+        counts[k] = counts.get(k, 0) + 1
+    print("\n".join(f"{k}\t{v}" for k, v in sorted(counts.items())))
+    return 0
+
+
+def diff_check(o):
+    g = ["git", "-C", o.repo]
+    changed = subprocess.run(g + ["diff", "--name-only", o.base], capture_output=True, text=True, check=True).stdout.split()
+    changed += subprocess.run(g + ["ls-files", "--others", "--exclude-standard"], capture_output=True, text=True, check=True).stdout.split()
+    hit = sorted({c for c in changed for d in o.frozen if c.startswith(d.rstrip("/") + "/") and "/pending/" not in c})
+    print("\n".join([f"frozen changed: {h}" for h in hit] + [f"frozen hits {len(hit)}"]))
+    return 1 if hit else 0
+
+
+def main():
+    a = argparse.ArgumentParser()
+    s = a.add_subparsers(dest="cmd", required=True)
+    for name in ("lock", "verify", "split", "override"):
+        p = s.add_parser(name)
+        p.add_argument("dir")
+    s.choices["split"].add_argument("--by", choices=SPLIT, required=True)
+    for k in ("id", "contract", "expected", "area", "bug-class", "time"):
+        s.choices["override"].add_argument("--" + k, required=True)
+    d = s.add_parser("diff-check")
+    d.add_argument("--repo", required=True)
+    d.add_argument("--base", required=True)
+    d.add_argument("frozen", nargs="+")
+    o = a.parse_args()
+    return {"lock": lock, "verify": verify, "split": split, "override": override, "diff-check": diff_check}[o.cmd](o)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
