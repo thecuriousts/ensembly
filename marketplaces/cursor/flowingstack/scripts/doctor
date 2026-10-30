@@ -42,7 +42,7 @@ def checks(o, disk):
 
 def main():
     a = argparse.ArgumentParser()
-    a.add_argument("--project", default=".")
+    a.add_argument("--project", default=".", help="product repo root, not the plugin root")
     a.add_argument("--plugins-dir", action="append", default=[])
     a.add_argument("--ci-status")
     a.add_argument("--disk-percent", type=float)
