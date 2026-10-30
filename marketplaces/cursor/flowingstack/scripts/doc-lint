@@ -6,6 +6,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import baseline
 from rootpath import plugin_root, rel, walk
 
 PELE = {"agentflow-beta", "architecture-beta", "swimlane-beta", "sequenceDiagram", "stateDiagram-v2", "C4Component"}
@@ -248,14 +249,13 @@ def main():
         if o.repo_root and os.path.exists(os.path.join(o.repo_root, ".cursor-plugin", "marketplace.json")):
             docs.append(lint(o.repo_root, os.path.join(".cursor-plugin", "marketplace.json"), phrases))
     base_file = o.baseline or ("lint-baseline.tsv" if o.all and os.path.exists(os.path.join(root, "lint-baseline.tsv")) else None)
-    base = set()
-    if base_file:
-        base = {tuple(l.rstrip("\n").split("\t")[:2]) for l in open(rel(root, base_file)) if l.strip()}
+    base = baseline.load(rel(root, base_file)) if base_file else {}
     found = [x for d in docs for x in d.out]
+    keys = [(x[0], x[2]) for x in found]
     if o.write_baseline:
         with open(rel(root, o.write_baseline), "w") as f:
-            f.writelines(f"{p}\t{r}\n" for p, r in sorted({(x[0], x[2]) for x in found}))
-    live = [x for x in found if (x[0], x[2]) not in base]
+            f.writelines(baseline.rows(keys))
+    live = [x for x, bad in zip(found, baseline.live(keys, base)) if bad]
     for p, n, r, m in live:
         print(f"{p}:{n}: {r}: {m}")
     for d in docs:

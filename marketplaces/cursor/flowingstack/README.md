@@ -9,13 +9,14 @@
 // Signature
 R      plugin root, FLOWINGSTACK_ROOT or --root
 P      pins.tsv rows: repo sha40 path dest
-B      baseline rows: path rule
+B      baseline rows: path rule count
 
 // Axioms
 A1  ∀ path p: p relative to R ∧ ".." ∉ p
 A2  scan(f) → f ∈ R ∨ f = repo/.cursor-plugin/marketplace.json
 A3  check: tree(dest) = tree(src@sha) ∧ NOTICE = f(P)
 A4  symlink ∨ binary → exit 1
+A5  hits(path, rule) > count → all live, exit 1; row without count → exit 2
 ```
 
 | Command | Exit 0 | Exit 1 | Exit 2 |

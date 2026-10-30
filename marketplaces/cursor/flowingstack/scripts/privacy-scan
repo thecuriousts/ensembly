@@ -5,6 +5,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import baseline
 from rootpath import plugin_root, rel, walk
 
 RULES = [
@@ -78,8 +79,8 @@ def main():
     if o.all and not o.baseline and os.path.exists(os.path.join(root, "privacy-baseline.tsv")):
         o.baseline = "privacy-baseline.tsv"
     if o.baseline:
-        base = {tuple(l.rstrip("\n").split("\t")) for l in open(rel(root, o.baseline)) if l.strip()}
-        kept = [h for h in hits if (h.split(":")[0], h.rsplit(": ", 1)[-1]) not in base]
+        base = baseline.load(rel(root, o.baseline))
+        kept = [h for h, bad in zip(hits, baseline.live([(h.split(":")[0], h.rsplit(": ", 1)[-1]) for h in hits], base)) if bad]
         print(f"baselined {len(hits) - len(kept)}")
         hits = kept
     print("\n".join(hits + [f"scanned {n} hits {len(hits)}"]))

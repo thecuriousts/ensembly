@@ -1,38 +1,38 @@
-skills/aihero-map/SKILL.md	order
-skills/aihero-map/SKILL.md	punct
-skills/aihero-map/SKILL.md	redundant
-skills/aihero-map/references/map.md	order
-skills/aihero-map/references/map.md	punct
-skills/capture-calendar/SKILL.md	order
-skills/capture-calendar/SKILL.md	punct
-skills/capture-calendar/SKILL.md	ratio
-skills/capture-chat/SKILL.md	order
-skills/capture-chat/SKILL.md	punct
-skills/capture-chat/SKILL.md	ratio
-skills/capture-mail/SKILL.md	order
-skills/capture-mail/SKILL.md	punct
-skills/capture-mail/SKILL.md	ratio
-skills/capture-pr/SKILL.md	order
-skills/capture-pr/SKILL.md	punct
-skills/capture-pr/SKILL.md	ratio
-skills/capture-sweep/SKILL.md	order
-skills/capture-sweep/SKILL.md	prose-cap
-skills/capture-sweep/SKILL.md	punct
-skills/capture-sweep/SKILL.md	ratio
-skills/harvest/SKILL.md	order
-skills/harvest/SKILL.md	punct
-skills/harvest/SKILL.md	ratio
-skills/intelli-route/references/AGENTS.md	order
-skills/intelli-route/references/AGENTS.md	ratio
-skills/pstack-map/SKILL.md	order
-skills/pstack-map/SKILL.md	punct
-skills/pstack-map/references/handover.md	order
-skills/pstack-map/references/map.md	order
-skills/pstack-map/references/models.md	order
-skills/pstack-map/references/ub-mode.md	order
-skills/pstack-map/references/ub-mode.md	ratio
-skills/tomato-loop/SKILL.md	order
-skills/tomato-loop/SKILL.md	prose-cap
-skills/tomato-loop/SKILL.md	punct
-skills/tomato-loop/SKILL.md	ratio
-skills/pstack-map/references/handover.md	mermaid-theme
+skills/aihero-map/SKILL.md	order	1
+skills/aihero-map/SKILL.md	punct	3
+skills/aihero-map/SKILL.md	redundant	4
+skills/aihero-map/references/map.md	order	1
+skills/aihero-map/references/map.md	punct	14
+skills/capture-calendar/SKILL.md	order	1
+skills/capture-calendar/SKILL.md	punct	1
+skills/capture-calendar/SKILL.md	ratio	1
+skills/capture-chat/SKILL.md	order	1
+skills/capture-chat/SKILL.md	punct	1
+skills/capture-chat/SKILL.md	ratio	1
+skills/capture-mail/SKILL.md	order	1
+skills/capture-mail/SKILL.md	punct	1
+skills/capture-mail/SKILL.md	ratio	1
+skills/capture-pr/SKILL.md	order	1
+skills/capture-pr/SKILL.md	punct	2
+skills/capture-pr/SKILL.md	ratio	1
+skills/capture-sweep/SKILL.md	order	1
+skills/capture-sweep/SKILL.md	prose-cap	1
+skills/capture-sweep/SKILL.md	punct	1
+skills/capture-sweep/SKILL.md	ratio	1
+skills/harvest/SKILL.md	order	1
+skills/harvest/SKILL.md	punct	1
+skills/harvest/SKILL.md	ratio	1
+skills/intelli-route/references/AGENTS.md	order	1
+skills/intelli-route/references/AGENTS.md	ratio	1
+skills/pstack-map/SKILL.md	order	1
+skills/pstack-map/SKILL.md	punct	1
+skills/pstack-map/references/handover.md	order	1
+skills/pstack-map/references/map.md	order	1
+skills/pstack-map/references/models.md	order	1
+skills/pstack-map/references/ub-mode.md	order	1
+skills/pstack-map/references/ub-mode.md	ratio	1
+skills/tomato-loop/SKILL.md	order	1
+skills/tomato-loop/SKILL.md	prose-cap	1
+skills/tomato-loop/SKILL.md	punct	3
+skills/tomato-loop/SKILL.md	ratio	1
+skills/pstack-map/references/handover.md	mermaid-theme	1
