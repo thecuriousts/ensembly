@@ -15,7 +15,7 @@ def broken(top):
                 continue
             f = os.path.join(d, n)
             for i, line in enumerate(read(f).splitlines(), 1):
-                for t in LINK.findall(line):
+                for t in LINK.findall(re.sub(r"`[^`]*`", "", line)):
                     p = t.split("#")[0]
                     if p and not re.match(r"[a-z]+:", p) and not os.path.exists(os.path.join(d, p)):
                         bad.append(f"{os.path.relpath(f, ROOT)}:{i}: {t}")

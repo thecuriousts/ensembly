@@ -37,6 +37,23 @@ def pins(root, f):
     return rows
 
 
+def rewrites(root, f):
+    p = os.path.join(root, f)
+    rows = [l.rstrip("\n").split("\t") for l in open(p, encoding="utf-8") if l.strip()] if os.path.exists(p) else []
+    if any(len(r) != 3 or os.path.isabs(r[0]) or ".." in r[0].split("/") or not r[1] for r in rows):
+        raise ValueError(f"{f}: rows are dest, from, to")
+    return rows
+
+
+def apply(w, rows):
+    for dest, old, new in rows:
+        if dest in w and old.encode() in w[dest][0]:
+            w[dest] = (w[dest][0].replace(old.encode(), new.encode()), w[dest][1])
+        elif dest in w:
+            raise RuntimeError(f"rewrite {dest}: {old} not found")
+    return w
+
+
 def want(src, sha, path, dest):
     out = {}
     for e in git(src, "ls-tree", "-r", "-z", sha, "--", path).split(b"\0"):
@@ -70,19 +87,25 @@ def main():
     a.add_argument("--root")
     a.add_argument("--pins", default="pins.tsv")
     a.add_argument("--src", required=True)
+    a.add_argument("--rewrites", default="rewrites.tsv")
     a.add_argument("--check", action="store_true")
     o = a.parse_args()
     root = plugin_root(o.root)
     try:
         rows = pins(root, o.pins)
+        rw = rewrites(root, o.rewrites)
     except ValueError as e:
         print(f"bad pin: {e}", file=sys.stderr)
         return 2
     notice = HEAD + "".join(f"| {r[0]} | `{r[1]}` | {r[2]} | {r[3]} |\n" for r in rows)
+    if rw:
+        notice += "\n| Dest | From | To |\n|---|---|---|\n" + "".join(f"| {d} | `{a}` | `{b}` |\n" for d, a, b in rw)
     drift = []
+    seen = set()
     try:
         for repo, sha, path, dest in rows:
-            w = want(o.src, sha, path, dest)
+            w = apply(want(o.src, sha, path, dest), rw)
+            seen |= set(w)
             if o.check:
                 h = have(root, dest)
                 drift += [p for p in sorted(set(w) | set(h)) if w.get(p, (None,))[0] != h.get(p)]
@@ -93,6 +116,9 @@ def main():
                 with open(os.path.join(root, p), "wb") as f:
                     f.write(data)
                 os.chmod(os.path.join(root, p), 0o755 if x else 0o644)
+        stray = [d for d, _, _ in rw if d not in seen]
+        if stray:
+            raise RuntimeError(f"rewrite {stray[0]}: no pin covers it")
     except RuntimeError as e:
         print(f"refused: {e}", file=sys.stderr)
         return 1
