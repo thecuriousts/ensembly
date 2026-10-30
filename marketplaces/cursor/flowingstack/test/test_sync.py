@@ -49,6 +49,19 @@ class Sync(unittest.TestCase):
         self.assertEqual(read(os.path.join(self.root, "skills", "h", "references", "H.md")), "harvest\n")
         self.assertEqual(self.sync("--check")[0], 0)
 
+    def test_bad_src_exits_2(self):
+        code, out = run("sync-from-upstream", "--root", self.root, "--pins", "pins.tsv", "--src", os.path.join(self.t.name, "nope"))
+        self.assertEqual(code, 2, out)
+        self.assertIn("bad src", out)
+        self.assertNotIn("Traceback", out)
+
+    def test_bad_pin_sha_exits_2(self):
+        self.pin("0" * 40, "skills/harvest")
+        code, out = self.sync()
+        self.assertEqual(code, 2, out)
+        self.assertIn("bad pin", out)
+        self.assertNotIn("Traceback", out)
+
     def test_drift_fails_check(self):
         self.sync()
         with open(os.path.join(self.root, "skills", "harvest", "SKILL.md"), "a") as f:

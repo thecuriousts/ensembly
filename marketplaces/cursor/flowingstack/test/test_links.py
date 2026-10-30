@@ -33,6 +33,18 @@ class IntelliRoute(unittest.TestCase):
 
 
 
+class AgentsRefs(unittest.TestCase):
+    def test_local_code_paths_resolve(self):
+        bad = []
+        for n in sorted(os.listdir(os.path.join(ROOT, "skills"))):
+            f = os.path.join(ROOT, "skills", n, "AGENTS.md")
+            if os.path.exists(f):
+                for t in re.findall(r"`((?:\.\./|references/)[^`\s]+)`", read(f)):
+                    if not os.path.exists(os.path.join(os.path.dirname(f), t)):
+                        bad.append(f"skills/{n}/AGENTS.md: {t}")
+        self.assertEqual(bad, [])
+
+
 class Plugin(unittest.TestCase):
     def test_every_relative_link_resolves(self):
         self.assertEqual(broken("."), [])

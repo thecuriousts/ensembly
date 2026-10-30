@@ -100,6 +100,17 @@ def main():
     notice = HEAD + "".join(f"| {r[0]} | `{r[1]}` | {r[2]} | {r[3]} |\n" for r in rows)
     if rw:
         notice += "\n| Dest | From | To |\n|---|---|---|\n" + "".join(f"| {d} | `{a}` | `{b}` |\n" for d, a, b in rw)
+    try:
+        git(o.src, "rev-parse", "--git-dir")
+    except (subprocess.CalledProcessError, OSError):
+        print(f"bad src: {o.src} is not a git repo", file=sys.stderr)
+        return 2
+    for r in rows:
+        try:
+            git(o.src, "cat-file", "-e", f"{r[1]}^{{commit}}")
+        except subprocess.CalledProcessError:
+            print(f"bad pin: {r[1]} not in src", file=sys.stderr)
+            return 2
     drift = []
     seen = set()
     try:
