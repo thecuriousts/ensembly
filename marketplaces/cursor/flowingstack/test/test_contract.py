@@ -1,4 +1,7 @@
+import contextlib
+import io
 import os
+import sys
 import tempfile
 import unittest
 
@@ -49,6 +52,21 @@ class Contract(unittest.TestCase):
         t = read(os.path.join(ROOT, "templates", "contract.yml"))
         for k in ("id:", "input:", "output:", "check:", "reversible:", "blast:"):
             self.assertIn(k, t)
+
+
+class OneOwner(unittest.TestCase):
+    def test_contract_module_runs_the_check(self):
+        sys.path.insert(0, os.path.join(ROOT, "scripts"))
+        import contract
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = contract.main([os.path.join(FIX, "bug.yml")])
+        self.assertEqual((code, out.getvalue()), (0, "id=c-bug route=bug\n"))
+
+    def test_contract_check_is_a_thin_caller(self):
+        s = read(os.path.join(ROOT, "scripts", "contract-check"))
+        self.assertNotIn("parse", s)
+        self.assertNotIn("route", s)
 
 
 class LedgerCitesContract(unittest.TestCase):
