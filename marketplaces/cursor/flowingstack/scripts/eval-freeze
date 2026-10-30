@@ -73,7 +73,9 @@ def diff_check(o):
     g = ["git", "-C", o.repo]
     changed = subprocess.run(g + ["diff", "--name-only", o.base], capture_output=True, text=True, check=True).stdout.split()
     changed += subprocess.run(g + ["ls-files", "--others", "--exclude-standard"], capture_output=True, text=True, check=True).stdout.split()
-    hit = sorted({c for c in changed for d in o.frozen if c.startswith(d.rstrip("/") + "/") and "/pending/" not in c})
+    top = os.path.realpath(o.repo)
+    frozen = [os.path.relpath(os.path.realpath(d), top) if os.path.isabs(d) else os.path.normpath(d) for d in o.frozen]
+    hit = sorted({c for c in changed for d in frozen if c.startswith(d + "/") and "/pending/" not in c})
     print("\n".join([f"frozen changed: {h}" for h in hit] + [f"frozen hits {len(hit)}"]))
     return 1 if hit else 0
 
