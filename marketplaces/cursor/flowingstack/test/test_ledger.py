@@ -1,5 +1,8 @@
+import importlib.machinery
 import os
+import sys
 import tempfile
+from unittest import mock
 import unittest
 
 from lib import ROOT, read, run
@@ -42,6 +45,44 @@ class Ledger(unittest.TestCase):
 
     def test_tab_in_value_refused(self):
         self.assertEqual(self.led("open", "--contract", "c\t1", "--route", "light", "--loads", "a", "--pstack", "installed")[0], 2)
+
+    def test_contract_file_cannot_inject_columns(self):
+        c = os.path.join(self.t.name, "c.yml")
+        with open(c, "w") as f:
+            f.write("id: c1\tpstack=missing\ninput: a\noutput: b\ncheck: test: t\n")
+        self.assertEqual(self.led("open", "--contract-file", c, "--loads", "a", "--pstack", "installed")[0], 2)
+        self.assertFalse(os.path.exists(self.f))
+
+    def test_empty_source_refused(self):
+        rid = self.open_run()[1].strip()
+        code, out = self.led("claim", rid, "--text", "t", "--status", "verified", "--source", "")
+        self.assertEqual(code, 2, out)
+        self.assertNotIn("claim", read(self.f))
+
+    def test_non_numeric_counts_exit_2(self):
+        rid = self.open_run()[1].strip()
+        for k in ("--switches", "--failed-fixes", "--override", "--rounds"):
+            with self.subTest(k):
+                code, out = self.led("close", rid, k, "x")
+                self.assertEqual(code, 2, out)
+                self.assertNotIn("Traceback", out)
+        self.assertEqual(self.led("query", "playbook-switch")[0], 0)
+
+    def test_crash_mid_compact_keeps_old_ledger(self):
+        rid = self.open_run()[1].strip()
+        self.led("claim", rid, "--text", "a", "--status", "doubted", "--source", "ci")
+        before = read(self.f)
+        m = importlib.machinery.SourceFileLoader("ledger_mod", os.path.join(ROOT, "scripts", "ledger")).load_module()
+
+        def boom(rows):
+            yield rows[0]
+            raise OSError("disk")
+
+        with mock.patch.object(m, "compact", boom), mock.patch.object(sys, "argv", ["ledger", "--ledger", self.f, "compact"]):
+            with self.assertRaises(OSError):
+                m.main()
+        self.assertEqual(read(self.f), before)
+        self.assertEqual(os.listdir(self.t.name), ["ledger.tsv"])
 
     def test_round_trip(self):
         rid = self.open_run()[1].strip()
