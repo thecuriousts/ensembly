@@ -12,6 +12,7 @@
   ],
   "properties": {
     "apply_url": {
+      "description": "Optional application-form URL (e.g. `…/application`); `link` stays the canonical posting.",
       "type": [
         "string",
         "null"
@@ -39,6 +40,7 @@
       ]
     },
     "submit_time_unknown": {
+      "description": "`true` when the application was sent but the time was never recorded (then `submit_time` is null). Absent otherwise; never `false`.",
       "type": [
         "boolean",
         "null"

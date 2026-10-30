@@ -12,7 +12,6 @@ use ensembly_kernel::channel_pulse::{
     project_wait_snapshot, reconcile_channel_pulse, seed_live_channel_actions,
     DEFAULT_CHANNEL_PULSE_PATH,
 };
-use ensembly_kernel::company_audit::StoredAudit;
 use ensembly_kernel::digital_flow::{run_cycle, DigitalFlow};
 use ensembly_kernel::memory_sink::MemorySink;
 use ensembly_kernel::msg_bus::ManualCmd;
@@ -1683,7 +1682,7 @@ fn audit_status(store: &PathBuf, query: &str, now: Option<String>) -> Result<()>
         "stale_after_days": ca::STALE_AFTER_DAYS,
     });
     println!("{out}");
-    std::process::exit(ca::exit_code(status));
+    std::process::exit(ca::audit_exit_code(status));
 }
 
 fn cmd_channel_pulse(db_path: &PathBuf, sub: ChannelPulseCmd) -> Result<()> {

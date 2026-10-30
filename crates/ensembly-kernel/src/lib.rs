@@ -45,7 +45,7 @@ pub use channel_pulse::{
     project_wait_snapshot, read_channel_pulse, reconcile_channel_pulse, resolve_focus_plan,
     seed_live_channel_actions, write_channel_pulse, ReconcileReport, DEFAULT_CHANNEL_PULSE_PATH,
 };
-pub use company_audit::{exit_code, Audit, GateStatus};
+pub use company_audit::{Audit, GateStatus};
 pub use critical_path::{compute_critical_path, explain_node, CriticalPathReport};
 pub use digital_flow::{
     activate, decide, execute_dry_run, flow_to_approval_record, map_flow_status_to_approval,

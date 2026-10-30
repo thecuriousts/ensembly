@@ -37,6 +37,7 @@
       "type": "string"
     },
     "reused_from": {
+      "description": "Optional `audited_at` of the earlier audit whose result this row reuses.",
       "type": [
         "string",
         "null"

@@ -34,6 +34,62 @@ pub enum CheckId {
     AgencyRepost,
 }
 
+impl CheckId {
+    pub const ALL: [CheckId; 8] = [
+        CheckId::ApplyDomain,
+        CheckId::DomainAge,
+        CheckId::FundingOwnership,
+        CheckId::Headcount,
+        CheckId::ReviewsNews,
+        CheckId::DuplicateGhost,
+        CheckId::PaymentIdAsk,
+        CheckId::AgencyRepost,
+    ];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CheckId::ApplyDomain => "apply_domain",
+            CheckId::DomainAge => "domain_age",
+            CheckId::FundingOwnership => "funding_ownership",
+            CheckId::Headcount => "headcount",
+            CheckId::ReviewsNews => "reviews_news",
+            CheckId::DuplicateGhost => "duplicate_ghost",
+            CheckId::PaymentIdAsk => "payment_id_ask",
+            CheckId::AgencyRepost => "agency_repost",
+        }
+    }
+
+    /// Checks whose `unknown` alone is enough to flag: without them the employer
+    /// cannot be shown to exist as stated.
+    fn unknown_flags(self) -> bool {
+        matches!(
+            self,
+            CheckId::ApplyDomain | CheckId::DomainAge | CheckId::FundingOwnership
+        )
+    }
+}
+
+impl CheckResult {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CheckResult::Pass => "pass",
+            CheckResult::Flag => "flag",
+            CheckResult::Block => "block",
+            CheckResult::Unknown => "unknown",
+        }
+    }
+}
+
+impl Verdict {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Verdict::Pass => "pass",
+            Verdict::Flag => "flag",
+            Verdict::Block => "block",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -56,11 +112,50 @@ pub struct Audit {
     pub checks: Vec<Check>,
     pub audited_at: String,
     pub audited_by: String,
+    /// Optional `audited_at` of the earlier audit whose result this row reuses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reused_from: Option<String>,
 }
 
 impl Checked for Audit {}
+
+impl Audit {
+    /// The verdict the checks give under the current rule. Equals `verdict`
+    /// for every row except a stored legacy pass that now derives flag.
+    pub fn effective_verdict(&self) -> Verdict {
+        derive_verdict(&self.checks)
+    }
+}
+
+/// block if any check is block; flag if any check is flag, any of
+/// apply_domain / domain_age / funding_ownership is unknown, or headcount and
+/// reviews_news are both unknown; else pass.
+pub fn derive_verdict(checks: &[Check]) -> Verdict {
+    let unknown = |id: CheckId| {
+        checks
+            .iter()
+            .any(|c| c.id == id && c.result == CheckResult::Unknown)
+    };
+    let size_unknown = unknown(CheckId::Headcount) && unknown(CheckId::ReviewsNews);
+    match derive_verdict_before_size_rule(checks) {
+        Verdict::Pass if size_unknown => Verdict::Flag,
+        other => other,
+    }
+}
+
+/// The rule before 30 Oct 2026, without the headcount + reviews_news case.
+/// Only used to keep rows stored under that rule readable.
+pub fn derive_verdict_before_size_rule(checks: &[Check]) -> Verdict {
+    if checks.iter().any(|c| c.result == CheckResult::Block) {
+        Verdict::Block
+    } else if checks.iter().any(|c| {
+        c.result == CheckResult::Flag || (c.result == CheckResult::Unknown && c.id.unknown_flags())
+    }) {
+        Verdict::Flag
+    } else {
+        Verdict::Pass
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]

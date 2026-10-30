@@ -52,8 +52,9 @@ pub fn parse_ledger(text: &str) -> anyhow::Result<Vec<Row>> {
         if line.trim().is_empty() {
             continue;
         }
-        let r: Row =
-            serde_json::from_str(line).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
+        let r = ensembly_schema::decode_line(line)
+            .map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?
+            .value;
         validate_row(&r).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
         out.push(r);
     }

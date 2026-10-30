@@ -141,7 +141,10 @@ fn submitted_null_submit_time_is_refused() {
 
 #[test]
 fn submit_time_link_and_domain() {
-    assert!(check_submit_time("2026-10-26T18:59:00Z").is_err());
+    assert_eq!(
+        check_submit_time("2026-10-26T18:59:00Z").unwrap_err(),
+        "submit_time \"2026-10-26T18:59:00Z\" must carry the Europe/Stockholm offset (+01:00 or +02:00)"
+    );
     assert!(check_submit_time("2026-10-26T18:59:00+01:00").is_ok());
     assert!(check_submit_time("2026-07-01T10:00:00+02:00").is_ok());
     assert_eq!(

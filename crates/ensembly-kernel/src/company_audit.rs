@@ -5,8 +5,8 @@
 use std::path::Path;
 
 pub use ensembly_schema::{
-    audit_exit_code as exit_code, canonical_domain, Audit, Check, CheckId, CheckResult, GateStatus,
-    Verdict,
+    audit_exit_code, canonical_domain, derive_verdict, Audit, Check, CheckId, CheckResult,
+    GateStatus, Verdict,
 };
 
 /// Real audits live here, under gitignored `data/`.
@@ -16,105 +16,6 @@ pub const STALE_AFTER_DAYS: i64 = 30;
 /// An `audited_at` more than this many minutes after `now` reads as stale:
 /// a future stamp would otherwise stay fresh for ever.
 pub const FUTURE_SKEW_MINUTES: i64 = 5;
-
-trait CheckCatalog {
-    const ALL: [CheckId; 8];
-    fn as_str(&self) -> &'static str;
-    fn unknown_flags(self) -> bool;
-}
-
-trait WireStr {
-    fn as_str(&self) -> &'static str;
-}
-
-/// Derived verdict for a stored audit.
-pub trait StoredAudit {
-    fn effective_verdict(&self) -> Verdict;
-}
-
-impl CheckCatalog for CheckId {
-    const ALL: [CheckId; 8] = [
-        CheckId::ApplyDomain,
-        CheckId::DomainAge,
-        CheckId::FundingOwnership,
-        CheckId::Headcount,
-        CheckId::ReviewsNews,
-        CheckId::DuplicateGhost,
-        CheckId::PaymentIdAsk,
-        CheckId::AgencyRepost,
-    ];
-    fn as_str(&self) -> &'static str {
-        match self {
-            CheckId::ApplyDomain => "apply_domain",
-            CheckId::DomainAge => "domain_age",
-            CheckId::FundingOwnership => "funding_ownership",
-            CheckId::Headcount => "headcount",
-            CheckId::ReviewsNews => "reviews_news",
-            CheckId::DuplicateGhost => "duplicate_ghost",
-            CheckId::PaymentIdAsk => "payment_id_ask",
-            CheckId::AgencyRepost => "agency_repost",
-        }
-    }
-    /// Checks whose `unknown` alone is enough to flag: without them the employer
-    /// cannot be shown to exist as stated.
-    fn unknown_flags(self) -> bool {
-        matches!(
-            self,
-            CheckId::ApplyDomain | CheckId::DomainAge | CheckId::FundingOwnership
-        )
-    }
-}
-
-impl WireStr for CheckResult {
-    fn as_str(&self) -> &'static str {
-        match self {
-            CheckResult::Pass => "pass",
-            CheckResult::Flag => "flag",
-            CheckResult::Block => "block",
-            CheckResult::Unknown => "unknown",
-        }
-    }
-}
-
-impl WireStr for Verdict {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Verdict::Pass => "pass",
-            Verdict::Flag => "flag",
-            Verdict::Block => "block",
-        }
-    }
-}
-
-/// block if any check is block; flag if any check is flag, any of
-/// apply_domain / domain_age / funding_ownership is unknown, or headcount and
-/// reviews_news are both unknown; else pass.
-pub fn derive_verdict(checks: &[Check]) -> Verdict {
-    let unknown = |id: CheckId| {
-        checks
-            .iter()
-            .any(|c| c.id == id && c.result == CheckResult::Unknown)
-    };
-    let size_unknown = unknown(CheckId::Headcount) && unknown(CheckId::ReviewsNews);
-    match derive_verdict_before_size_rule(checks) {
-        Verdict::Pass if size_unknown => Verdict::Flag,
-        v => v,
-    }
-}
-
-/// The rule before 30 Oct 2026, without the headcount + reviews_news case.
-/// Only used to keep rows stored under that rule readable.
-fn derive_verdict_before_size_rule(checks: &[Check]) -> Verdict {
-    if checks.iter().any(|c| c.result == CheckResult::Block) {
-        Verdict::Block
-    } else if checks.iter().any(|c| {
-        c.result == CheckResult::Flag || (c.result == CheckResult::Unknown && c.id.unknown_flags())
-    }) {
-        Verdict::Flag
-    } else {
-        Verdict::Pass
-    }
-}
 
 fn email_re() -> regex::Regex {
     regex::Regex::new(r"[^\s@]+@[^\s@]+\.[A-Za-z]{2,}").unwrap()
@@ -154,14 +55,6 @@ fn validate_optional_fields(a: &Audit) -> anyhow::Result<()> {
     Ok(())
 }
 
-impl StoredAudit for Audit {
-    /// The verdict the checks give under the current rule. Equals `verdict`
-    /// for every row except a stored legacy pass that now derives flag.
-    fn effective_verdict(&self) -> Verdict {
-        derive_verdict(&self.checks)
-    }
-}
-
 /// Strict check for new rows: the stated verdict must equal the derived one.
 pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
     validate_audit_body(a)?;
@@ -174,8 +67,8 @@ pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
 pub fn validate_stored_audit(a: &Audit) -> anyhow::Result<()> {
     validate_audit_body(a)?;
     let derived = derive_verdict(&a.checks);
-    let legacy_pass =
-        a.verdict == Verdict::Pass && derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
+    let legacy_pass = a.verdict == Verdict::Pass
+        && ensembly_schema::derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
     if legacy_pass {
         return Ok(());
     }
@@ -263,8 +156,9 @@ fn parse_with(text: &str, check: fn(&Audit) -> anyhow::Result<()>) -> anyhow::Re
         if line.trim().is_empty() {
             continue;
         }
-        let a: Audit =
-            serde_json::from_str(line).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
+        let a = ensembly_schema::decode_line(line)
+            .map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?
+            .value;
         check(&a).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
         out.push(a);
     }
@@ -872,11 +766,11 @@ mod tests {
 
     #[test]
     fn exit_code_contract() {
-        assert_eq!(exit_code(GateStatus::Pass), 0);
-        assert_eq!(exit_code(GateStatus::Flag), 3);
-        assert_eq!(exit_code(GateStatus::Block), 4);
-        assert_eq!(exit_code(GateStatus::Unaudited), 5);
-        assert_eq!(exit_code(GateStatus::Stale), 5);
+        assert_eq!(audit_exit_code(GateStatus::Pass), 0);
+        assert_eq!(audit_exit_code(GateStatus::Flag), 3);
+        assert_eq!(audit_exit_code(GateStatus::Block), 4);
+        assert_eq!(audit_exit_code(GateStatus::Unaudited), 5);
+        assert_eq!(audit_exit_code(GateStatus::Stale), 5);
     }
 
     #[test]
