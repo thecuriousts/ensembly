@@ -54,7 +54,7 @@ def main():
     s, v = score(weights, sorted(findings), o.author, o.reviewer)
     print(f"score={s} verdict={v} rubric={hashlib.sha256(raw).hexdigest()[:12]}")
     if o.skills_dir:
-        have = [p for p in PEERS if any(os.path.exists(os.path.join(d, p, "SKILL.md")) for d in o.skills_dir)]
+        have = [p for p in PEERS if any(os.path.exists(os.path.join(root, d, p, "SKILL.md")) for d in o.skills_dir)]
         print("uses: " + " ".join(have))
         print("missing: " + " ".join(p for p in PEERS if p not in have))
     return {"approve": 0, "changes": 1, "screen": 3}[v]
