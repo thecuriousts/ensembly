@@ -55,7 +55,7 @@ class Provisional(unittest.TestCase):
         r = read(os.path.join(ROOT, "references", "rubric.md"))
         self.assertIn("provisional", r)
         self.assertIn("noise floor", r)
-        self.assertIn("kanithanj #23", r)
+        self.assertIn("first real-work evaluation", r)
 
 
 class Peers(unittest.TestCase):

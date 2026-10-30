@@ -18,3 +18,7 @@
 | blocker | verdict changes |
 | major | 1.0 |
 | minor | 0.3 |
+
+| status | until |
+|---|---|
+| weights R1 to R6, threshold 80, factors: provisional | reviewer noise floor measured in the first real-work evaluation |
