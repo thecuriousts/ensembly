@@ -34,6 +34,7 @@ A2  verify(F) = 0 ⟺ ∀ c: h(c) = lock(c) ∧ set(F) = set(lock)
 A3  ∀ f ∈ F: diff(base, f) ≠ ∅ → exit 1
 A4  override → F/pending/id.case ∧ F unchanged
 A5  id ∈ F ∪ pending → override refused
+A6  replay(F, S) = 0 ⟺ A2 ∧ ∀ c ∈ F ∪ pending: S(c.contract) = c.expected
 ```
 
 | Command | Exit 0 | Exit 1 | Exit 2 |
@@ -42,6 +43,7 @@ A5  id ∈ F ∪ pending → override refused
 | `eval-freeze verify F` | A2 | mismatch or unlocked | — |
 | `eval-freeze override F --id --contract --expected --area --bug_class --time` | pending case | — | A5 |
 | `eval-freeze split F --by area` | counts | — | — |
+| `eval-replay F --skill S` | A6 | regression or A2 broken | S not executable |
 | `eval-freeze diff-check --repo R --base B F` | no frozen change | A3 | — |
 
 ## States

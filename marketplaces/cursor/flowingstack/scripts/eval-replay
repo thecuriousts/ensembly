@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from contract import parse
+
+FREEZE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "eval-freeze")
+
+
+def case_paths(d):
+    p = os.path.join(d, "pending")
+    pend = [os.path.join("pending", n) for n in sorted(os.listdir(p))] if os.path.isdir(p) else []
+    return [n for n in sorted(os.listdir(d)) + pend if n.endswith(".case")]
+
+
+def answer(skill, contract):
+    r = subprocess.run([skill, contract], capture_output=True, text=True)
+    return r.stdout.strip() or f"exit {r.returncode}"
+
+
+def regressions(d, skill):
+    out = []
+    for n in case_paths(d):
+        c = parse(open(os.path.join(d, n)).read())
+        got = answer(skill, c.get("contract", ""))
+        if got != c.get("expected"):
+            out.append(f"regression: {n} expected {c.get('expected')} got {got}")
+    return out
+
+
+def main():
+    a = argparse.ArgumentParser()
+    a.add_argument("dir")
+    a.add_argument("--skill", required=True)
+    o = a.parse_args()
+    if not os.access(o.skill, os.X_OK):
+        print(f"refused: {o.skill} not executable", file=sys.stderr)
+        return 2
+    v = subprocess.run([sys.executable, FREEZE, "verify", o.dir], capture_output=True, text=True)
+    if v.returncode:
+        print(v.stdout + v.stderr, end="")
+        return 1
+    bad = regressions(o.dir, o.skill)
+    print("\n".join(bad + [f"cases {len(case_paths(o.dir))} regressions {len(bad)}"]))
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
