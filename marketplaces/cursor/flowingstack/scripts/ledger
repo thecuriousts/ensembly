@@ -5,6 +5,9 @@ import os
 import sys
 import uuid
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from contract import parse as parse_contract, route as contract_route
+
 STATUS = {"verified", "unverified", "doubted"}
 PSTACK = {"installed", "missing"}
 
@@ -63,8 +66,10 @@ def main():
     a.add_argument("--ledger", default=os.environ.get("FLOWINGSTACK_LEDGER", os.path.join(".flowingstack", "ledger.tsv")))
     s = a.add_subparsers(dest="cmd", required=True)
     o = s.add_parser("open")
-    for k in ("contract", "route", "loads", "pstack"):
+    for k in ("loads", "pstack"):
         o.add_argument("--" + k, required=True)
+    for k in ("contract", "route", "contract-file"):
+        o.add_argument("--" + k, default="")
     for k in ("skips", "playbook", "effort", "reason", "harness"):
         o.add_argument("--" + k, default="")
     c = s.add_parser("close")
@@ -95,6 +100,9 @@ def main():
         with open(o.ledger, "w", encoding="utf-8") as f:
             f.writelines("\t".join([r[0], r[1], r[2]] + r[4]) + "\n" for r in compact(rows))
         return 0
+    if o.cmd == "open" and o.contract_file:
+        c = parse_contract(open(o.contract_file, encoding="utf-8").read())
+        v["contract"], v["route"] = c.get("id", ""), contract_route(c)
     if o.cmd == "open":
         if not o.contract or len(items(o.loads)) > 4 or o.pstack not in PSTACK:
             print("refused: contract required, loads ≤ 4, pstack ∈ installed|missing", file=sys.stderr)
