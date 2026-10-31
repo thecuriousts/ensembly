@@ -94,3 +94,7 @@ A5  hits(path, rule) > count → all live, exit 1; row without count → exit 2
 | `python3 -m unittest discover -s test` | green | red | — |
 
 Every script and how they connect: [docs/flow.md](docs/flow.md).
+
+## Route rule
+
+[route-rule skill](skills/route-rule/SKILL.md) loads first each Chief of Staff turn and runs [scripts/route-rule](scripts/route-rule) on [routing.tsv](routing.tsv)

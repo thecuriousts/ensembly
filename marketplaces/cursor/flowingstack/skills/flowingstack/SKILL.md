@@ -38,6 +38,7 @@ A2  unsure → intelli-route
 | Need | Load |
 |---|---|
 | route a goal | `intelli-route` |
+| owning lead for a task | `route-rule` |
 | write input, output, check | `task-contract` |
 | freeze or replay evals | `eval-freeze` |
 | log a run or claim | `run-ledger` |
