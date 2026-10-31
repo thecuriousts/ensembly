@@ -20,10 +20,12 @@ pub struct LedgerRow {
     pub company: String,
     pub role: String,
     pub link: String,
+    /// Optional application-form URL (e.g. `…/application`); `link` stays the canonical posting.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apply_url: Option<String>,
     pub status: Status,
     pub submit_time: Option<String>,
+    /// `true` when the application was sent but the time was never recorded (then `submit_time` is null). Absent otherwise; never `false`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub submit_time_unknown: Option<bool>,
     pub cv_version: String,
@@ -100,6 +102,7 @@ pub fn check_row_submit_time(r: &LedgerRow) -> Result<(), String> {
     }
 }
 
+/// Posting URL without a trailing `/` or `/application`.
 pub fn link_key(link: &str) -> &str {
     let l = link.trim_end_matches('/');
     l.strip_suffix("/application").unwrap_or(l)

@@ -30,6 +30,7 @@ anyhow = "1"
 regex = "1"
 ensembly-memory = { path = "../ensembly-memory" }
 ensembly-agents = { path = "../ensembly-agents" }
+ensembly-schema = { path = "../ensembly-schema" }
 
 [dev-dependencies]
 tempfile = "3"

@@ -32,6 +32,7 @@ pub mod turn;
 pub mod uncertainty_dive;
 pub mod vault;
 
+pub use application_ledger::{LedgerRow, Status};
 pub use approvals::{
     apply_decision, apply_physical_decision, derive_status, list_pending,
     upsert_pending_from_actions, upsert_physical, ApprovalStatus, Snapshot, SnapshotStatus,
@@ -44,10 +45,15 @@ pub use channel_pulse::{
     project_wait_snapshot, read_channel_pulse, reconcile_channel_pulse, resolve_focus_plan,
     seed_live_channel_actions, write_channel_pulse, ReconcileReport, DEFAULT_CHANNEL_PULSE_PATH,
 };
+pub use company_audit::{Audit, GateStatus};
 pub use critical_path::{compute_critical_path, explain_node, CriticalPathReport};
 pub use digital_flow::{
     activate, decide, execute_dry_run, flow_to_approval_record, map_flow_status_to_approval,
     run_cycle, DigitalFlow, FlowStatus,
+};
+pub use ensembly_schema::{
+    audit_exit_code, audit_exit_status, PackRef, EXIT_BLOCK, EXIT_ERROR, EXIT_FLAG, EXIT_PASS,
+    EXIT_PULSE_REFUSED_WRITE, EXIT_UNAUDITED_OR_STALE, EXIT_USAGE,
 };
 pub use graph::{DepGraph, GateKind, TaskNode, TaskRealm, TaskStatus};
 pub use life_state::{LifeState, LoopRegime, OutcomeMetrics};

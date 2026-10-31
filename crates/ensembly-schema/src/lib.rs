@@ -1,5 +1,8 @@
 //! Versioned shapes for ledger rows, company audits, and pack refs.
 //!
+//! A missing `v` means the v0 shape: the same fields, with no version member.
+//! `"v": 1.0` passes the JSON Schema const for [`SCHEMA_VERSION`] and the reader refuses it.
+//!
 //! Regenerate the checked-in JSON Schema files with
 //! `WRITE_SCHEMA=1 cargo test -p ensembly-schema --lib checked_in_schema_matches_types`.
 
@@ -27,7 +30,11 @@ mod version_one {
     use schemars::schema::{Schema, SchemaObject};
     use schemars::{gen::SchemaGenerator, JsonSchema};
 
-    /// Schema const for a version-1 line. Not a runtime value.
+    /// Schema const for [`crate::SCHEMA_VERSION`]. Not a runtime value.
+    ///
+    /// `"v": 1.0` passes this const because JSON Schema compares numbers by
+    /// value. [`crate::decode_line`] refuses it; only an integer
+    /// [`crate::SCHEMA_VERSION`] is a supported `v`.
     pub struct VersionOne;
 
     impl JsonSchema for VersionOne {
@@ -41,7 +48,7 @@ mod version_one {
 
         fn json_schema(_: &mut SchemaGenerator) -> Schema {
             SchemaObject {
-                const_value: Some(serde_json::json!(1)),
+                const_value: Some(serde_json::json!(crate::SCHEMA_VERSION)),
                 ..Default::default()
             }
             .into()

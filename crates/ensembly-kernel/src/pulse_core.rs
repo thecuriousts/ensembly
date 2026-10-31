@@ -40,7 +40,7 @@ pub struct RefusedWrite(pub String);
 /// CLI exit code for a refused write (`missions import` without `--force`).
 /// 7, not 3: `apps audit status` uses 3 for flag (callers depend on it), and
 /// 4/5/6 are audit or reserved; 7 means nothing else in the CLI.
-pub const REFUSED_WRITE_EXIT: i32 = 7;
+pub use ensembly_schema::EXIT_PULSE_REFUSED_WRITE as REFUSED_WRITE_EXIT;
 
 impl std::fmt::Display for RefusedWrite {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

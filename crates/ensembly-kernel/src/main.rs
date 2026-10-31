@@ -1682,7 +1682,7 @@ fn audit_status(store: &PathBuf, query: &str, now: Option<String>) -> Result<()>
         "stale_after_days": ca::STALE_AFTER_DAYS,
     });
     println!("{out}");
-    std::process::exit(ca::exit_code(status));
+    std::process::exit(ca::audit_exit_code(status));
 }
 
 fn cmd_channel_pulse(db_path: &PathBuf, sub: ChannelPulseCmd) -> Result<()> {

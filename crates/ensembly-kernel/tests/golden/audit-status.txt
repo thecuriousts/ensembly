@@ -1,0 +1,5 @@
+0	acme.example.test	2026-10-27T12:00:00+01:00	{"audited_at":"2026-10-20T09:00:00+02:00","company":"Acme Fictional","domain":"acme.example.test","query":"acme.example.test","stale_after_days":30,"status":"pass","verdict":"pass"}
+3	bramble.example.test	2026-10-27T12:00:00+01:00	{"audited_at":"2026-10-21T10:00:00+02:00","company":"Bramble Fictional","domain":"bramble.example.test","query":"bramble.example.test","stale_after_days":30,"status":"flag","verdict":"flag"}
+4	cobalt.example.test	2026-10-27T12:00:00+01:00	{"audited_at":"2026-10-26T21:00:00+01:00","company":"Cobalt Fictional","domain":"cobalt.example.test","query":"cobalt.example.test","stale_after_days":30,"status":"block","verdict":"block"}
+5	missing.example.test	2026-10-27T12:00:00+01:00	{"audited_at":null,"company":null,"domain":null,"query":"missing.example.test","stale_after_days":30,"status":"unaudited","verdict":null}
+5	acme.example.test	2027-01-01T12:00:00+01:00	{"audited_at":"2026-10-20T09:00:00+02:00","company":"Acme Fictional","domain":"acme.example.test","query":"acme.example.test","stale_after_days":30,"status":"stale","verdict":"pass"}
