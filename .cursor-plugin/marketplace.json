@@ -1,0 +1,5 @@
+{
+  "name": "flowingstack",
+  "owner": {"name": "thecuriousts"},
+  "plugins": [{"name": "flowingstack", "source": "marketplaces/cursor/flowingstack", "description": "Task contracts, a run ledger, frozen eval sets and review checks"}]
+}

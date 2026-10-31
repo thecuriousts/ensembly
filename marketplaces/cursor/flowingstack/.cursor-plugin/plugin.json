@@ -1,0 +1,8 @@
+{
+  "name": "flowingstack",
+  "version": "0.1.0",
+  "description": "Task contracts, a run ledger, frozen eval sets, a review rubric, doc and privacy checks, and pinned tstack skills",
+  "license": "MIT",
+  "keywords": ["task-contract", "run-ledger", "eval-freeze", "review", "privacy", "skills"],
+  "skills": "./skills/"
+}

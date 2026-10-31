@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+usage() { echo "usage: check --src DIR" >&2; exit 2; }
+src=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --src=*) src=${1#--src=}; shift ;;
+    --src) [[ $# -ge 2 ]] || usage; src=$2; shift 2 ;;
+    *) usage ;;
+  esac
+done
+[[ -n "$src" ]] || usage
+[[ -d "$src" ]] || { echo "$src: not a directory" >&2; exit 2; }
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s test
+scripts/doc-lint --all --repo-root ../../..
+scripts/privacy-scan --all --repo-root ../../..
+scripts/sync-from-upstream --src "$src" --check

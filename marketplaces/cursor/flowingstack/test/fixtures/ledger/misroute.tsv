@@ -1,0 +1,8 @@
+open	r1	2026-10-30T10:00	contract=c1	route=light	loads=a,b	pstack=installed
+close	r1	2026-10-30T10:10	opened=a,b,c	switches=0	failed_fixes=0	override=0	unrun=
+open	r2	2026-10-30T11:00	contract=c2	route=light	loads=a,b	pstack=installed
+close	r2	2026-10-30T11:10	opened=a	switches=0	failed_fixes=0	override=0	unrun=
+open	r3	2026-10-30T12:00	contract=c3	route=card	loads=a	pstack=missing
+close	r3	2026-10-30T12:10	opened=a	switches=1	failed_fixes=2	override=1	unrun=red-test
+open	r4	2026-10-30T13:00	contract=c4	route=light	loads=a	pstack=installed
+close	r4	2026-10-30T13:10	opened=a	switches=0	failed_fixes=0	override=0	unrun=

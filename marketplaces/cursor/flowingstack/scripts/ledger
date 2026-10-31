@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+import argparse
+import datetime
+import os
+import sys
+import tempfile
+import uuid
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from contract import parse as parse_contract, route as contract_route
+
+STATUS = {"verified", "unverified", "doubted"}
+PSTACK = {"installed", "missing"}
+MAX_ROUNDS = 3
+
+
+def parse(path):
+    rows = []
+    if os.path.exists(path):
+        for l in open(path, encoding="utf-8"):
+            c = l.rstrip("\n").split("\t")
+            if len(c) >= 3:
+                rows.append((c[0], c[1], c[2], dict(x.split("=", 1) for x in c[3:] if "=" in x), c[3:]))
+    return rows
+
+
+def row(kind, rid, fields):
+    return "\t".join([kind, rid, datetime.datetime.now().isoformat(timespec="seconds")] + [f"{k}={v}" for k, v in fields]) + "\n"
+
+
+def items(s):
+    return {x for x in s.split(",") if x}
+
+
+def runs(rows):
+    out = {}
+    for kind, rid, _, f, _ in rows:
+        if kind in ("open", "close"):
+            out.setdefault(rid, {}).update(f)
+    return out
+
+
+QUERIES = {
+    "missed-load": lambda r: items(r.get("opened", "")) - items(r.get("loads", "")),
+    "unused-load": lambda r: "opened" in r and items(r.get("loads", "")) - items(r["opened"]),
+    "playbook-switch": lambda r: int(r.get("switches", "0") or 0) > 0,
+    "premise": lambda r: int(r.get("failed_fixes", "0") or 0) >= 2,
+    "override": lambda r: r.get("override") == "1",
+    "unrun-check": lambda r: bool(r.get("unrun")),
+}
+
+
+def compact(rows):
+    first, last, claims = {}, {}, {}
+    for r in rows:
+        if r[0] == "open":
+            first.setdefault(r[1], r)
+        elif r[0] == "close":
+            last[r[1]] = r
+        elif r[0] == "claim":
+            claims[(r[1], r[3].get("text"))] = r
+    keep = list(first.values()) + list(last.values()) + list(claims.values())
+    return sorted(keep, key=lambda r: (r[2], ["open", "close", "claim"].index(r[0])))
+
+
+def main():
+    a = argparse.ArgumentParser()
+    a.add_argument("--ledger", default=os.environ.get("FLOWINGSTACK_LEDGER", os.path.join(".flowingstack", "ledger.tsv")))
+    s = a.add_subparsers(dest="cmd", required=True)
+    o = s.add_parser("open")
+    for k in ("loads", "pstack"):
+        o.add_argument("--" + k, required=True)
+    for k in ("contract", "route", "contract-file"):
+        o.add_argument("--" + k, default="")
+    for k in ("skips", "playbook", "effort", "reason", "harness"):
+        o.add_argument("--" + k, default="")
+    c = s.add_parser("close")
+    c.add_argument("run")
+    c.add_argument("--opened", default="")
+    for k in ("switches", "failed-fixes", "override", "rounds"):
+        c.add_argument("--" + k, default="0")
+    c.add_argument("--unrun", default="")
+    c.add_argument("--stages", default="")
+    c.add_argument("--escalate", default="")
+    m = s.add_parser("claim")
+    m.add_argument("run")
+    for k in ("text", "status", "source"):
+        m.add_argument("--" + k, required=True)
+    s.add_parser("compact")
+    q = s.add_parser("query")
+    q.add_argument("name", choices=sorted(QUERIES))
+    o = a.parse_args()
+    v = vars(o)
+    if o.cmd == "open" and o.contract_file:
+        c = parse_contract(open(o.contract_file, encoding="utf-8").read())
+        v["contract"], v["route"] = c.get("id", ""), contract_route(c)
+    if any(ch in str(x) for x in v.values() for ch in "\t\n\r"):
+        print("tab or newline in value", file=sys.stderr)
+        return 2
+    if o.cmd == "close" and not all(v[k].isdigit() for k in ("switches", "failed_fixes", "override", "rounds")):
+        print("refused: switches, failed-fixes, override, rounds must be whole numbers", file=sys.stderr)
+        return 2
+    if o.cmd == "close" and int(o.rounds) > MAX_ROUNDS and not o.escalate.strip():
+        print(f"refused: rounds > {MAX_ROUNDS} needs --escalate REASON", file=sys.stderr)
+        return 2
+    if o.cmd == "claim" and not o.source.strip():
+        print("refused: source required", file=sys.stderr)
+        return 2
+    rows = parse(o.ledger)
+    known = {r[1] for r in rows if r[0] == "open"}
+    if o.cmd == "query":
+        print("\n".join(rid for rid, r in runs(rows).items() if QUERIES[o.name](r)))
+        return 0
+    if o.cmd == "compact":
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(o.ledger)), prefix=".ledger-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.writelines("\t".join([r[0], r[1], r[2]] + r[4]) + "\n" for r in compact(rows))
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, o.ledger)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        return 0
+    if o.cmd == "open":
+        if not o.contract or len(items(o.loads)) > 4 or o.pstack not in PSTACK:
+            print("refused: contract required, loads ≤ 4, pstack ∈ installed|missing", file=sys.stderr)
+            return 2
+        rid = "r" + uuid.uuid4().hex[:8]
+        line = row("open", rid, [(k, v[k]) for k in ("contract", "route", "loads", "skips", "playbook", "effort", "reason", "pstack", "harness")])
+    elif o.run not in known:
+        print(f"refused: {o.run} has no open row", file=sys.stderr)
+        return 2
+    elif o.cmd == "close":
+        rid = o.run
+        line = row("close", rid, [("opened", o.opened), ("stages", o.stages), ("rounds", o.rounds), ("switches", o.switches),
+                                  ("failed_fixes", o.failed_fixes), ("override", o.override), ("unrun", o.unrun), ("escalate", o.escalate)])
+    else:
+        if o.status not in STATUS:
+            print("refused: status ∈ verified|unverified|doubted", file=sys.stderr)
+            return 2
+        rid = o.run
+        line = row("claim", rid, [("text", o.text), ("status", o.status), ("source", o.source)])
+    os.makedirs(os.path.dirname(os.path.abspath(o.ledger)), exist_ok=True)
+    with open(o.ledger, "a", encoding="utf-8") as f:
+        f.write(line)
+    print(rid)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

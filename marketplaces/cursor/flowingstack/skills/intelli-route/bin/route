@@ -1,0 +1,285 @@
+#!/usr/bin/env python3
+"""Route one exact manifest when. Effort comes from task signals, not the route id."""
+
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+REPO = ROOT.parent
+MANIFEST = ROOT / "manifest.json"
+MAP = Path("skills") / "pstack-map" / "references" / "map.md"
+
+LEVELS = ("low", "medium", "high", "xhigh")
+KINDS = {"", "plan", "feature", "build", "review", "fix", "rereview", "docs", "rename", "batch"}
+BLASTS = ("ci", "auth", "money", "data")
+REVIEWS = {"", "approve", "request_changes", "REQUEST_CHANGES"}
+BOOLS = ("novel", "hard", "cross_cutting", "first_build", "security", "data_loss", "reversible", "pressure")
+KEYS = {
+    "kind", "novel", "hard", "cross_cutting", "first_build", "security", "data_loss",
+    "reversible", "files", "spread", "blast", "review", "pressure", "task",
+}
+PROTECTED = {
+    "security", "data-loss", "blast auth", "blast money", "blast data",
+    "hard planning", "novel planning", "cross-cutting",
+    "first build of a new feature", "risky",
+}
+MECHANICAL = {"docs", "rename", "batch"}
+USAGE = "usage: route WHEN [--signals JSON]\n       route --signals JSON\n"
+
+
+def die(msg, code):
+    sys.stderr.write(msg if msg.endswith("\n") else msg + "\n")
+    sys.exit(code)
+
+
+def house_map():
+    """Plugin: sibling skills/pstack-map. Monorepo: REPO/pstack-map. Cache: <cache>/pstack-map/<version>."""
+    sibling = REPO / "pstack-map" / "references" / "map.md"
+    if sibling.is_file():
+        return sibling
+    flat = REPO / "pstack-map" / MAP
+    if flat.is_file():
+        return flat
+    cached = [d / MAP for d in (REPO.parent / "pstack-map").glob("*") if (d / MAP).is_file()]
+    same = [m for m in cached if m.parents[3].name == ROOT.name]
+    if same:
+        return same[0]
+    if cached:
+        return max(cached, key=lambda m: m.stat().st_mtime)
+    die("missing pstack-map map.md: looked in %s and %s/*" % (REPO / "pstack-map", REPO.parent / "pstack-map"), 1)
+
+
+def playbook_names(text):
+    names = []
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        name = line.strip("|").split("|", 1)[0].strip()
+        if not name or name == "Playbook" or name.startswith("-"):
+            continue
+        names.append(name)
+    return names
+
+
+def named_playbook(situation, names):
+    for name in sorted(names, key=len, reverse=True):
+        if re.search(
+            r"(?<![A-Za-z0-9-])" + re.escape(name) + r"(?![A-Za-z0-9-])",
+            situation,
+        ):
+            return name
+    return None
+
+
+def hitl_for(situation):
+    low = situation.lower()
+    reasons = []
+    for needle, reason in (
+        ("secrets", "secrets"),
+        ("production", "production"),
+        ("irreversible git", "irreversible git"),
+        ("cv promote", "CV promote"),
+        ("unknown authorization", "unknown authorization"),
+    ):
+        if needle in low and reason not in reasons:
+            reasons.append(reason)
+    if re.search(r"\b(money|legal|health)\b", low):
+        reasons.append("money, legal, or health acts")
+    if not reasons:
+        return "none"
+    return "required (" + "; ".join(reasons) + ")"
+
+
+def as_bool(name, value):
+    if not isinstance(value, bool):
+        die("signals %s must be a boolean" % name, 2)
+    return value
+
+
+def as_count(name, value):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        die("signals %s must be a non-negative integer" % name, 2)
+    return value
+
+
+def normalize(raw):
+    if not isinstance(raw, dict):
+        die("signals must be an object", 2)
+    unknown = sorted(set(raw) - KEYS)
+    if unknown:
+        die("unknown signals " + ", ".join(unknown), 2)
+    kind = raw.get("kind", "")
+    if not isinstance(kind, str) or kind not in KINDS:
+        die("signals kind is not allowed", 2)
+    review = raw.get("review", "")
+    if not isinstance(review, str) or review not in REVIEWS:
+        die("signals review is not allowed", 2)
+    if review == "REQUEST_CHANGES":
+        review = "request_changes"
+    blast = raw.get("blast", [])
+    if not isinstance(blast, list) or any(not isinstance(item, str) or item not in BLASTS for item in blast):
+        die("signals blast must list ci, auth, money, or data", 2)
+    task = raw.get("task", "")
+    if not isinstance(task, str):
+        die("signals task must be a string", 2)
+    out = {
+        "task": task,
+        "kind": kind,
+        "review": review,
+        "blast": blast,
+        "files": as_count("files", raw.get("files", 0)),
+        "spread": as_count("spread", raw.get("spread", 0)),
+    }
+    for name in BOOLS:
+        default = True if name == "reversible" else False
+        out[name] = as_bool(name, raw[name]) if name in raw else default
+    return out
+
+
+def effort_for(raw):
+    """Pick one level from this task. Route id is not an input."""
+    s = normalize(raw)
+    kind = s["kind"]
+    blast = s["blast"]
+    serious = [name for name in ("auth", "money", "data") if name in blast]
+    small = s["files"] <= 5 and s["spread"] <= 2
+    wide = s["spread"] >= 4
+
+    if s["security"]:
+        rank, reason, protect = 3, "security", True
+    elif s["data_loss"]:
+        rank, reason, protect = 3, "data-loss", True
+    elif serious:
+        rank, reason, protect = 3, "blast " + serious[0], True
+    elif kind == "plan" and s["hard"]:
+        rank, reason, protect = 3, "hard planning", True
+    elif kind == "plan" and s["novel"]:
+        rank, reason, protect = 3, "novel planning", True
+    elif s["cross_cutting"] or (wide and kind in {"feature", "build", "plan", "fix"}):
+        rank, reason, protect = 3, "cross-cutting", True
+    elif s["first_build"] and kind in {"feature", "build", "plan"}:
+        rank, reason, protect = 3, "first build of a new feature", True
+    elif not s["reversible"] and kind in {"feature", "build", "fix", "plan", "rename"}:
+        rank, reason, protect = 3, "risky", True
+    elif kind == "review":
+        rank, reason, protect = 2, "review", False
+    elif kind == "plan":
+        rank, reason, protect = 2, "planning", False
+    elif kind in {"feature", "build", ""}:
+        rank, reason, protect = 2, "normal feature", False
+    elif kind == "fix":
+        rank, reason, protect = 1, "routine fix", False
+    elif kind == "rereview" and small:
+        rank, reason, protect = 0, "re-review of a small diff", False
+    elif kind == "rereview":
+        rank, reason, protect = 1, "re-review", False
+    elif kind == "docs":
+        rank, reason, protect = 0, "docs", False
+    elif kind == "rename":
+        rank, reason, protect = 0, "rename", False
+    elif kind == "batch":
+        rank, reason, protect = 0, "mechanical batch; one PR", False
+    else:
+        die("signals kind is not allowed", 2)
+
+    if s["files"] >= 20 and kind not in MECHANICAL and rank < 2:
+        rank, reason = 2, "wide diff"
+    if "ci" in blast and not protect and rank < 2:
+        rank, reason = rank + 1, "blast ci"
+
+    if s["novel"] and not protect and rank < 3:
+        rank, reason = rank + 1, reason + "; novel"
+    if s["hard"] and not protect and rank < 3:
+        rank, reason = rank + 1, reason + "; hard"
+    if s["pressure"] and s["reversible"] and not protect and rank > 0:
+        rank, reason = rank - 1, reason + "; time pressure"
+    if s["review"] == "request_changes" and rank < 3:
+        rank, reason = rank + 1, reason + "; escalated after REQUEST_CHANGES"
+
+    return LEVELS[rank], reason
+
+
+def parse_args(argv):
+    situation = None
+    signals = None
+    i = 1
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--signals":
+            if signals is not None or i + 1 >= len(argv):
+                die(USAGE, 2)
+            try:
+                signals = json.loads(argv[i + 1])
+            except json.JSONDecodeError:
+                die("signals must be JSON", 2)
+            i += 2
+            continue
+        if arg.startswith("-") or situation is not None:
+            die(USAGE, 2)
+        situation = arg
+        i += 1
+    if situation is not None and not situation.strip():
+        die(USAGE, 2)
+    if situation is None and signals is None:
+        die(USAGE, 2)
+    return situation, {} if signals is None else signals
+
+
+def task_signal(task, manifest):
+    """First manifest signal whose match regex hits the task text, else None."""
+    for row in manifest.get("signals", []):
+        if task and re.search(row["match"], task, re.I):
+            return row
+    return None
+
+
+def main():
+    situation, signals = parse_args(sys.argv)
+    effort, reason = effort_for(signals)
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    if situation is None:
+        emit = {"effort": effort, "reason": reason}
+        row = task_signal(signals.get("task", ""), manifest)
+        if row:
+            emit.update(signal=row["id"], loads=row["loads"][: manifest["max_loads"]], principles=row["principles"])
+        sys.stdout.write(json.dumps(emit) + "\n")
+        return
+    if "tstack" not in manifest.get("routes", {}):
+        die("missing routes.tstack", 1)
+    skipped = []
+    match = None
+    for row in manifest["primary"]:
+        if row.get("when") == situation:
+            match = row
+            break
+        skipped.append("%s: when" % row["id"])
+    if match is None:
+        die("missing when", 1)
+    route = match.get("route")
+    if route not in manifest["routes"]:
+        die("missing route", 1)
+    load_id = match["id"]
+    if route == "tstack":
+        playbook = "skip"
+    else:
+        playbook = named_playbook(situation, playbook_names(house_map().read_text(encoding="utf-8")))
+        if playbook is None:
+            playbook = "house"
+    emit = {
+        "situation": situation,
+        "route": route,
+        "loads": [load_id],
+        "skips": skipped,
+        "playbook": playbook,
+        "hitl": hitl_for(situation),
+        "next": load_id,
+        "effort": effort,
+        "reason": reason,
+    }
+    sys.stdout.write(json.dumps(emit) + "\n")
+
+
+if __name__ == "__main__":
+    main()

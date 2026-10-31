@@ -1,0 +1,7 @@
+id: c-bug
+input: failing login test
+output: patch
+check: test: tests/login.py fails then passes
+reversible: yes
+blast: one module
+counter: p95 latency

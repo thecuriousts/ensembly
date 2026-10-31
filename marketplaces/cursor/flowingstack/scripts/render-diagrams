@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+import hashlib
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from rootpath import plugin_root
+
+FENCE = re.compile(r"^```(mermaid)[^\n]*\n(.*?)^```", re.M | re.S)
+MMDC = os.environ.get("MMDC", "npx -y @mermaid-js/mermaid-cli@11").split()
+
+
+def pages(root):
+    yield "readme", os.path.join(root, "README.md")
+    d = os.path.join(root, "docs")
+    for n in sorted(os.listdir(d)):
+        if n.endswith(".md"):
+            yield n[:-3], os.path.join(d, n)
+    for d, subs, files in os.walk(root):
+        subs[:] = sorted(s for s in subs if s not in ("docs", "test", ".git", "node_modules"))
+        for n in sorted(files):
+            p = os.path.join(d, n)
+            if (n.endswith(".md") or n == "sync-from-upstream") and p != os.path.join(root, "README.md"):
+                yield os.path.relpath(p, root).replace(os.sep, "-").removesuffix(".md").lower(), p
+
+
+def render(body, out):
+    with tempfile.TemporaryDirectory() as t:
+        src = os.path.join(t, "d.mmd")
+        open(src, "w").write(body)
+        r = subprocess.run(MMDC + ["-q", "-b", "white", "-i", src, "-o", out], capture_output=True, text=True)
+        return r.returncode == 0, r.stderr[-400:]
+
+
+def main():
+    root = plugin_root()
+    img = os.path.join(root, "docs", "img")
+    os.makedirs(img, exist_ok=True)
+    rows, bad = ["# digest\timage"], []
+    for stem, path in pages(root):
+        for i, (kind, body) in enumerate(FENCE.findall(open(path).read()), 1):
+            name = f"{stem}-{i}.svg"
+            ok, err = render(body, os.path.join(img, name))
+            if not ok:
+                bad.append(f"{os.path.relpath(path, root)} block {i}: {err.strip()}")
+                continue
+            rows.append(f"{hashlib.sha256(body.encode()).hexdigest()[:16]}\t{name}")
+    open(os.path.join(img, "rendered.tsv"), "w").write("\n".join(rows) + "\n")
+    print("\n".join(bad + [f"blocks {len(rows) - 1} failed {len(bad)}"]))
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

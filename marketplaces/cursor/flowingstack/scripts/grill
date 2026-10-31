@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+import argparse
+import hashlib
+import math
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from rootpath import plugin_root, rel
+
+FACTOR = {"blocker": 0.0, "major": 1.0, "minor": 0.3}
+PEERS = ("interrogate", "blast-radius")
+
+
+def rubric(text):
+    w = {}
+    for l in text.splitlines():
+        c = [x.strip() for x in l.strip().strip("|").split("|")]
+        if len(c) == 3 and c[0][:1] == "R" and c[2].isdigit():
+            w[c[0]] = int(c[2])
+    return w
+
+
+def score(weights, findings, author, reviewer):
+    s = 100 - sum(weights[i] * FACTOR[sev] for i, sev in findings)
+    s = max(0, math.floor(s + 1e-9))
+    if author == reviewer:
+        return s, "screen"
+    blocked = any(sev == "blocker" for _, sev in findings)
+    return s, "approve" if s >= 80 and not blocked else "changes"
+
+
+def main():
+    a = argparse.ArgumentParser()
+    a.add_argument("--findings", required=True)
+    a.add_argument("--author", required=True)
+    a.add_argument("--reviewer", required=True)
+    a.add_argument("--skills-dir", action="append", default=[])
+    a.add_argument("--root")
+    o = a.parse_args()
+    root = plugin_root(o.root)
+    raw = open(os.path.join(root, "references", "rubric.md"), "rb").read()
+    weights = rubric(raw.decode())
+    f = rel(root, o.findings)
+    findings = []
+    for l in open(f, encoding="utf-8"):
+        c = l.rstrip("\n").split("\t")
+        if not l.strip():
+            continue
+        if len(c) < 2 or c[0] not in weights or c[1] not in FACTOR:
+            print(f"refused: {c[0]} {c[1] if len(c) > 1 else ''}", file=sys.stderr)
+            return 2
+        findings.append((c[0], c[1]))
+    s, v = score(weights, sorted(findings), o.author, o.reviewer)
+    print(f"score={s} verdict={v} rubric={hashlib.sha256(raw).hexdigest()[:12]}")
+    if o.skills_dir:
+        have = [p for p in PEERS if any(os.path.exists(os.path.join(root, d, p, "SKILL.md")) for d in o.skills_dir)]
+        print("uses: " + " ".join(have))
+        print("missing: " + " ".join(p for p in PEERS if p not in have))
+    return {"approve": 0, "changes": 1, "screen": 3}[v]
+
+
+if __name__ == "__main__":
+    sys.exit(main())
