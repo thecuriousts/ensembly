@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import re
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from rootpath import plugin_root, rel
+
+COLS = ["task_type", "lead", "note", "keywords"]
+
+
+def die(msg):
+    print(msg, file=sys.stderr)
+    sys.exit(2)
+
+
+def load(path):
+    lines = [l.rstrip("\n").split("\t") for l in open(path, encoding="utf-8") if l.strip()]
+    if not lines or lines[0] != COLS:
+        die(f"{path}: header must be {' '.join(COLS)}")
+    rows, seen = [], set()
+    for n, c in enumerate(lines[1:], 2):
+        c += [""] * (4 - len(c))
+        t, lead, note, kw = (x.strip() for x in c[:4])
+        if not t:
+            die(f"{os.path.basename(path)}:{n}: missing task_type")
+        if not lead:
+            die(f"{os.path.basename(path)}:{n}: missing lead for {t}")
+        if t in seen:
+            die(f"{os.path.basename(path)}:{n}: duplicate type {t}")
+        seen.add(t)
+        rows.append({"task_type": t, "lead": lead, "note": note, "keywords": [k for k in kw.split(",") if k]})
+    return rows
+
+
+def match(rows, task):
+    words = set(re.findall(r"[a-z0-9:-]+", task.lower()))
+    best = max(rows, key=lambda r: sum(k in words for k in r["keywords"]))
+    return best if any(k in words for k in best["keywords"]) else None
+
+
+def main():
+    ap = argparse.ArgumentParser(description="print the owning lead for a task")
+    ap.add_argument("--table", default="routing.tsv")
+    ap.add_argument("--task")
+    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--json", action="store_true")
+    a = ap.parse_args()
+    rows = load(rel(plugin_root(), a.table))
+    if a.list:
+        if a.json:
+            print(json.dumps(rows))
+        else:
+            for r in rows:
+                print(f"{r['task_type']}\t{r['lead']}\t{r['note']}")
+        return 0
+    if not a.task:
+        die("give --task or --list")
+    r = match(rows, a.task)
+    if not r:
+        print("no match: ask Chief of Staff")
+        return 2
+    rule = f"route to {r['lead']}; do not do it yourself"
+    if a.json:
+        print(json.dumps({"task_type": r["task_type"], "lead": r["lead"], "rule": rule}))
+    else:
+        print(f"{r['task_type']}\n{r['lead']}\n{rule}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
