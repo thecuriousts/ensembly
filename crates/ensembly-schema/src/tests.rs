@@ -132,11 +132,62 @@ fn encode_line_writes_v1_and_never_v2() {
     assert!(encode_line(2, &row).is_err());
 }
 
+fn legacy(status: &str, time: Option<&str>) -> String {
+    let t = time.map_or(String::new(), |t| format!(r#","submit_time":{t}"#));
+    format!(
+        r#"{{"company":"Acme Fictional","role":"Widget Engineer","link":"https://jobs.example.test/acme/9","status":"{status}"{t},"cv_version":"cv-sample-1"}}"#
+    )
+}
+
 #[test]
-fn submitted_null_submit_time_is_refused() {
-    let line = r#"{"company":"Acme Fictional","role":"Widget Engineer","link":"https://jobs.example.test/acme/9","status":"submitted","submit_time":null,"cv_version":"cv-sample-1"}"#;
-    let err = decode_line::<LedgerRow>(line).unwrap_err();
-    assert!(err.contains("submit_time"), "{err}");
+fn legacy_sent_row_without_time_reads_as_unknown() {
+    for st in ["submitted", "interview", "rejected", "silent-closed"] {
+        for t in [Some("null"), Some("\"\""), None] {
+            let row = decode_line::<LedgerRow>(&legacy(st, t))
+                .unwrap_or_else(|e| panic!("{st} {t:?}: {e}"))
+                .value;
+            assert_eq!(row.submit_time(), Some(SubmitTime::Unknown), "{st} {t:?}");
+            assert_eq!(row.submit_time, None, "never invent a time");
+            check_row_submit_time(&row).unwrap();
+        }
+    }
+}
+
+#[test]
+fn submit_time_is_known_or_unknown_or_not_sent() {
+    let known =
+        decode_line::<LedgerRow>(&legacy("submitted", Some("\"2026-10-26T18:59:00+01:00\"")))
+            .unwrap()
+            .value;
+    assert_eq!(
+        known.submit_time(),
+        Some(SubmitTime::Known("2026-10-26T18:59:00+01:00".into()))
+    );
+    for st in ["prepared", "withdrawn"] {
+        let row = decode_line::<LedgerRow>(&legacy(st, Some("null")))
+            .unwrap()
+            .value;
+        assert_eq!(row.submit_time(), None, "{st}");
+        assert_eq!(row.submit_time_unknown, None, "{st}");
+    }
+}
+
+#[test]
+fn legacy_read_still_refuses_a_bad_time() {
+    let err = decode_line::<LedgerRow>(&legacy("submitted", Some("\"2026-10-26T18:59:00Z\"")))
+        .unwrap_err();
+    assert!(err.contains("Europe/Stockholm"), "{err}");
+}
+
+#[test]
+fn watch_status_maps_onto_ledger_status() {
+    assert_eq!(Status::from_watch_status("rejected"), Ok(Status::Rejected));
+    assert_eq!(Status::from_watch_status("waiting"), Ok(Status::Submitted));
+    assert_eq!(Status::from_watch_status("parked"), Ok(Status::Submitted));
+    for bad in ["", "ghosted", "Rejected", "applied", "interview"] {
+        let err = Status::from_watch_status(bad).unwrap_err();
+        assert!(err.contains("watch status"), "{bad}: {err}");
+    }
 }
 
 #[test]

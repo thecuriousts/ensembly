@@ -31,7 +31,44 @@ pub struct LedgerRow {
     pub cv_version: String,
 }
 
+/// When a sent application went out. Read from `submit_time` and `submit_time_unknown`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SubmitTime {
+    Known(String),
+    Unknown,
+}
+
+impl LedgerRow {
+    /// `None` when the status was never sent and no time is recorded.
+    pub fn submit_time(&self) -> Option<SubmitTime> {
+        match (&self.submit_time, self.submit_time_unknown) {
+            (Some(t), _) => Some(SubmitTime::Known(t.clone())),
+            (None, Some(true)) => Some(SubmitTime::Unknown),
+            (None, _) if allows_null_submit_time(self.status) => None,
+            (None, _) => Some(SubmitTime::Unknown),
+        }
+    }
+}
+
 impl Checked for LedgerRow {
+    /// Legacy rows: an empty or missing time on a sent status reads as unknown. No time is invented.
+    fn normalize(mut self) -> Self {
+        if self
+            .submit_time
+            .as_deref()
+            .is_some_and(|t| t.trim().is_empty())
+        {
+            self.submit_time = None;
+        }
+        if self.submit_time.is_none()
+            && self.submit_time_unknown.is_none()
+            && !allows_null_submit_time(self.status)
+        {
+            self.submit_time_unknown = Some(true);
+        }
+        self
+    }
+
     fn check(&self) -> Result<(), String> {
         check_row_submit_time(self)
     }
@@ -46,6 +83,19 @@ impl Status {
             Status::Rejected => "rejected",
             Status::Withdrawn => "withdrawn",
             Status::SilentClosed => "silent-closed",
+        }
+    }
+}
+
+impl Status {
+    /// Map a hiring-mail watch status. Unknown values are an error, never a guess.
+    pub fn from_watch_status(s: &str) -> Result<Status, String> {
+        match s {
+            "rejected" => Ok(Status::Rejected),
+            "waiting" | "parked" => Ok(Status::Submitted),
+            other => Err(format!(
+                "watch status {other:?} has no ledger status; known: rejected, waiting, parked"
+            )),
         }
     }
 }

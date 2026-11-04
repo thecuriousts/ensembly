@@ -24,7 +24,7 @@ pub fn decode_line<T: DeserializeOwned + Checked>(line: &str) -> Result<Decoded<
     reject_duplicate_keys(line)?;
     let mut value: serde_json::Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
     let version = take_version(value.as_object_mut())?;
-    let value: T = serde_json::from_value(value).map_err(|e| e.to_string())?;
+    let value = T::normalize(serde_json::from_value(value).map_err(|e| e.to_string())?);
     value.check()?;
     Ok(Decoded { version, value })
 }

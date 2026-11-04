@@ -2,7 +2,7 @@
 //! Append-only JSONL; later row for the same `link` supersedes earlier ones.
 use std::path::Path;
 
-pub use ensembly_schema::{link_key, LedgerRow, Status};
+pub use ensembly_schema::{link_key, LedgerRow, Status, SubmitTime};
 
 /// One ledger row.
 pub type Row = LedgerRow;
@@ -82,12 +82,12 @@ pub fn current_rows(rows: &[Row]) -> Vec<Row> {
     v
 }
 
-/// Export text for the submit time: the time, "unknown" when flagged, else `none`.
+/// Export text for the submit time: the time, "unknown", else `none`.
 fn time_cell<'a>(r: &'a Row, none: &'a str) -> &'a str {
-    match (&r.submit_time, r.submit_time_unknown) {
-        (Some(t), _) => t,
-        (None, Some(true)) => "unknown",
-        _ => none,
+    match (r.submit_time(), &r.submit_time) {
+        (Some(SubmitTime::Known(_)), Some(t)) => t,
+        (Some(_), _) => "unknown",
+        (None, _) => none,
     }
 }
 
@@ -306,7 +306,9 @@ pub(crate) mod tests {
 
     #[test]
     fn submit_time_required_unless_prepared() {
-        assert!(parse_ledger(&row("https://example.test/j/1", "submitted", None)).is_err());
+        let r: Row =
+            serde_json::from_str(&row("https://example.test/j/1", "submitted", None)).unwrap();
+        assert!(validate_row(&r).is_err());
         assert!(parse_ledger(&row("https://example.test/j/1", "prepared", None)).is_ok());
     }
 
@@ -442,7 +444,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn withdrawn_may_omit_submit_time_but_sent_statuses_may_not() {
+    fn legacy_sent_rows_read_as_unknown_but_new_writes_stay_strict() {
         assert!(parse_ledger(&row("https://example.test/j/1", "withdrawn", None)).is_ok());
         assert!(parse_ledger(&row(
             "https://example.test/j/1",
@@ -451,9 +453,19 @@ pub(crate) mod tests {
         ))
         .is_ok());
         for st in ["submitted", "interview", "rejected", "silent-closed"] {
+            let rows = parse_ledger(&row("https://example.test/j/1", st, None))
+                .unwrap_or_else(|e| panic!("{st}: {e}"));
+            assert_eq!(rows[0].submit_time(), Some(SubmitTime::Unknown), "{st}");
             assert!(
-                parse_ledger(&row("https://example.test/j/1", st, None)).is_err(),
+                export_csv(&rows).contains(&format!(",{st},unknown,cv-sample-1")),
                 "{st}"
+            );
+            let r: Row = serde_json::from_str(&row("https://example.test/j/1", st, None)).unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let err = append_row(&dir.path().join("l.jsonl"), &r).unwrap_err();
+            assert!(
+                err.to_string().contains("submit_time_unknown"),
+                "{st}: {err}"
             );
         }
         let text = format!(
@@ -512,9 +524,6 @@ pub(crate) mod tests {
         assert!(parse_ledger(&unknown_time_row("prepared", "null", "true")).is_err());
         assert!(parse_ledger(&unknown_time_row("withdrawn", "null", "true")).is_err());
         assert!(parse_ledger(&unknown_time_row("rejected", "null", "false")).is_err());
-        // plain null on a sent status still refused, and the error names the honest option
-        let err = parse_ledger(&row("https://example.test/j/1", "rejected", None)).unwrap_err();
-        assert!(err.to_string().contains("submit_time_unknown"), "{err}");
     }
 
     #[test]

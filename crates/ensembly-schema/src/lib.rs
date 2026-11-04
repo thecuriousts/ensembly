@@ -19,7 +19,11 @@ pub use pack::*;
 pub use wire::{decode_line, encode_line, Decoded};
 
 /// Optional check applied by [`decode_line`] after serde accepts the object.
-pub trait Checked {
+pub trait Checked: Sized {
+    /// Read-side repair of legacy shapes, applied by [`decode_line`] before [`Checked::check`].
+    fn normalize(self) -> Self {
+        self
+    }
     fn check(&self) -> Result<(), String> {
         Ok(())
     }
