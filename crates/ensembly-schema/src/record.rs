@@ -76,7 +76,11 @@ mod hash_hex {
     where
         S: Serializer,
     {
-        let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        let mut hex = String::with_capacity(64);
+        for b in bytes {
+            use std::fmt::Write;
+            write!(hex, "{b:02x}").map_err(serde::ser::Error::custom)?;
+        }
         s.serialize_str(&hex)
     }
 
@@ -437,6 +441,9 @@ mod tests {
     use crate::{decode_line, encode_line, SCHEMA_VERSION};
     use serde_json::json;
 
+    type LegalEdgeArgs = fn() -> (Option<Evidence>, Option<SubmitTime>, Option<StockholmTime>);
+    type LegalEdge = (Status, EventKind, LegalEdgeArgs);
+
     const FIXTURE: &str = "fixtures/record-events-v1.jsonl";
 
     fn t() -> StockholmTime {
@@ -576,11 +583,7 @@ mod tests {
 
     #[test]
     fn legal_transition_edges_match_statechart() {
-        let edges: &[(
-            Status,
-            EventKind,
-            fn() -> (Option<Evidence>, Option<SubmitTime>, Option<StockholmTime>),
-        )] = &[
+        let edges: &[LegalEdge] = &[
             (Status::Intended, EventKind::Submit, || {
                 (None, Some(SubmitTime::Unknown), None)
             }),
@@ -715,6 +718,16 @@ mod tests {
             let d = decode_line::<EventEnvelope<RecordEventPayload>>(line).unwrap();
             assert_eq!(d.version, SCHEMA_VERSION);
             assert_eq!(encode_line(SCHEMA_VERSION, &d.value).unwrap(), line);
+            let row = RecordEventLine {
+                body: d.value.clone(),
+                v: crate::version_one::VersionOne,
+            };
+            assert_eq!(row.body.schema_v, SCHEMA_VERSION);
+            assert!(matches!(
+                row.body.payload.host.as_str(),
+                "laptop-1" | "laptop-2" | "mac-mini"
+            ));
+            let _ = row.v;
         }
     }
 
