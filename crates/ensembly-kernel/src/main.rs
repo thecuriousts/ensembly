@@ -29,6 +29,7 @@ use ensembly_kernel::turn::{
     actions_from_fixture_path, build_channel_ir, context_at, rank_now, Action,
 };
 use ensembly_kernel::{kernel_version, private_path_patterns};
+use ensembly_schema::{commit_json, feed_json, recover_json, snapshot_json, CommitFault};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -199,6 +200,11 @@ enum Commands {
         #[command(subcommand)]
         sub: AppsCmd,
     },
+    /// Append a record unit, or read a snapshot or change feed
+    Record {
+        #[command(subcommand)]
+        sub: RecordCmd,
+    },
     /// One-shot copy-if-missing: peram-* local files → ensembly-* (never overwrite, never delete)
     #[command(name = "migrate-local-paths")]
     MigrateLocalPaths {
@@ -210,6 +216,51 @@ enum Commands {
         root: Option<PathBuf>,
         #[arg(long, default_value_t = false)]
         json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RecordCmd {
+    /// Append one unit
+    Commit {
+        /// Event log path
+        #[arg(long)]
+        log: PathBuf,
+        /// Unit JSON: an event array, or an object with an events array
+        #[arg(long)]
+        unit: String,
+    },
+    /// Finish a commit that stopped after fsync
+    Recover {
+        /// Event log path
+        #[arg(long)]
+        log: PathBuf,
+    },
+    /// Read a snapshot or a change feed
+    View {
+        #[command(subcommand)]
+        sub: RecordViewCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum RecordViewCmd {
+    /// Facts at one version
+    Snapshot {
+        /// Event log path
+        #[arg(long)]
+        log: PathBuf,
+        /// Version to read. Omit for the newest version in the log.
+        #[arg(long)]
+        at: Option<u64>,
+    },
+    /// Events strictly after a version
+    Feed {
+        /// Event log path
+        #[arg(long)]
+        log: PathBuf,
+        #[arg(long)]
+        since: u64,
     },
 }
 
@@ -712,6 +763,34 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
         Commands::Runtime { sub } => cmd_runtime(ctx, sub),
         Commands::Apps { ledger, sub } => cmd_apps(ledger, sub),
         Commands::ChannelPulse { sub } => cmd_channel_pulse(&ctx.db_path, sub),
+        Commands::Record { sub } => cmd_record(sub),
+    }
+}
+
+fn cmd_record(cmd: RecordCmd) -> Result<()> {
+    match cmd {
+        RecordCmd::Commit { log, unit } => {
+            let result = commit_json(&log, &unit, &CommitFault::default())?;
+            println!("{}", serde_json::to_string(&result)?);
+            Ok(())
+        }
+        RecordCmd::Recover { log } => {
+            let result = recover_json(&log, &CommitFault::default())?;
+            println!("{}", serde_json::to_string(&result)?);
+            Ok(())
+        }
+        RecordCmd::View { sub } => match sub {
+            RecordViewCmd::Snapshot { log, at } => {
+                let snap = snapshot_json(&log, at)?;
+                println!("{}", serde_json::to_string(&snap)?);
+                Ok(())
+            }
+            RecordViewCmd::Feed { log, since } => {
+                let feed = feed_json(&log, since)?;
+                println!("{}", serde_json::to_string(&feed)?);
+                Ok(())
+            }
+        },
     }
 }
 
