@@ -221,7 +221,7 @@ mod tests {
     fn no_silent_merge_of_disagreeing_copy() {
         let mut owner = owner_submitted();
         let copy = stale_copy();
-        assert!(reconcile(&owner, &[copy.clone()]).is_some());
+        assert!(reconcile(&owner, std::slice::from_ref(&copy)).is_some());
         assert_eq!(
             merge_copy_into_owner(&mut owner, &copy),
             Err(ReconcileError::SilentMergeRefused)
