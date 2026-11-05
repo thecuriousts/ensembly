@@ -1,0 +1,44 @@
+[
+  {
+    "id": "01JCV1Q8Z00000000000000000",
+    "aggregate": "agg://example.test/acme-north/staff/1",
+    "key": "scenario-a-intent",
+    "version": 1,
+    "event_time": "2026-10-26T18:59:00+01:00",
+    "record_time": "2026-10-26T19:00:00+01:00",
+    "source": "owner",
+    "schema_v": 1,
+    "payload": {
+      "writer": "laptop-1",
+      "note": "scenario-a intent"
+    }
+  },
+  {
+    "id": "01JCV1Q8Z10000000000000000",
+    "aggregate": "agg://example.test/acme-north/staff/1",
+    "key": "scenario-a-advance",
+    "version": 2,
+    "event_time": "2026-10-26T19:30:00+01:00",
+    "record_time": "2026-10-26T19:31:00+01:00",
+    "source": "human",
+    "schema_v": 1,
+    "payload": {
+      "writer": "laptop-1",
+      "note": "scenario-a advance"
+    }
+  },
+  {
+    "id": "01JCV1Q8Z20000000000000000",
+    "aggregate": "agg://example.test/riverbench/fde/1",
+    "key": "scenario-a-b",
+    "version": 1,
+    "event_time": "2026-07-01T10:00:00+02:00",
+    "record_time": "2026-07-01T10:05:00+02:00",
+    "source": "owner",
+    "schema_v": 1,
+    "payload": {
+      "writer": "mac-mini",
+      "note": "scenario-a second aggregate"
+    }
+  }
+]
