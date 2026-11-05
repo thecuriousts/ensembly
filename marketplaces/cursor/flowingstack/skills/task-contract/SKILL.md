@@ -39,6 +39,7 @@ A3  k = metric ∧ no number → route = empty
 A4  route = empty → route ≠ light
 A5  ledger row cites C.id
 A6  C.counter names one metric that must not regress
+A7  C.check written before work; review per references/verify.md
 ```
 
 | check kind | route |
