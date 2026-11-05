@@ -1,0 +1,7 @@
+id: record-layer-m3-replay
+input: master 96ded97 M1 types M2 commit event logs
+output: replay.rs parse replay restore_drill; scenario A+D tests green
+check: test:cargo test -p ensembly-schema replay::
+reversible: yes
+blast: low
+counter: replay done-tests

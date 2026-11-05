@@ -13,6 +13,7 @@ mod commit;
 mod ledger;
 mod pack;
 mod record;
+mod replay;
 mod wire;
 
 pub use audit::*;
@@ -23,6 +24,10 @@ pub use record::{
     transition, Aggregate, AggregateId, ConflictState, EventEnvelope, EventId, EventKind, Evidence,
     Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Source, StockholmTime, TextForm,
     Version,
+};
+pub use replay::{
+    current_rows, parse_event_log, replay, replay_log_file, restore_drill, restore_log,
+    MaterializedAggregate, ReplayError,
 };
 pub use wire::{decode_line, encode_line, Decoded};
 
