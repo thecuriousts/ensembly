@@ -45,10 +45,7 @@ impl StockholmTime {
 pub struct TextForm(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Hash(
-    #[serde(with = "hash_hex")]
-    pub [u8; 32],
-);
+pub struct Hash(#[serde(with = "hash_hex")] pub [u8; 32]);
 
 #[cfg(test)]
 impl schemars::JsonSchema for EventId {
@@ -188,7 +185,11 @@ pub struct IllegalTransition {
 
 impl fmt::Display for IllegalTransition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "illegal {:?} from {:?}: {}", self.kind, self.from, self.reason)
+        write!(
+            f,
+            "illegal {:?} from {:?}: {}",
+            self.kind, self.from, self.reason
+        )
     }
 }
 
@@ -356,9 +357,13 @@ pub fn transition(
             Ok(Status::Silent { since: t })
         }
         (Status::NextStage { .. }, Withdraw) => Ok(Status::Withdrawn),
-        (Status::Rejected { .. } | Status::Silent { .. } | Status::Expired { .. } | Status::Withdrawn, _) => {
-            Err(err("terminal status"))
-        }
+        (
+            Status::Rejected { .. }
+            | Status::Silent { .. }
+            | Status::Expired { .. }
+            | Status::Withdrawn,
+            _,
+        ) => Err(err("terminal status")),
         (Status::Intended, Confirm | Reject | Advance | Silence) => Err(err("never acted")),
         (Status::Submitted { .. }, Submit) => Err(err("already submitted")),
         (Status::Confirmed { .. }, Submit | Confirm | Expire) => Err(err("already past submit")),
@@ -466,12 +471,8 @@ mod tests {
 
     #[test]
     fn version_two_line_refused() {
-        let line = std::fs::read_to_string(format!(
-            "{}/{}",
-            env!("CARGO_MANIFEST_DIR"),
-            FIXTURE
-        ))
-        .unwrap();
+        let line =
+            std::fs::read_to_string(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), FIXTURE)).unwrap();
         let first = line.lines().find(|l| !l.trim().is_empty()).unwrap();
         let bad = first.replacen("\"v\":1", "\"v\":2", 1);
         assert!(decode_line::<EventEnvelope<RecordEventPayload>>(&bad).is_err());
@@ -505,25 +506,14 @@ mod tests {
             sample_status(Status::Withdrawn),
         ];
         for s in terminal {
-            for k in [
-                EventKind::Submit,
-                EventKind::Confirm,
-                EventKind::Withdraw,
-            ] {
+            for k in [EventKind::Submit, EventKind::Confirm, EventKind::Withdraw] {
                 assert!(transition(s.clone(), k, Some(ev("x")), None, None).is_err());
             }
         }
         let submitted = sample_status(Status::Submitted {
             submit: SubmitTime::Unknown,
         });
-        assert!(transition(
-            submitted,
-            EventKind::Confirm,
-            None,
-            None,
-            None
-        )
-        .is_err());
+        assert!(transition(submitted, EventKind::Confirm, None, None, None).is_err());
     }
 
     #[test]
@@ -566,7 +556,10 @@ mod tests {
 
     #[test]
     fn from_ledger_maps_names() {
-        assert!(matches!(Status::from(ledger::Status::Prepared), Status::Intended));
+        assert!(matches!(
+            Status::from(ledger::Status::Prepared),
+            Status::Intended
+        ));
         assert!(matches!(
             Status::from(ledger::Status::Submitted),
             Status::Submitted { .. }
@@ -583,12 +576,18 @@ mod tests {
 
     #[test]
     fn legal_transition_edges_match_statechart() {
-        let edges: &[(Status, EventKind, fn() -> (Option<Evidence>, Option<SubmitTime>, Option<StockholmTime>))] = &[
+        let edges: &[(
+            Status,
+            EventKind,
+            fn() -> (Option<Evidence>, Option<SubmitTime>, Option<StockholmTime>),
+        )] = &[
             (Status::Intended, EventKind::Submit, || {
                 (None, Some(SubmitTime::Unknown), None)
             }),
             (Status::Intended, EventKind::Withdraw, || (None, None, None)),
-            (Status::Intended, EventKind::Expire, || (None, None, Some(t()))),
+            (Status::Intended, EventKind::Expire, || {
+                (None, None, Some(t()))
+            }),
             (
                 Status::Submitted {
                     submit: SubmitTime::Unknown,
@@ -703,20 +702,15 @@ mod tests {
         assert_eq!(edges.len(), 18);
         for (from, kind, args) in edges {
             let (ev, sub, at) = args();
-            transition(from.clone(), *kind, ev, sub, at).unwrap_or_else(|e| {
-                panic!("legal edge {:?} from {:?}: {e}", kind, from)
-            });
+            transition(from.clone(), *kind, ev, sub, at)
+                .unwrap_or_else(|e| panic!("legal edge {:?} from {:?}: {e}", kind, from));
         }
     }
 
     #[test]
     fn fixture_lines_round_trip() {
-        let text = std::fs::read_to_string(format!(
-            "{}/{}",
-            env!("CARGO_MANIFEST_DIR"),
-            FIXTURE
-        ))
-        .unwrap();
+        let text =
+            std::fs::read_to_string(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), FIXTURE)).unwrap();
         for line in text.lines().filter(|l| !l.trim().is_empty()) {
             let d = decode_line::<EventEnvelope<RecordEventPayload>>(line).unwrap();
             assert_eq!(d.version, SCHEMA_VERSION);

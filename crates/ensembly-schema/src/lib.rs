@@ -18,9 +18,9 @@ pub use audit::*;
 pub use ledger::*;
 pub use pack::*;
 pub use record::{
-    transition, Aggregate, AggregateId, ConflictState, EventEnvelope, EventId, EventKind,
-    Evidence, Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Source,
-    StockholmTime, TextForm, Version,
+    transition, Aggregate, AggregateId, ConflictState, EventEnvelope, EventId, EventKind, Evidence,
+    Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Source, StockholmTime, TextForm,
+    Version,
 };
 pub use wire::{decode_line, encode_line, Decoded};
 
