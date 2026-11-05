@@ -254,6 +254,9 @@ fn fixtures_exclude_personal_markers() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures");
     let mut n = 0;
     for ent in std::fs::read_dir(dir).unwrap().map(|e| e.unwrap()) {
+        if ent.path().is_dir() {
+            continue;
+        }
         let body = std::fs::read_to_string(ent.path()).unwrap();
         assert!(!body.is_empty());
         for bad in ["@", "+46", "/home/"] {
