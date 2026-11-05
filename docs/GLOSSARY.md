@@ -45,7 +45,7 @@
 | **pi** | pi (agent runtime) | External agent/toolchain; secondary DelegationBackend adapter when wired. |
 | **Grok ACP** | Grok Agent Client Protocol | Official: `grok agent stdio` — JSON-RPC NDJSON ([docs](https://docs.x.ai/build/cli/headless-scripting#acp)). |
 | **Grok MCP** | Grok Model Context Protocol | Official: `grok mcp add` / `.grok/config.toml` ([docs](https://docs.x.ai/build/features/mcp-servers)). Tools namespaced `server__tool`. |
-| **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Grok, Cursor, opencode, Eve). Live: read-only `ensembly-mcp` `memory_*` + `swarm_banner`. `kernel_status` deferred. |
+| **MCP** | Model Context Protocol | Standard JSON-RPC tool/resource surface for model hosts (Grok, Cursor, opencode, Eve). Live: `memory_*`, `swarm_banner`, `record_commit`, `record_view_snapshot`, `record_view_feed`. Reconcile and Sync are deferred. |
 | **ACP** | Agent Client Protocol | Agent-to-agent session protocol (used by `opencode acp`); planned path for delegating HOOTL digital work. |
 | **mesh** / **participatory-mesh** | Multi-device CommandFabric | Public: [thecuriousts/participatory-mesh](https://github.com/thecuriousts/participatory-mesh). Allowlisted task dispatch and shared operator governance across private-network participants. Increases ensembly value by executing approved work off-box; does not replace the life ledger. |
 | **JSON-RPC** | JSON Remote Procedure Call | Request/response envelope used by MCP and ACP. |

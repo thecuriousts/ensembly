@@ -1,10 +1,13 @@
-//! Read-only Model Context Protocol server for episodic memory.
+//! Model Context Protocol server for episodic memory and record Commit/View.
 //! Primary consumer: Grok (via `grok mcp add` / `.grok/config.toml` or Cursor MCP config).
-//! Mutating tools are out of scope for P4a — record path stays kernel CLI.
+//! Record tools: `record_commit`, `record_view_snapshot`, `record_view_feed`.
+//! Reconcile and Sync tools are deferred.
+//! Memory tools are unchanged. `record_commit` writes only a sandbox temp path, a `data/local` path, or `ENSEMBLY_RECORD_LOG`.
 
 use ensembly_memory::{coherence_report, propose_goals, EpisodicMemory, TrajectoryType};
+use ensembly_schema::{commit_json, feed_json, snapshot_json, CommitFault};
 use serde_json::{json, Value};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use crate::rpc::{rpc_error, serve_stdio, DispatchResult};
 
@@ -51,6 +54,41 @@ fn tool_defs() -> Value {
             "name": "swarm_banner",
             "description": "ensembly-agents / ensembly-memory version banner and paths.",
             "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "record_commit",
+            "description": "Append one record unit to a local log. The log must be ENSEMBLY_RECORD_LOG, under data/local, or under the sandbox temp dir.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "log": {"type": "string", "description": "Event log path. Defaults to ENSEMBLY_RECORD_LOG."},
+                    "unit": {"description": "Unit JSON: an event array, an object with events, or a string of that JSON."}
+                },
+                "required": ["unit"]
+            }
+        },
+        {
+            "name": "record_view_snapshot",
+            "description": "Read-only snapshot of a record log. view_append stays refused.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "log": {"type": "string"},
+                    "at": {"type": "integer", "description": "Version. Omit for the newest version in the log."}
+                }
+            }
+        },
+        {
+            "name": "record_view_feed",
+            "description": "Read-only change feed of events after a version.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "log": {"type": "string"},
+                    "since": {"type": "integer"}
+                },
+                "required": ["since"]
+            }
         }
     ])
 }
@@ -141,6 +179,125 @@ fn open_mem(path: &PathBuf, agent_id: &str) -> Result<EpisodicMemory, Value> {
         .map_err(|e| rpc_error(-32000, &format!("open memory {path:?}: {e}")))
 }
 
+fn record_log_from_args(args: &Value) -> Result<PathBuf, Value> {
+    let explicit = args
+        .get("log")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+    let env = std::env::var("ENSEMBLY_RECORD_LOG")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+    permit_record_log(explicit.as_deref(), env.as_deref(), &std::env::temp_dir())
+        .map_err(|e| rpc_error(-32000, &e))
+}
+
+fn permit_record_log(
+    explicit: Option<&Path>,
+    env_log: Option<&Path>,
+    temp_root: &Path,
+) -> Result<PathBuf, String> {
+    let chosen = match (explicit, env_log) {
+        (Some(path), _) => path.to_path_buf(),
+        (None, Some(path)) => path.to_path_buf(),
+        (None, None) => {
+            return Err("record log path required (ENSEMBLY_RECORD_LOG or log)".into());
+        }
+    };
+    let allowed = env_log.is_some_and(|env| same_path(&chosen, env))
+        || under_temp(&chosen, temp_root)
+        || under_data_local(&chosen);
+    if allowed {
+        Ok(chosen)
+    } else {
+        Err(
+            "record commit refuses paths outside a sandbox temp dir, data/local, or ENSEMBLY_RECORD_LOG"
+                .into(),
+        )
+    }
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    normalize_path(left) == normalize_path(right)
+}
+
+fn under_temp(path: &Path, temp_root: &Path) -> bool {
+    normalize_path(path).starts_with(normalize_path(temp_root))
+}
+
+fn under_data_local(path: &Path) -> bool {
+    let normalized = normalize_path(path);
+    let parts: Vec<String> = normalized
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(seg) => seg.to_str().map(str::to_string),
+            Component::RootDir
+            | Component::CurDir
+            | Component::ParentDir
+            | Component::Prefix(_) => None,
+        })
+        .collect();
+    parts
+        .windows(2)
+        .any(|pair| pair[0] == "data" && pair[1] == "local")
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut acc = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                acc.pop();
+            }
+            Component::RootDir | Component::Prefix(_) => acc.push(component),
+            Component::Normal(seg) => {
+                acc.push(seg);
+                if acc.exists() {
+                    if let Ok(canon) = acc.canonicalize() {
+                        acc = canon;
+                    }
+                }
+            }
+        }
+    }
+    acc
+}
+
+fn unit_json(args: &Value) -> Result<String, Value> {
+    match args.get("unit") {
+        None | Some(Value::Null) => Err(invalid_params("unit required")),
+        Some(Value::String(text)) => Ok(text.clone()),
+        Some(other) => serde_json::to_string(other).map_err(|e| invalid_params(&e.to_string())),
+    }
+}
+
+fn required_u64(args: &Value, key: &str) -> Result<u64, Value> {
+    match json_u64_opt(args.get(key))? {
+        Some(n) => Ok(n),
+        None => Err(invalid_params(&format!("{key} required"))),
+    }
+}
+
+fn json_u64_opt(v: Option<&Value>) -> Result<Option<u64>, Value> {
+    let Some(v) = v else {
+        return Ok(None);
+    };
+    if v.is_null() {
+        return Ok(None);
+    }
+    v.as_u64()
+        .or_else(|| v.as_i64().and_then(|n| u64::try_from(n).ok()))
+        .or_else(|| {
+            v.as_f64()
+                .filter(|n| n.is_finite() && *n >= 0.0)
+                .map(|n| n as u64)
+        })
+        .map(Some)
+        .ok_or_else(|| invalid_params("version must be a non-negative integer"))
+}
+
 fn call_tool(name: &str, args: &Value, memory_path: &PathBuf, agent_id: &str) -> DispatchResult {
     match name {
         "swarm_banner" => Ok(text_content(json!({
@@ -149,7 +306,7 @@ fn call_tool(name: &str, args: &Value, memory_path: &PathBuf, agent_id: &str) ->
             "memory": ensembly_memory::memory_version(),
             "memoryPath": memory_path,
             "agentId": agent_id,
-            "note": "Control SoT remains ensembly-kernel; this server is read-only aux. Prefer absolute ENSEMBLY_MEMORY (alias PERAM_MEMORY).",
+            "note": "Control SoT remains the kernel. Memory tools are read-only. record_commit writes only a sandbox temp path, a data/local path, or ENSEMBLY_RECORD_LOG.",
             "grok": {
                 "acp": "grok agent stdio",
                 "headless": "grok -p \"…\" --output-format json --no-auto-update",
@@ -202,6 +359,31 @@ fn call_tool(name: &str, args: &Value, memory_path: &PathBuf, agent_id: &str) ->
                 "value": mem.doc().get_context(key),
             })))
         }
+        "record_commit" => {
+            let log = record_log_from_args(args)?;
+            let unit = unit_json(args)?;
+            let result = commit_json(&log, &unit, &CommitFault::default())
+                .map_err(|e| rpc_error(-32000, &e.to_string()))?;
+            let body =
+                serde_json::to_value(&result).map_err(|e| rpc_error(-32000, &e.to_string()))?;
+            Ok(text_content(body))
+        }
+        "record_view_snapshot" => {
+            let log = record_log_from_args(args)?;
+            let at = json_u64_opt(args.get("at"))?;
+            let snap = snapshot_json(&log, at).map_err(|e| rpc_error(-32000, &e.to_string()))?;
+            let body =
+                serde_json::to_value(&snap).map_err(|e| rpc_error(-32000, &e.to_string()))?;
+            Ok(text_content(body))
+        }
+        "record_view_feed" => {
+            let log = record_log_from_args(args)?;
+            let since = required_u64(args, "since")?;
+            let feed = feed_json(&log, since).map_err(|e| rpc_error(-32000, &e.to_string()))?;
+            let body =
+                serde_json::to_value(&feed).map_err(|e| rpc_error(-32000, &e.to_string()))?;
+            Ok(text_content(body))
+        }
         "memory_recent_trajectory" => {
             let hours = json_i64(args.get("hours"), 24).max(0);
             let limit = json_usize(args.get("limit"), 40);
@@ -242,6 +424,7 @@ fn call_tool(name: &str, args: &Value, memory_path: &PathBuf, agent_id: &str) ->
 mod tests {
     use super::*;
     use ensembly_memory::TrajectoryType;
+    use ensembly_schema::ViewContract;
 
     #[test]
     fn json_numeric_accepts_floats() {
@@ -291,6 +474,152 @@ mod tests {
             body["count"], 5,
             "float limit must not fall back to default 40"
         );
+    }
+
+    #[test]
+    fn record_commit_refuses_paths_outside_sandbox_or_local_data() {
+        let err = call_tool(
+            "record_commit",
+            &json!({
+                "log": "/etc/record-events.jsonl",
+                "unit": "[]"
+            }),
+            &PathBuf::from("unused-memory.json"),
+            "peram-swarm",
+        )
+        .unwrap_err();
+        let msg = err["message"].as_str().unwrap_or("");
+        assert!(
+            msg.contains("data/local") || msg.contains("sandbox"),
+            "{msg}"
+        );
+        assert!(!PathBuf::from("/etc/record-events.jsonl").exists());
+    }
+
+    #[test]
+    fn record_log_allows_data_local_and_exact_env_path() {
+        let temp = Path::new("/tmp/record-sandbox");
+        let local = Path::new("data/local/events.jsonl");
+        assert!(permit_record_log(Some(local), None, temp).is_ok());
+        let custom = Path::new("/var/empty/record-events.jsonl");
+        assert!(permit_record_log(None, Some(custom), temp).is_ok());
+        assert!(permit_record_log(Some(custom), Some(custom), temp).is_ok());
+        assert!(
+            permit_record_log(Some(Path::new("/etc/record-events.jsonl")), None, temp).is_err()
+        );
+        assert!(permit_record_log(None, None, temp).is_err());
+    }
+
+    #[test]
+    fn scenario_a_mcp_commit_snapshot_equals_replay_and_rejects_same_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("events.jsonl");
+        let unit = std::fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../ensembly-schema/fixtures/scenarios/a-happy-events.json"),
+        )
+        .unwrap();
+        let memory = PathBuf::from("unused-memory.json");
+        let committed = call_tool(
+            "record_commit",
+            &json!({ "log": log, "unit": unit }),
+            &memory,
+            "peram-swarm",
+        )
+        .expect("commit");
+        let committed_body = tool_body(&committed);
+        assert_eq!(committed_body["phase"], "done");
+
+        let snap_body = tool_body(
+            &call_tool(
+                "record_view_snapshot",
+                &json!({ "log": log }),
+                &memory,
+                "peram-swarm",
+            )
+            .expect("snapshot"),
+        );
+        let snap: ensembly_schema::Snapshot =
+            serde_json::from_value(snap_body).expect("snapshot json");
+        let text = std::fs::read_to_string(&log).unwrap();
+        let events =
+            ensembly_schema::parse_event_log::<ensembly_schema::JsonPayload>(&text).unwrap();
+        let rows = ensembly_schema::replay(&events).unwrap();
+        let via = ensembly_schema::RecordView::from_events(events)
+            .snapshot_at(snap.at)
+            .unwrap();
+        assert_eq!(snap, via);
+        assert_eq!(snap.facts.len(), rows.len());
+
+        let again = call_tool(
+            "record_commit",
+            &json!({ "log": log, "unit": unit }),
+            &memory,
+            "peram-swarm",
+        )
+        .unwrap_err();
+        assert!(
+            again["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("idempotency"),
+            "{again}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&log)
+                .unwrap()
+                .lines()
+                .filter(|l| !l.trim().is_empty())
+                .count(),
+            3
+        );
+
+        let before = std::fs::read(&log).unwrap();
+        let feed = tool_body(
+            &call_tool(
+                "record_view_feed",
+                &json!({ "log": log, "since": 1 }),
+                &memory,
+                "peram-swarm",
+            )
+            .expect("feed"),
+        );
+        assert_eq!(feed["since"], 1);
+        assert!(feed["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| e["version"].as_u64().unwrap() > 1));
+        assert_eq!(std::fs::read(&log).unwrap(), before);
+
+        let tools = tool_defs();
+        let names: Vec<_> = tools
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap().to_string())
+            .collect();
+        for name in [
+            "memory_recent_trajectory",
+            "memory_get_report",
+            "memory_list_skills",
+            "memory_propose_goals",
+            "memory_get_context",
+            "swarm_banner",
+            "record_commit",
+            "record_view_snapshot",
+            "record_view_feed",
+        ] {
+            assert!(names.iter().any(|n| n == name), "{names:?}");
+        }
+        assert!(names
+            .iter()
+            .all(|n| !n.contains("reconcile") && !n.contains("sync")));
+    }
+
+    fn tool_body(result: &Value) -> Value {
+        let text = result["content"][0]["text"].as_str().unwrap();
+        serde_json::from_str(text).unwrap()
     }
 
     #[test]
