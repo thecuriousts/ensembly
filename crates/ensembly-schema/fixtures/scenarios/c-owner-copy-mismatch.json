@@ -1,0 +1,17 @@
+{
+  "owner": {
+    "aggregate": "agg://example.test/cobalt-signal/role/1",
+    "version": 2,
+    "text": "submitted",
+    "at": "2026-10-26T19:00:00+01:00"
+  },
+  "copies": [
+    {
+      "source": "human",
+      "aggregate": "agg://example.test/cobalt-signal/role/1",
+      "version": 1,
+      "text": "intended",
+      "at": "2026-10-25T08:00:00+01:00"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ mod audit;
 mod commit;
 mod ledger;
 mod pack;
+mod reconcile;
 mod record;
 mod replay;
 mod wire;
@@ -20,6 +21,10 @@ pub use audit::*;
 pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
 pub use ledger::*;
 pub use pack::*;
+pub use reconcile::{
+    apply_conflict_action, is_terminal, merge_copy_into_owner, reconcile, Conflict, ConflictAction,
+    ConflictValue, CopySnapshot, IllegalConflictTransition, OwnerSnapshot, ReconcileError,
+};
 pub use record::{
     transition, Aggregate, AggregateId, ConflictState, EventEnvelope, EventId, EventKind, Evidence,
     Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Source, StockholmTime, TextForm,

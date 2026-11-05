@@ -1,0 +1,7 @@
+id: record-layer-m4-reconcile
+input: master f1242d2 generic owner/copy snapshots
+output: reconcile.rs detect conflict state machine no silent merge
+check: test:cargo test -p ensembly-schema reconcile::
+reversible: yes
+blast: low
+counter: reconcile done-tests
