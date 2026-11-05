@@ -1,0 +1,7 @@
+id: record-layer-m5-read-contract
+input: master 46700cd event log replay materialized aggregates
+output: view.rs ViewContract snapshot_at change_feed read-only views
+check: test:cargo test -p ensembly-schema view::
+reversible: yes
+blast: low
+counter: read contract done-tests
