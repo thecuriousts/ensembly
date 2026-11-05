@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RecordEventLine",
+  "type": "object",
+  "required": [
+    "aggregate",
+    "event_time",
+    "id",
+    "key",
+    "payload",
+    "record_time",
+    "schema_v",
+    "source",
+    "v",
+    "version"
+  ],
+  "properties": {
+    "aggregate": {
+      "type": "string"
+    },
+    "event_time": {
+      "type": "string"
+    },
+    "id": {
+      "$ref": "#/definitions/EventId"
+    },
+    "key": {
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/definitions/RecordEventPayload"
+    },
+    "prev_hash": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Hash"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "record_time": {
+      "type": "string"
+    },
+    "schema_v": {
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0.0
+    },
+    "source": {
+      "$ref": "#/definitions/Source"
+    },
+    "v": {
+      "const": 1
+    },
+    "version": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "EventId": {
+      "type": "string"
+    },
+    "Hash": {
+      "type": "string"
+    },
+    "RecordEventPayload": {
+      "type": "object",
+      "required": [
+        "company",
+        "host"
+      ],
+      "properties": {
+        "company": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Source": {
+      "type": "string",
+      "enum": [
+        "owner",
+        "collab-finder",
+        "cos-copy",
+        "gmail",
+        "linear",
+        "ats",
+        "human",
+        "document"
+      ]
+    }
+  }
+}
