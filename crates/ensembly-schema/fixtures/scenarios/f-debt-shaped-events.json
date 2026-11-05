@@ -1,0 +1,17 @@
+[
+  {
+    "id": "01JCV1Q8Z40000000000000000",
+    "aggregate": "agg://payer.example.test/ledger/1",
+    "key": "scenario-f-1",
+    "version": 1,
+    "event_time": "2026-10-26T18:59:00+01:00",
+    "record_time": "2026-10-26T19:00:00+01:00",
+    "source": "document",
+    "schema_v": 1,
+    "payload": {
+      "payer": "payer.example.test",
+      "amount_sek": 1200,
+      "writer": "laptop-1"
+    }
+  }
+]

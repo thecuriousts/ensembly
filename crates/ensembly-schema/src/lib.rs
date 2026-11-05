@@ -15,6 +15,7 @@ mod pack;
 mod reconcile;
 mod record;
 mod replay;
+mod view;
 mod wire;
 
 pub use audit::*;
@@ -33,6 +34,9 @@ pub use record::{
 pub use replay::{
     current_rows, parse_event_log, replay, replay_log_file, restore_drill, restore_log,
     MaterializedAggregate, ReplayError,
+};
+pub use view::{
+    view_append, ChangeEvent, Fact, Feed, RecordView, Snapshot, ViewContract, ViewError,
 };
 pub use wire::{decode_line, encode_line, Decoded};
 
