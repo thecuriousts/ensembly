@@ -15,6 +15,7 @@ mod pack;
 mod reconcile;
 mod record;
 mod replay;
+mod sync;
 mod view;
 mod wire;
 
@@ -35,6 +36,7 @@ pub use replay::{
     current_rows, parse_event_log, replay, replay_log_file, restore_drill, restore_log,
     MaterializedAggregate, ReplayError,
 };
+pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};
 pub use view::{
     view_append, ChangeEvent, Fact, Feed, RecordView, Snapshot, ViewContract, ViewError,
 };

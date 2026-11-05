@@ -1,0 +1,7 @@
+id: record-layer-m6-sync-ttl
+input: master 7de51e8 read contract event logs
+output: sync.rs merge_offline expire_if_stale clock skew bounds
+check: test:cargo test -p ensembly-schema sync::
+reversible: yes
+blast: low
+counter: sync ttl done-tests
