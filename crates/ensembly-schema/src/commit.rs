@@ -31,7 +31,7 @@ pub struct CommitFault {
     pub append_abort_after_bytes: Option<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommitResult {
     pub phase: CommitPhase,
 }
