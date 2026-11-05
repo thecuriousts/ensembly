@@ -1,0 +1,7 @@
+id: record-layer-m2-commit
+input: master 47342fc generic record Commit unit-of-work
+output: commit.rs with validate append fsync verify recover; scenario D tests green
+check: test:cargo test -p ensembly-schema commit::
+reversible: yes
+blast: low
+counter: commit done-tests

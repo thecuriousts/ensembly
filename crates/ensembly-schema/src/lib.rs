@@ -9,12 +9,14 @@
 pub const SCHEMA_VERSION: u32 = 1;
 
 mod audit;
+mod commit;
 mod ledger;
 mod pack;
 mod record;
 mod wire;
 
 pub use audit::*;
+pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
 pub use ledger::*;
 pub use pack::*;
 pub use record::{

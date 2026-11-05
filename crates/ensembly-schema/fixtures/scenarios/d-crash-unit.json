@@ -1,0 +1,32 @@
+{
+  "events": [
+    {
+      "id": "01JCV1Q8Z00000000000000000",
+      "aggregate": "agg://example.test/riverbench/widget/1",
+      "key": "scenario-d-1",
+      "version": 1,
+      "event_time": "2026-10-26T18:59:00+01:00",
+      "record_time": "2026-10-26T19:00:00+01:00",
+      "source": "owner",
+      "schema_v": 1,
+      "payload": {
+        "writer": "laptop-1",
+        "note": "scenario-d intent"
+      }
+    },
+    {
+      "id": "01JCV1Q8Z10000000000000000",
+      "aggregate": "agg://example.test/cobalt/widget/1",
+      "key": "scenario-d-2",
+      "version": 2,
+      "event_time": "2026-07-01T10:00:00+02:00",
+      "record_time": "2026-07-01T10:05:00+02:00",
+      "source": "human",
+      "schema_v": 1,
+      "payload": {
+        "writer": "mac-mini",
+        "note": "scenario-d follow-up"
+      }
+    }
+  ]
+}
