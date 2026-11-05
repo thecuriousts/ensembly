@@ -5,9 +5,13 @@ use crate::record::{EventEnvelope, Version};
 use crate::replay::{parse_event_log, ReplayError};
 use crate::view::{Feed, RecordView, Snapshot, ViewContract};
 use crate::{Checked, UnitOfWork};
+use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
-use std::path::Path;
+use std::fs::{File, OpenOptions};
+#[cfg(unix)]
+use std::os::unix::io::AsRawFd;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -15,15 +19,70 @@ pub struct JsonPayload(pub serde_json::Value);
 
 impl Checked for JsonPayload {
     fn check(&self) -> Result<(), String> {
-        let Some(writer) = self.0.get("writer").and_then(|v| v.as_str()) else {
-            return Ok(());
+        let Some(obj) = self.0.as_object() else {
+            return Err("writer must be a public host alias".into());
         };
-        if matches!(writer, "laptop-1" | "laptop-2" | "mac-mini") {
-            Ok(())
-        } else {
-            Err("writer must be a public host alias".into())
+        match obj.get("writer") {
+            Some(serde_json::Value::String(writer))
+                if matches!(writer.as_str(), "laptop-1" | "laptop-2" | "mac-mini") => {}
+            Some(serde_json::Value::String(_))
+            | Some(serde_json::Value::Number(_))
+            | Some(serde_json::Value::Object(_))
+            | Some(serde_json::Value::Array(_))
+            | Some(serde_json::Value::Bool(_))
+            | Some(serde_json::Value::Null)
+            | None => return Err("writer must be a public host alias".into()),
+        }
+        if value_has_private_path(&self.0) {
+            return Err("payload contains a private path".into());
+        }
+        Ok(())
+    }
+}
+
+fn value_has_private_path(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::String(text) => text_has_private_path(text),
+        serde_json::Value::Array(items) => items.iter().any(value_has_private_path),
+        serde_json::Value::Object(map) => map.values().any(value_has_private_path),
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            false
         }
     }
+}
+
+fn text_has_private_path(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("/home/")
+        || lower.contains("/users/")
+        || lower.contains("private/")
+        || lower.contains("~/")
+}
+
+pub fn stockholm_record_now() -> String {
+    let utc = chrono::Utc::now();
+    let hours = if europe_is_cest(utc) { 2 } else { 1 };
+    let local = utc + chrono::Duration::hours(hours);
+    format!("{}+0{hours}:00", local.format("%Y-%m-%dT%H:%M:%S"))
+}
+
+fn europe_is_cest(utc: chrono::DateTime<chrono::Utc>) -> bool {
+    let year = utc.year();
+    let start = last_sunday_utc(year, 3);
+    let end = last_sunday_utc(year, 10);
+    utc >= start && utc < end
+}
+
+fn last_sunday_utc(year: i32, month: u32) -> chrono::DateTime<chrono::Utc> {
+    let next = if month == 12 {
+        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
+    }
+    .expect("calendar month");
+    let last = next.pred_opt().expect("previous day");
+    let sunday = last - chrono::Duration::days(i64::from(last.weekday().num_days_from_sunday()));
+    sunday.and_hms_opt(1, 0, 0).expect("hour").and_utc()
 }
 
 #[derive(Debug)]
@@ -56,18 +115,92 @@ pub fn commit_json(
     unit_json: &str,
     fault: &CommitFault,
 ) -> Result<CommitResult, RecordSurfaceError> {
+    let _lock = ExclusiveLogLock::acquire(log)?;
     let unit = parse_unit(unit_json)?;
     reject_known_keys(log, &unit)?;
+    #[cfg(test)]
+    test_hold();
     Commit::new(log)
         .run(unit, fault)
         .map_err(RecordSurfaceError::Commit)
 }
 
 pub fn recover_json(log: &Path, fault: &CommitFault) -> Result<CommitResult, RecordSurfaceError> {
+    let _lock = ExclusiveLogLock::acquire(log)?;
     Commit::new(log)
         .recover::<JsonPayload>(fault)
         .map_err(RecordSurfaceError::Commit)
 }
+
+struct ExclusiveLogLock {
+    file: File,
+}
+
+impl ExclusiveLogLock {
+    fn acquire(log: &Path) -> Result<Self, RecordSurfaceError> {
+        if let Some(dir) = log.parent() {
+            if !dir.as_os_str().is_empty() {
+                std::fs::create_dir_all(dir)
+                    .map_err(|e| RecordSurfaceError::Commit(CommitError::Io(e.to_string())))?;
+            }
+        }
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(log_lock_path(log))
+            .map_err(|e| RecordSurfaceError::Commit(CommitError::Io(e.to_string())))?;
+        lock_exclusive(&file)?;
+        Ok(Self { file })
+    }
+}
+
+impl Drop for ExclusiveLogLock {
+    fn drop(&mut self) {
+        unlock_exclusive(&self.file);
+    }
+}
+
+fn log_lock_path(log: &Path) -> PathBuf {
+    let mut name = log
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_else(|| std::ffi::OsString::from("events.jsonl"));
+    name.push(".lock");
+    match log.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir.join(name),
+        Some(_) | None => PathBuf::from(name),
+    }
+}
+
+#[cfg(unix)]
+fn lock_exclusive(file: &File) -> Result<(), RecordSurfaceError> {
+    // The fd stays open until the guard drops, which is what flock requires.
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(RecordSurfaceError::Commit(CommitError::Io(
+            std::io::Error::last_os_error().to_string(),
+        )))
+    }
+}
+
+#[cfg(not(unix))]
+fn lock_exclusive(_file: &File) -> Result<(), RecordSurfaceError> {
+    Err(RecordSurfaceError::Commit(CommitError::Io(
+        "record log lock requires flock".into(),
+    )))
+}
+
+#[cfg(unix)]
+fn unlock_exclusive(file: &File) {
+    unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
+}
+
+#[cfg(not(unix))]
+fn unlock_exclusive(_file: &File) {}
 
 pub fn snapshot_json(log: &Path, at: Option<u64>) -> Result<Snapshot, RecordSurfaceError> {
     let events = load_events(log)?;
@@ -114,6 +247,17 @@ fn load_events(log: &Path) -> Result<Vec<EventEnvelope<JsonPayload>>, RecordSurf
         }
     })?;
     parse_event_log(&text).map_err(RecordSurfaceError::Replay)
+}
+
+#[cfg(test)]
+fn test_hold() {
+    let Ok(raw) = std::env::var("RECORD_COMMIT_HOLD_MS") else {
+        return;
+    };
+    let Ok(ms) = raw.parse::<u64>() else {
+        return;
+    };
+    std::thread::sleep(std::time::Duration::from_millis(ms));
 }
 
 fn reject_known_keys(log: &Path, unit: &UnitOfWork<JsonPayload>) -> Result<(), RecordSurfaceError> {
@@ -281,5 +425,97 @@ mod tests {
         }]"#;
         let err = commit_json(&log, unit, &CommitFault::default()).unwrap_err();
         assert!(err.to_string().contains("public host alias"), "{err}");
+    }
+
+    fn one_event(key: &str, id: &str, payload: &str) -> String {
+        format!(
+            r#"[{{
+                "id": "{id}",
+                "aggregate": "agg://example.test/acme-north/staff/1",
+                "key": "{key}",
+                "version": 1,
+                "event_time": "2026-10-26T18:59:00+01:00",
+                "record_time": "2026-10-26T19:00:00+01:00",
+                "source": "owner",
+                "schema_v": 1,
+                "payload": {payload}
+            }}]"#
+        )
+    }
+
+    #[test]
+    fn writer_must_be_a_public_host_alias_string() {
+        let (_dir, log) = temp_log();
+        for payload in [
+            r#"{"note":"missing"}"#,
+            r#"{"writer":7}"#,
+            r#"{"writer":{"h":"laptop-1"}}"#,
+            r#""text""#,
+        ] {
+            let err = commit_json(
+                &log,
+                &one_event("writer-shape", "01JCV1Q8Z00000000000000000", payload),
+                &CommitFault::default(),
+            )
+            .unwrap_err();
+            assert!(
+                err.to_string().contains("public host alias"),
+                "{payload} {err}"
+            );
+        }
+        let leaked = format!(r#"{{"writer":"laptop-1","note":"/{}/example"}}"#, "home");
+        let err = commit_json(
+            &log,
+            &one_event("writer-leak", "01JCV1Q8Z00000000000000000", &leaked),
+            &CommitFault::default(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("private path"), "{err}");
+    }
+
+    #[test]
+    fn concurrent_commits_both_land() {
+        if std::env::var_os("RECORD_COMMIT_WORKER").is_some() {
+            let log = PathBuf::from(std::env::var("RECORD_COMMIT_LOG").unwrap());
+            let unit = std::env::var("RECORD_COMMIT_UNIT").unwrap();
+            commit_json(&log, &unit, &CommitFault::default()).unwrap();
+            return;
+        }
+        let (dir, log) = temp_log();
+        let exe = std::env::current_exe().unwrap();
+        let mut children = Vec::new();
+        for (key, id) in [
+            ("key-a", "01JCV1Q8ZA000000000000000A"),
+            ("key-b", "01JCV1Q8ZB000000000000000B"),
+        ] {
+            let unit = one_event(key, id, r#"{"writer":"laptop-1","note":"concurrent"}"#);
+            children.push(
+                std::process::Command::new(&exe)
+                    .arg("surface::tests::concurrent_commits_both_land")
+                    .arg("--exact")
+                    .env("RECORD_COMMIT_WORKER", "1")
+                    .env("RECORD_COMMIT_HOLD_MS", "400")
+                    .env("RECORD_COMMIT_LOG", &log)
+                    .env("RECORD_COMMIT_UNIT", unit)
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            );
+        }
+        for child in children {
+            let out = child.wait_with_output().unwrap();
+            assert!(
+                out.status.success(),
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        let text = std::fs::read_to_string(&log).unwrap();
+        assert!(text.contains("key-a"), "{text}");
+        assert!(text.contains("key-b"), "{text}");
+        assert_eq!(nonempty_lines(&log), 2);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

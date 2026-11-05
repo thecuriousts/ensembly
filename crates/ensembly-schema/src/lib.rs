@@ -38,7 +38,8 @@ pub use replay::{
     MaterializedAggregate, ReplayError,
 };
 pub use surface::{
-    commit_json, feed_json, recover_json, snapshot_json, JsonPayload, RecordSurfaceError,
+    commit_json, feed_json, recover_json, snapshot_json, stockholm_record_now, JsonPayload,
+    RecordSurfaceError,
 };
 pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};
 pub use view::{

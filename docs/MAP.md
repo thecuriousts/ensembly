@@ -38,7 +38,7 @@ Only features with a **dogfood path** today.
 | **Backup / restore** | `backup`, `restore-dry-run`, `restore-apply` | Sealed T2 pack |
 | **Ops bundle** | `ops-bundle` | Unsealed portable ops snapshot |
 | **Pulse pack** | `pulse-pack export\|import\|status` | New writes `ensembly-pulse-pack-v1`; still imports `peram-pulse-pack-v1` — **memory only**; no ops dual-write |
-| **Record log** | `ensembly record commit\|recover` and `ensembly record view snapshot\|feed` | Commit and read the schema record log. Reconcile and Sync stay out of MCP |
+| **Record log** | `ensembly record commit\|recover` and `ensembly record view snapshot\|feed` | Commit and read the schema record log. Reconcile and Sync stay out of MCP. MCP commit refuses source `human` and `owner`, stamps `record_time`, and only writes a sandbox path, `ENSEMBLY_RECORD_LOG`, or `data/local` under `ENSEMBLY_HOME` or the server cwd |
 
 Fixture: `fixtures/issue-1-runtime.json`. `--json` appends trailing `RUNTIME_OK …` line.
 

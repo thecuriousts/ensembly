@@ -2,7 +2,8 @@
 //! Primary consumer: Grok (via `grok mcp add` / `.grok/config.toml` or Cursor MCP config).
 //! Record tools: `record_commit`, `record_view_snapshot`, `record_view_feed`.
 //! Reconcile and Sync tools are deferred.
-//! Memory tools are unchanged. `record_commit` writes only a sandbox temp path, a `data/local` path, or `ENSEMBLY_RECORD_LOG`.
+//! Memory tools are unchanged. `record_commit` writes only a sandbox temp path, `data/local` under `ENSEMBLY_HOME` or the server cwd, or `ENSEMBLY_RECORD_LOG`.
+//! MCP commit refuses source `human` and `owner`, and stamps `record_time`.
 
 use ensembly_memory::{coherence_report, propose_goals, EpisodicMemory, TrajectoryType};
 use ensembly_schema::{commit_json, feed_json, snapshot_json, CommitFault};
@@ -57,7 +58,7 @@ fn tool_defs() -> Value {
         },
         {
             "name": "record_commit",
-            "description": "Append one record unit to a local log. The log must be ENSEMBLY_RECORD_LOG, under data/local, or under the sandbox temp dir.",
+            "description": "Append one record unit. The log must be ENSEMBLY_RECORD_LOG, data/local under ENSEMBLY_HOME or the server cwd, or the sandbox temp dir. Source human and owner are refused. record_time is stamped by the server.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -189,14 +190,32 @@ fn record_log_from_args(args: &Value) -> Result<PathBuf, Value> {
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from);
-    permit_record_log(explicit.as_deref(), env.as_deref(), &std::env::temp_dir())
-        .map_err(|e| rpc_error(-32000, &e))
+    permit_record_log(
+        explicit.as_deref(),
+        env.as_deref(),
+        &std::env::temp_dir(),
+        &record_anchor(),
+    )
+    .map_err(|e| rpc_error(-32000, &e))
+}
+
+fn record_anchor() -> PathBuf {
+    static ANCHOR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    ANCHOR
+        .get_or_init(|| {
+            if let Some(home) = std::env::var_os("ENSEMBLY_HOME").filter(|s| !s.is_empty()) {
+                return PathBuf::from(home);
+            }
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+        })
+        .clone()
 }
 
 fn permit_record_log(
     explicit: Option<&Path>,
     env_log: Option<&Path>,
     temp_root: &Path,
+    anchor: &Path,
 ) -> Result<PathBuf, String> {
     let chosen = match (explicit, env_log) {
         (Some(path), _) => path.to_path_buf(),
@@ -207,7 +226,7 @@ fn permit_record_log(
     };
     let allowed = env_log.is_some_and(|env| same_path(&chosen, env))
         || under_temp(&chosen, temp_root)
-        || under_data_local(&chosen);
+        || under_data_local(&chosen, anchor);
     if allowed {
         Ok(chosen)
     } else {
@@ -226,21 +245,9 @@ fn under_temp(path: &Path, temp_root: &Path) -> bool {
     normalize_path(path).starts_with(normalize_path(temp_root))
 }
 
-fn under_data_local(path: &Path) -> bool {
-    let normalized = normalize_path(path);
-    let parts: Vec<String> = normalized
-        .components()
-        .filter_map(|component| match component {
-            Component::Normal(seg) => seg.to_str().map(str::to_string),
-            Component::RootDir
-            | Component::CurDir
-            | Component::ParentDir
-            | Component::Prefix(_) => None,
-        })
-        .collect();
-    parts
-        .windows(2)
-        .any(|pair| pair[0] == "data" && pair[1] == "local")
+fn under_data_local(path: &Path, anchor: &Path) -> bool {
+    let root = normalize_path(anchor).join("data").join("local");
+    normalize_path(path).starts_with(&root)
 }
 
 fn normalize_path(path: &Path) -> PathBuf {
@@ -263,6 +270,47 @@ fn normalize_path(path: &Path) -> PathBuf {
         }
     }
     acc
+}
+
+fn prepare_mcp_unit(raw: &str) -> Result<String, Value> {
+    let mut value: Value = serde_json::from_str(raw).map_err(|e| invalid_params(&e.to_string()))?;
+    let events = match &mut value {
+        Value::Array(items) => items,
+        Value::Object(map) => match map.get_mut("events") {
+            Some(Value::Array(items)) => items,
+            Some(_) | None => {
+                return Err(invalid_params(
+                    "unit must be an event array or an object with events",
+                ))
+            }
+        },
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {
+            return Err(invalid_params(
+                "unit must be an event array or an object with events",
+            ))
+        }
+    };
+    let record_time = ensembly_schema::stockholm_record_now();
+    for event in events.iter_mut() {
+        let Some(obj) = event.as_object_mut() else {
+            return Err(invalid_params("event must be an object"));
+        };
+        match obj.get("source").and_then(Value::as_str) {
+            Some("human" | "owner") => {
+                return Err(rpc_error(
+                    -32000,
+                    "record commit refuses source human or owner",
+                ));
+            }
+            Some(_) => {}
+            None => return Err(invalid_params("source required")),
+        }
+        obj.insert(
+            "record_time".to_string(),
+            Value::String(record_time.clone()),
+        );
+    }
+    serde_json::to_string(&value).map_err(|e| rpc_error(-32000, &e.to_string()))
 }
 
 fn unit_json(args: &Value) -> Result<String, Value> {
@@ -306,7 +354,7 @@ fn call_tool(name: &str, args: &Value, memory_path: &PathBuf, agent_id: &str) ->
             "memory": ensembly_memory::memory_version(),
             "memoryPath": memory_path,
             "agentId": agent_id,
-            "note": "Control SoT remains the kernel. Memory tools are read-only. record_commit writes only a sandbox temp path, a data/local path, or ENSEMBLY_RECORD_LOG.",
+            "note": "Control SoT remains the kernel. Memory tools are read-only. record_commit writes only a sandbox temp path, data/local under ENSEMBLY_HOME or the server cwd, or ENSEMBLY_RECORD_LOG. Source human and owner are refused.",
             "grok": {
                 "acp": "grok agent stdio",
                 "headless": "grok -p \"…\" --output-format json --no-auto-update",
@@ -361,7 +409,7 @@ fn call_tool(name: &str, args: &Value, memory_path: &PathBuf, agent_id: &str) ->
         }
         "record_commit" => {
             let log = record_log_from_args(args)?;
-            let unit = unit_json(args)?;
+            let unit = prepare_mcp_unit(&unit_json(args)?)?;
             let result = commit_json(&log, &unit, &CommitFault::default())
                 .map_err(|e| rpc_error(-32000, &e.to_string()))?;
             let body =
@@ -498,27 +546,184 @@ mod tests {
 
     #[test]
     fn record_log_allows_data_local_and_exact_env_path() {
+        let anchor = tempfile::tempdir().unwrap();
         let temp = Path::new("/tmp/record-sandbox");
-        let local = Path::new("data/local/events.jsonl");
-        assert!(permit_record_log(Some(local), None, temp).is_ok());
+        let local = anchor
+            .path()
+            .join("data")
+            .join("local")
+            .join("events.jsonl");
+        assert!(permit_record_log(Some(&local), None, temp, anchor.path()).is_ok());
         let custom = Path::new("/var/empty/record-events.jsonl");
-        assert!(permit_record_log(None, Some(custom), temp).is_ok());
-        assert!(permit_record_log(Some(custom), Some(custom), temp).is_ok());
+        assert!(permit_record_log(None, Some(custom), temp, anchor.path()).is_ok());
+        assert!(permit_record_log(Some(custom), Some(custom), temp, anchor.path()).is_ok());
+        assert!(permit_record_log(
+            Some(Path::new("/etc/record-events.jsonl")),
+            None,
+            temp,
+            anchor.path()
+        )
+        .is_err());
+        assert!(permit_record_log(None, None, temp, anchor.path()).is_err());
+    }
+
+    #[test]
+    fn data_local_is_anchored_and_refuses_traversal_symlink_and_foreign_trees() {
+        let anchor = tempfile::tempdir().unwrap();
+        let temp = Path::new("/tmp/record-sandbox");
+        let foreign = tempfile::tempdir().unwrap();
+        let foreign_log = foreign
+            .path()
+            .join("data")
+            .join("local")
+            .join("events.jsonl");
         assert!(
-            permit_record_log(Some(Path::new("/etc/record-events.jsonl")), None, temp).is_err()
+            permit_record_log(Some(&foreign_log), None, temp, anchor.path()).is_err(),
+            "foreign data/local"
         );
-        assert!(permit_record_log(None, None, temp).is_err());
+
+        let escaped = anchor
+            .path()
+            .join("data")
+            .join("local")
+            .join("..")
+            .join("..")
+            .join("outside.jsonl");
+        assert!(
+            permit_record_log(Some(&escaped), None, temp, anchor.path()).is_err(),
+            "parent traversal"
+        );
+
+        let other = tempfile::tempdir().unwrap();
+        let sibling = {
+            let name = other.path().file_name().unwrap();
+            anchor
+                .path()
+                .parent()
+                .unwrap()
+                .join(name)
+                .join("data")
+                .join("local")
+                .join("events.jsonl")
+        };
+        assert!(
+            permit_record_log(Some(&sibling), None, temp, anchor.path()).is_err(),
+            "traversal into another tree"
+        );
+
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(outside.path().join("data").join("local")).unwrap();
+        std::fs::create_dir_all(anchor.path().join("data")).unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("data").join("local"),
+            anchor.path().join("data").join("local"),
+        )
+        .unwrap();
+        let via_link = anchor
+            .path()
+            .join("data")
+            .join("local")
+            .join("events.jsonl");
+        assert!(
+            permit_record_log(Some(&via_link), None, temp, anchor.path()).is_err(),
+            "symlinked data/local"
+        );
+
+        let outside_root = std::env::current_dir()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join(format!("foreign-record-{}", std::process::id()));
+        let outside_log = outside_root.join("data").join("local").join("events.jsonl");
+        let err = call_tool(
+            "record_commit",
+            &json!({
+                "log": outside_log,
+                "unit": "[]"
+            }),
+            &PathBuf::from("unused-memory.json"),
+            "peram-swarm",
+        )
+        .unwrap_err();
+        assert!(
+            err["message"].as_str().unwrap_or("").contains("data/local")
+                || err["message"].as_str().unwrap_or("").contains("sandbox"),
+            "{err}"
+        );
+        assert!(
+            !outside_root.exists(),
+            "refused commit must not create a foreign tree"
+        );
+        let _ = std::fs::remove_dir_all(&outside_root);
+    }
+
+    #[test]
+    fn mcp_refuses_human_or_owner_and_stamps_record_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("events.jsonl");
+        let memory = PathBuf::from("unused-memory.json");
+        let planted = "1999-01-01T00:00:00+01:00";
+        for source in ["human", "owner"] {
+            let unit = mcp_event(source, planted);
+            let err = call_tool(
+                "record_commit",
+                &json!({ "log": &log, "unit": unit }),
+                &memory,
+                "peram-swarm",
+            )
+            .unwrap_err();
+            assert!(
+                err["message"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("human or owner"),
+                "{source} {err}"
+            );
+        }
+        assert!(!log.exists());
+        let unit = mcp_event("document", planted);
+        call_tool(
+            "record_commit",
+            &json!({ "log": &log, "unit": unit }),
+            &memory,
+            "peram-swarm",
+        )
+        .expect("document source");
+        let text = std::fs::read_to_string(&log).unwrap();
+        assert!(!text.contains(planted), "{text}");
+        assert!(text.contains("+01:00") || text.contains("+02:00"), "{text}");
+    }
+
+    fn mcp_event(source: &str, record_time: &str) -> String {
+        format!(
+            r#"[{{
+                "id": "01JCV1Q8Z00000000000000000",
+                "aggregate": "agg://example.test/acme-north/staff/1",
+                "key": "mcp-source",
+                "version": 1,
+                "event_time": "2026-10-26T18:59:00+01:00",
+                "record_time": "{record_time}",
+                "source": "{source}",
+                "schema_v": 1,
+                "payload": {{"writer": "laptop-2", "note": "mcp"}}
+            }}]"#
+        )
     }
 
     #[test]
     fn scenario_a_mcp_commit_snapshot_equals_replay_and_rejects_same_key() {
         let dir = tempfile::tempdir().unwrap();
         let log = dir.path().join("events.jsonl");
-        let unit = std::fs::read_to_string(
+        let raw = std::fs::read_to_string(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../ensembly-schema/fixtures/scenarios/a-happy-events.json"),
         )
         .unwrap();
+        let mut unit_value: Value = serde_json::from_str(&raw).unwrap();
+        for event in unit_value.as_array_mut().unwrap() {
+            event["source"] = json!("document");
+        }
+        let unit = unit_value.to_string();
         let memory = PathBuf::from("unused-memory.json");
         let committed = call_tool(
             "record_commit",
