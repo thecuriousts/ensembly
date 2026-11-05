@@ -11,11 +11,17 @@ pub const SCHEMA_VERSION: u32 = 1;
 mod audit;
 mod ledger;
 mod pack;
+mod record;
 mod wire;
 
 pub use audit::*;
 pub use ledger::*;
 pub use pack::*;
+pub use record::{
+    transition, Aggregate, AggregateId, ConflictState, EventEnvelope, EventId, EventKind, Evidence,
+    Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Source, StockholmTime, TextForm,
+    Version,
+};
 pub use wire::{decode_line, encode_line, Decoded};
 
 /// Optional check applied by [`decode_line`] after serde accepts the object.
