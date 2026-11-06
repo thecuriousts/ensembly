@@ -14,7 +14,7 @@ Read this before any non-trivial change. These are **product law**, not suggesti
 |-------|-----|-------|
 | **Control / HITL / turn / digital-flow** | **`crates/ensembly-kernel` (Rust)** | Expand control here. CLI: `cargo run -p ensembly-kernel -- …` |
 | **Episodic memory** | `crates/ensembly-memory` (Rust) | CRDT trajectory; kernel consults on `reflect` only |
-| **Agent wire** | `crates/ensembly-agents` (Rust) | Read-only `ensembly-mcp` for Grok/Cursor |
+| **Agent wire** | `crates/ensembly-agents` (Rust) | `ensembly-mcp`: memory read, record commit and view. Record host aliases: laptop-1, laptop-2, mac-mini |
 | **Data** | T1 SQLite + T2 PQ vault (peram-vault law) | Backup/restore are product paths |
 | **Parked prototype** | `prototype/` | Game/watch/Node/WASM — history preserved, not SoT |
 

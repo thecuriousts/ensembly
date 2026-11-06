@@ -1,0 +1,7 @@
+id: record-layer-mcp-cli-commit-view
+input: master db64466 schema Commit and View
+output: kernel record commit and view commands; mcp record_commit record_view_snapshot record_view_feed
+check: test:cargo test -p ensembly-schema -p ensembly-kernel -p ensembly-agents
+reversible: yes
+blast: low
+counter: scenario A commit snapshot equals replay and duplicate key rejected

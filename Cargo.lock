@@ -293,6 +293,7 @@ dependencies = [
  "chrono",
  "clap",
  "ensembly-memory",
+ "ensembly-schema",
  "serde",
  "serde_json",
  "tempfile",
@@ -339,6 +340,7 @@ name = "ensembly-schema"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "libc",
  "schemars",
  "serde",
  "serde_json",

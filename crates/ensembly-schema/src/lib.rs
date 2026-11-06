@@ -15,6 +15,7 @@ mod pack;
 mod reconcile;
 mod record;
 mod replay;
+mod surface;
 mod sync;
 mod view;
 mod wire;
@@ -35,6 +36,10 @@ pub use record::{
 pub use replay::{
     current_rows, parse_event_log, replay, replay_log_file, restore_drill, restore_log,
     MaterializedAggregate, ReplayError,
+};
+pub use surface::{
+    commit_json, feed_json, recover_json, snapshot_json, stockholm_record_now, JsonPayload,
+    RecordSurfaceError,
 };
 pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};
 pub use view::{

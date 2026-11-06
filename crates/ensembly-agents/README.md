@@ -10,7 +10,7 @@ Official Grok (xAI) docs:
 |--------|------|
 | `inference` | `InferenceProvider` trait; `ENSEMBLY_INFERENCE` (alias `PERAM_INFERENCE`) `=deterministic\|grok-mcp\|…` |
 | `delegation` | `DelegationBackend`; `ENSEMBLY_DELEGATE` (alias `PERAM_DELEGATE`) `=none\|grok-acp\|…` |
-| `mcp_server` / `ensembly-mcp` | Read-only MCP tools (sync NDJSON stdio) |
+| `mcp_server` / `ensembly-mcp` | Memory tools plus record commit and view (sync NDJSON stdio) |
 | `grok` | Official CLI argv helpers + project MCP TOML snippet |
 | `rpc` | Sync JSON-RPC 2.0 NDJSON |
 

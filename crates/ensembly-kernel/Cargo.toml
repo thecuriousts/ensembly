@@ -34,3 +34,4 @@ ensembly-schema = { path = "../ensembly-schema" }
 
 [dev-dependencies]
 tempfile = "3"
+ensembly-schema = { path = "../ensembly-schema" }

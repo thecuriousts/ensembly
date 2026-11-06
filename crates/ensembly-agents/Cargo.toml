@@ -23,6 +23,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 ensembly-memory = { path = "../ensembly-memory" }
+ensembly-schema = { path = "../ensembly-schema" }
 
 [dev-dependencies]
 tempfile = "3"

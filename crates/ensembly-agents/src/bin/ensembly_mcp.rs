@@ -1,4 +1,4 @@
-//! `ensembly-mcp` — read-only Model Context Protocol server for episodic memory.
+//! `ensembly-mcp` — Model Context Protocol server for episodic memory and record Commit/View.
 //!
 //! Register with Grok/Cursor. Example:
 //! ```text
@@ -13,7 +13,10 @@ use ensembly_agents::{serve_mcp, McpServeConfig};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = env!("CARGO_BIN_NAME"), about = "ensembly read-only MCP server (memory tools for Grok/Cursor)")]
+#[command(
+    name = env!("CARGO_BIN_NAME"),
+    about = "MCP server: memory tools plus record commit and view"
+)]
 struct Cli {
     #[arg(long)]
     memory: Option<PathBuf>,
