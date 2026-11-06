@@ -18,7 +18,10 @@ class Verify(unittest.TestCase):
     def test_review_skills_cite_reference(self):
         for d in USERS:
             with self.subTest(d):
-                self.assertIn(REF, read(os.path.join(ROOT, "skills", d, "SKILL.md")))
+                s = read(os.path.join(ROOT, "skills", d, "SKILL.md"))
+                self.assertIn(REF, s)
+                self.assertIn("task-contract", s)
+                self.assertIn("grill-rubric", s)
 
 
 if __name__ == "__main__":

@@ -45,7 +45,7 @@ A5  exit 0 ⟺ no missing ∧ no fail
 | model-rule | M exists |
 | agents-md | P/AGENTS.md exists |
 | ci | P/.github/workflows holds a workflow |
-| verify-skill | a skill named verify exists |
+| verify-skill | `verify`, `*verification*`, `verification-before-completion`, `create-verification-skill`, `maintain-verification-skill`, `grill-rubric`, or `references/verify.md` in P or D |
 | hooks | P/.cursor/hooks.json exists |
 | aliases | AGENTS.md or docs/host-aliases.md names laptop-1 or mac-mini |
 | pstack, craft | found in D |

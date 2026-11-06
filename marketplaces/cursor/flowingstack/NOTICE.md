@@ -35,3 +35,5 @@ flowchart LR
 | skills/aihero-map/references/map.md | `](../../../../pstack-map/skills/pstack-map/references/map.md)` | `](../../pstack-map/references/map.md)` |
 | skills/intelli-route/README.md | `](../pstack-map/skills/pstack-map/references/map.md)` | `](../pstack-map/references/map.md)` |
 | skills/intelli-route/README.md | `](bot/intelli-route.md)` | `](https://github.com/p10ns11y/plugins/blob/be043b2ee1f7e52b441837b0aa0dfe13d634c724/intelli-route/bot/intelli-route.md)` |
+| skills/tomato-loop/SKILL.md | `- Pick: **mission-map** ranks by impact; the top repo Do goes to **pstack-map** for handoff.` | `- Pick: **mission-map** ranks by impact; the top repo Do goes to **pstack-map** for handoff. Engineering PR loads craft then ub-mode, CRAP max 6, and each commit states why, what, and proof.` |
+| skills/tomato-loop/SKILL.md | `- Invariants go on the earliest layer: **trust-stack**. SI owns the write: **si**.` | `- Invariants go on the earliest layer: **trust-stack**. SI owns the write: **si**. Capture reads use capture-sweep, capture-mail, capture-calendar, capture-chat, and capture-pr.` |

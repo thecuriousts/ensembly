@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Route one exact manifest when. Effort comes from task signals, not the route id."""
+"""Route one manifest when, one map playbook, or one signal. Effort comes from task signals, not the route id."""
 
 import json
 import re
@@ -51,15 +51,20 @@ def house_map():
     die("missing pstack-map map.md: looked in %s and %s/*" % (REPO / "pstack-map", REPO.parent / "pstack-map"), 1)
 
 
-def playbook_names(text):
-    names = []
+def playbook_rows(text):
+    names, started = [], False
     for line in text.splitlines():
         if not line.startswith("|"):
+            if started:
+                break
             continue
-        name = line.strip("|").split("|", 1)[0].strip()
-        if not name or name == "Playbook" or name.startswith("-"):
+        cell = line.strip("|").split("|", 1)[0].strip()
+        if cell == "Playbook":
+            started = True
             continue
-        names.append(name)
+        if not started or not cell or set(cell) <= set("-: "):
+            continue
+        names.append(cell)
     return names
 
 
@@ -68,9 +73,14 @@ def named_playbook(situation, names):
         if re.search(
             r"(?<![A-Za-z0-9-])" + re.escape(name) + r"(?![A-Za-z0-9-])",
             situation,
+            re.I,
         ):
             return name
     return None
+
+
+def map_playbook(situation):
+    return named_playbook(situation, playbook_rows(house_map().read_text(encoding="utf-8")))
 
 
 def hitl_for(situation):
@@ -255,29 +265,40 @@ def main():
             match = row
             break
         skipped.append("%s: when" % row["id"])
+    sig = task_signal(situation, manifest) or task_signal(signals.get("task", ""), manifest)
+    map_name = None if match is not None and match.get("route") == "tstack" else map_playbook(situation)
     if match is None:
-        die("missing when", 1)
+        if map_name is None and sig is None:
+            die("missing when", 1)
+        match = next((row for row in manifest["primary"] if row.get("id") == "pstack-map"), None)
+        if match is None:
+            die("missing route", 1)
+        skipped = [s for s in skipped if not s.startswith("pstack-map:")]
     route = match.get("route")
     if route not in manifest["routes"]:
         die("missing route", 1)
-    load_id = match["id"]
     if route == "tstack":
         playbook = "skip"
     else:
-        playbook = named_playbook(situation, playbook_names(house_map().read_text(encoding="utf-8")))
-        if playbook is None:
-            playbook = "house"
+        playbook = map_name or "house"
+    if sig and route != "tstack":
+        loads = sig["loads"][: manifest["max_loads"]]
+    else:
+        loads = [match["id"]]
     emit = {
         "situation": situation,
         "route": route,
-        "loads": [load_id],
+        "loads": loads,
         "skips": skipped,
         "playbook": playbook,
         "hitl": hitl_for(situation),
-        "next": load_id,
+        "next": loads[0],
         "effort": effort,
         "reason": reason,
     }
+    if sig and route != "tstack":
+        emit["signal"] = sig["id"]
+        emit["principles"] = sig["principles"]
     sys.stdout.write(json.dumps(emit) + "\n")
 
 

@@ -41,6 +41,7 @@ A3  blocker ∈ F → verdict ≠ approve
 A4  verdict = approve ⟺ s ≥ 80 ∧ A2, A3 hold false
 A5  id ∉ W ∨ sev ∉ {blocker, major, minor} → exit 2
 A6  findings follow references/verify.md
+A7  task-contract → work → grill-rubric; default pack references/verify.md
 ```
 
 | Verdict | Exit |

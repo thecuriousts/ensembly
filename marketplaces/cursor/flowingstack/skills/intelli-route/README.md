@@ -38,7 +38,7 @@ An alignment name loads `aihero-map`. That map names the house skill and which c
 | **reason** | one line |
 ```
 
-`bin/route` prints those fields for one exact manifest `when`. `playbook` is `skip` only on route `tstack`. Route `light` follows a playbook or the house row.
+`bin/route` prints those fields for one exact manifest `when`, a playbook name from [map.md](../pstack-map/references/map.md), or situation text that matches a signal. `playbook` is `skip` only on route `tstack`. Route `light` follows that map row or the house row.
 
 `bin/route --signals JSON` sets `effort` and `reason` from this task at plan time. Signals are diff size and spread, novelty, reversibility, blast radius (`ci`, `auth`, `money`, `data`), a prior `REQUEST_CHANGES` (one level up), and time pressure. Keys are `kind`, `novel`, `hard`, `cross_cutting`, `first_build`, `security`, `data_loss`, `reversible`, `files`, `spread`, `blast`, `review`, `pressure`, and `task`. A `task` text naming TLA+, model-check, formal verification, statechart or invariant adds the formal-verification signal: four pstack loads (statechart, create-formal-verification-skill, maintain-formal-verification-skill, create-verification-skill) and two principles. No signals reads as a normal feature. The route id does not pick the level.
 
@@ -129,4 +129,4 @@ No `skills/` directory. Procedures live upstream.
 python3 -m unittest discover -s test -p test_route.py
 ```
 
-`test/test_route.py` checks WHEN lookup against the vendored `skills/pstack-map/references/map.md` and the formal-verification signal.
+`test/test_route.py` checks a map.md playbook name such as bug-fix as WHEN, the plugin skills-tree map path, and the formal-verification signal. Doctor counts grill-rubric, a verification skill, or references/verify.md as the verify pack.

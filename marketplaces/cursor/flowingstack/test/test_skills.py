@@ -28,6 +28,24 @@ class Skills(unittest.TestCase):
             with self.subTest(d):
                 self.assertIn(f"`{d}`", s)
 
+    def test_hub_names_engineering_and_desk_defaults(self):
+        s = read(os.path.join(SKILLS, HUB, "SKILL.md"))
+        for w in ("craft", "ub-mode", "Fleet Desk", "CRAP max 6", "proof"):
+            self.assertIn(w, s)
+        readme = read(os.path.join(ROOT, "README.md"))
+        self.assertIn("Fleet Desk", readme)
+        for w in ("capture-sweep", "capture-mail", "capture-calendar", "capture-chat", "capture-pr"):
+            self.assertIn(w, readme)
+        rule = read(os.path.join(SKILLS, "route-rule", "SKILL.md"))
+        tomato = read(os.path.join(SKILLS, "tomato-loop", "SKILL.md"))
+        task = read(os.path.join(SKILLS, "task-contract", "SKILL.md"))
+        for w in ("craft", "ub-mode"):
+            self.assertIn(w, tomato)
+            self.assertIn(w, task)
+        for w in ("capture-mail", "capture-calendar", "capture-chat", "capture-pr"):
+            self.assertIn(w, rule)
+            self.assertIn(w, tomato)
+
 
 if __name__ == "__main__":
     unittest.main()

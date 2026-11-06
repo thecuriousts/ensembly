@@ -40,6 +40,8 @@ A4  route = empty → route ≠ light
 A5  ledger row cites C.id
 A6  C.counter names one metric that must not regress
 A7  C.check written before work; review per references/verify.md
+A8  task-contract → work → grill-rubric; default pack references/verify.md
+A9  engineering PR loads craft then ub-mode, CRAP max 6, commit why what proof
 ```
 
 | check kind | route |

@@ -23,9 +23,9 @@ Open work goes in with `premflow task add <text>`; closing it is `premflow task 
 
 ## Engineering lane
 
-- Pick: **mission-map** ranks by impact; the top repo Do goes to **pstack-map** for handoff.
+- Pick: **mission-map** ranks by impact; the top repo Do goes to **pstack-map** for handoff. Engineering PR loads craft then ub-mode, CRAP max 6, and each commit states why, what, and proof.
 - Area reviews: one area per block on a schedule; **michelin-kitchen** keeps the prep.
 - Long work: **steer-log** time-boxes it; **steer-accel** records the earn. Over the box, steer or stop.
 - Merge check: `tstack/bin/merge-check --repo <dir> --tests-exit <n> --writer-family <token> --reviewer-family <token>`. Proceed only when the exit is 0, the reviewer token is a different model family from the writer token, and `<dir>/FREEZE` is absent. Otherwise hold. Concordance does not run this check.
 - Weekly pruning: drop unused skills. Keep the ones the owner still runs.
-- Invariants go on the earliest layer: **trust-stack**. SI owns the write: **si**.
+- Invariants go on the earliest layer: **trust-stack**. SI owns the write: **si**. Capture reads use capture-sweep, capture-mail, capture-calendar, capture-chat, and capture-pr.
