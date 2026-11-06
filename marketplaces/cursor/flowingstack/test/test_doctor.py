@@ -58,6 +58,30 @@ class Doctor(unittest.TestCase):
                 out = run("doctor", "--project", q, "--plugins-dir", self.plug, "--disk-percent", "33")[1]
                 self.assertRegex(out, r"(?m)^ok verify-skill$")
 
+    def test_grill_rubric_or_verify_pack_counts(self):
+        for rel in ("skills/grill-rubric/SKILL.md", "references/verify.md"):
+            with self.subTest(rel):
+                q = os.path.join(self.t.name, rel.split("/")[0] + "-v")
+                os.makedirs(os.path.dirname(os.path.join(q, rel)), exist_ok=True)
+                write(os.path.join(q, rel), "v\n")
+                out = run("doctor", "--project", q, "--plugins-dir", os.path.join(self.t.name, "none"),
+                          "--disk-percent", "33")[1]
+                self.assertRegex(out, r"(?m)^ok verify-skill$")
+
+    def test_house_verify_skills_in_plugin_cache_count(self):
+        for name in ("verification-before-completion", "create-verification-skill", "maintain-verification-skill"):
+            with self.subTest(name):
+                d = os.path.join(self.plug, "cache", "id-1", "abc", "skills", name)
+                os.makedirs(d, exist_ok=True)
+                write(os.path.join(d, "SKILL.md"), "v\n")
+                out = self.doc()[1]
+                self.assertRegex(out, r"(?m)^ok verify-skill$")
+                os.remove(os.path.join(d, "SKILL.md"))
+
+    def test_flowingstack_tree_counts_as_verify(self):
+        out = run("doctor", "--project", ROOT, "--plugins-dir", self.plug, "--disk-percent", "33")[1]
+        self.assertRegex(out, r"(?m)^ok verify-skill$")
+
     def test_nested_plugin_cache_layout_found(self):
         d = os.path.join(self.plug, "pstack", "1ba91fc", "skills", "setup-pstack")
         os.makedirs(d)
@@ -120,7 +144,9 @@ class Doctor(unittest.TestCase):
 class Skill(unittest.TestCase):
     def test_skill_layout(self):
         s = read(os.path.join(ROOT, "skills", "doctor", "SKILL.md"))
-        for h in ("name: doctor", "owner:", "source:", "last-reviewed:", "## Flow", "## Contract", "## Checks", "## Notes", "/setup-pstack"):
+        for h in ("name: doctor", "owner:", "source:", "last-reviewed:", "## Flow", "## Contract", "## Checks", "## Notes", "/setup-pstack",
+                  "grill-rubric", "references/verify.md", "verification-before-completion",
+                  "create-verification-skill", "maintain-verification-skill"):
             self.assertIn(h, s)
 
 

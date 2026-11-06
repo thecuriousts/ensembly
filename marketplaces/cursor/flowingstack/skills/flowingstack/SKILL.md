@@ -38,7 +38,7 @@ A2  unsure → intelli-route
 | Need | Load |
 |---|---|
 | route a goal | `intelli-route` |
-| owning lead for a task | `route-rule` |
+| owning lead for a task | `route-rule` first for Chief of Staff and Fleet Desk |
 | write input, output, check | `task-contract` |
 | freeze or replay evals | `eval-freeze` |
 | log a run or claim | `run-ledger` |
@@ -48,6 +48,7 @@ A2  unsure → intelli-route
 | block evidence to a row | `harvest` |
 | read mail, calendar, chat, PRs | `capture-sweep`, `capture-mail`, `capture-calendar`, `capture-chat`, `capture-pr` |
 | house skill map | `pstack-map`, `aihero-map` |
+| engineering PR | `craft` then `ub-mode`, CRAP max 6, commit why what proof |
 
 ## Checks
 

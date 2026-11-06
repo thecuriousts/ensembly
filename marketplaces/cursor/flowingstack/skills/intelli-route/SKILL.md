@@ -30,7 +30,9 @@ flowchart LR
 A1  rules = AGENTS.md, routes = manifest.json, both vendored
 A2  |loads| ≤ 4
 A3  house row of AGENTS.md → skills/pstack-map/references/map.md
-A4  task matches manifest signal formal-verification → loads statechart, create-formal-verification-skill, maintain-formal-verification-skill, create-verification-skill
+A4  task or situation matches manifest signal formal-verification → loads statechart, create-formal-verification-skill, maintain-formal-verification-skill, create-verification-skill
+A5  playbook column of map.md is a when; longest token wins; else house
+A6  verify pack is references/verify.md; doctor accepts that pack
 ```
 
 ## Checks
@@ -38,7 +40,9 @@ A4  task matches manifest signal formal-verification → loads statechart, creat
 | Command | Expect |
 |---|---|
 | `skills/intelli-route/bin/route --signals '{}'` | `{"effort": "high", "reason": "normal feature"}` |
-| `skills/intelli-route/bin/route "otherwise, for non-trivial engineering"` | route light, playbook from map.md |
+| `skills/intelli-route/bin/route bug-fix` | route light, playbook bug-fix from map.md |
+| `skills/intelli-route/bin/route "otherwise, for non-trivial engineering"` | route light, playbook house |
+| `skills/intelli-route/bin/route "model-check the ledger"` | signal formal-verification, four loads |
 | `skills/intelli-route/bin/route --signals '{"task": "model-check the ledger"}'` | signal formal-verification, four loads |
 
 ## Notes

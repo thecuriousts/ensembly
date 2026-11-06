@@ -31,5 +31,10 @@ flowchart LR
 | bad table | one line | 2 |
 
 Table [routing.tsv](../../routing.tsv) Script [route-rule](../../scripts/route-rule)
+
+| Need | Load |
+|---|---|
+| capture read | `capture-sweep` `capture-mail` `capture-calendar` `capture-chat` `capture-pr` |
+
 No pre-turn hook runner exists so the bot loads this skill first
 Irreversible yes goes to Chief of Staff in the 1:1
