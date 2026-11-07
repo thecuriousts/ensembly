@@ -25,6 +25,6 @@ flowchart TD
 | Step | Command | Fails when |
 |---|---|---|
 | install | Cursor marketplace | entry has fields past name source description |
-| setup | `scripts/doctor --project .` | setup gap |
+| setup | `scripts/doctor --project .` | required item missing |
 | sync | `scripts/sync-from-upstream` | drift, bad pin or source |
 | check | `scripts/check` | any check fails |

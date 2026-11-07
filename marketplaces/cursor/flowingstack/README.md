@@ -97,7 +97,15 @@ Every script and how they connect: [docs/flow.md](docs/flow.md).
 
 ## Route rule
 
-[route-rule skill](skills/route-rule/SKILL.md) loads first for Chief of Staff and Fleet Desk and runs [scripts/route-rule](scripts/route-rule) on [routing.tsv](routing.tsv)
+| Layer | Path | Effect |
+|---|---|---|
+| shipped roles | [routing.tsv](routing.tsv) | engineering, review, docs |
+| user roles | `.flowingstack/routing.tsv` or `FLOWINGSTACK_ROUTING` | same task_type replaces, new task_type adds |
+| role example | [examples/house-routing.tsv](examples/house-routing.tsv) | loaded only when a user path points at it |
+| shipped checks | [doctor.tsv](doctor.tsv) | required kernel checks, optional pstack, craft, aliases |
+| user checks | `<project>/.flowingstack/doctor.tsv` or `FLOWINGSTACK_DOCTOR` | same name replaces, new name adds |
+
+[route-rule](skills/route-rule/SKILL.md) runs [scripts/route-rule](scripts/route-rule). [doctor](skills/doctor/SKILL.md) reads the check table.
 
 ## Capture
 

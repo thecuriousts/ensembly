@@ -6,6 +6,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from overlay import merge_rows, user_path
 from rootpath import plugin_root, rel
 
 COLS = ["task_type", "lead", "note", "keywords"]
@@ -42,13 +43,17 @@ def match(rows, task):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="print the owning lead for a task")
-    ap.add_argument("--table", default="routing.tsv")
+    ap = argparse.ArgumentParser(description="print the owning role for a task")
+    ap.add_argument("--table", default=None)
     ap.add_argument("--task")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
-    rows = load(rel(plugin_root(), a.table))
+    rows = load(rel(plugin_root(), a.table or "routing.tsv"))
+    if a.table is None:
+        user = user_path("FLOWINGSTACK_ROUTING", os.path.join(os.getcwd(), ".flowingstack", "routing.tsv"))
+        if user:
+            rows = merge_rows(rows, load(user), "task_type")
     if a.list:
         if a.json:
             print(json.dumps(rows))
@@ -60,7 +65,7 @@ def main():
         die("give --task or --list")
     r = match(rows, a.task)
     if not r:
-        print("no match: ask Chief of Staff")
+        print("no match: ask engineering")
         return 2
     rule = f"route to {r['lead']}; do not do it yourself"
     if a.json:
