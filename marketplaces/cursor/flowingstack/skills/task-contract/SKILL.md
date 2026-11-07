@@ -3,7 +3,7 @@ name: task-contract
 description: Use when a task is about to run without a written input, output and success check, or when the route for a task is unclear
 owner: flowingstack
 source: master-workflow G9 and 8e.1
-last-reviewed: 2026-10-30
+last-reviewed: 2026-11-07
 ---
 
 # task-contract
@@ -41,7 +41,8 @@ A5  ledger row cites C.id
 A6  C.counter names one metric that must not regress
 A7  C.check written before work; review per references/verify.md
 A8  task-contract → work → grill-rubric; default pack references/verify.md
-A9  engineering PR loads craft then ub-mode, CRAP max 6, commit why what proof
+A9  engineering PR: task-contract, grill-rubric, pack references/verify.md; commit states why, what, and proof
+A10 craft and ub-mode load only when installed
 ```
 
 | check kind | route |

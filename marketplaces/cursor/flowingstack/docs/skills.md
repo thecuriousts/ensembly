@@ -26,9 +26,9 @@ graph LR
 
 | Group | Skills | Role |
 |---|---|---|
-| hub | flowingstack | picks the next skill |
-| route | intelli-route pstack-map aihero-map | at most 4 loads |
+| hub | flowingstack | default kernel, optional extras |
+| route | intelli-route route-rule | roles engineering, review, docs |
 | task | task-contract eval-freeze run-ledger grill-rubric doctor | scripted checks |
-| between sessions | tomato-loop harvest capture-sweep capture-* | read only |
+| optional | pstack-map aihero-map tomato-loop harvest capture-sweep capture-* | off the default path |
 
 Edges come from skill names each SKILL.md mentions.

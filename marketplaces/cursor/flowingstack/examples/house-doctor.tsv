@@ -1,0 +1,3 @@
+name	required	kind	arg	fix
+aliases	required	regex	\blaptop-\d\b|\bmac-mini\b	name host aliases
+team-notes	required	file	docs/team.md	add docs/team.md

@@ -1,0 +1,10 @@
+name	required	kind	arg	fix
+agents-md	required	file	AGENTS.md	add AGENTS.md
+ci	required	glob	.github/workflows/*.y*ml	add a CI workflow
+verify-skill	required	verify		add verify, grill-rubric, or references/verify.md
+hooks	required	file	.cursor/hooks.json	add .cursor/hooks.json
+model-rule	optional	file	.cursor/rules/pstack-models.mdc	optional /setup-pstack when pstack is installed
+aliases	optional	regex	\blaptop-\d\b|\bmac-mini\b	optional host alias in AGENTS.md or docs/host-aliases.md
+pstack	optional	plugin	pstack	optional /add-plugin pstack
+craft	optional	plugin	craft	optional /add-plugin craft
+disk	required	disk	70	free disk below the threshold

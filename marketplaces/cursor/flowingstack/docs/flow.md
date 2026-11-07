@@ -82,7 +82,7 @@ flowchart LR
 | `ledger` | run rows | ledger tsv | bad row |
 | `doc-lint` | docs and scripts | findings | rule hit past baseline |
 | `privacy-scan` | plugin tree | hits | private string found |
-| `doctor` | target project | missing list | setup gap |
+| `doctor` | target project | missing list | required setup gap |
 | `check` | all checks | nothing | any check fails |
 
 Blue is input. Green runs. Red blocks. Yellow is output.

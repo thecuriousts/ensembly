@@ -7,6 +7,19 @@ import re
 import shutil
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from overlay import merge_rows, user_path
+from rootpath import plugin_root
+
+COLS = ["name", "required", "kind", "arg", "fix"]
+KINDS = {"file", "glob", "verify", "regex", "plugin", "disk"}
+NEED_ARG = {"file", "glob", "regex", "plugin", "disk"}
+
+
+def die(msg):
+    print(msg, file=sys.stderr)
+    sys.exit(2)
+
 
 def has(p, *parts):
     return bool(glob.glob(os.path.join(p, *parts), recursive=True))
@@ -46,16 +59,70 @@ def verify_skill(roots):
     return False
 
 
-def checks(o, disk):
-    p = o.project
-    yield "model-rule", has(p, ".cursor", "rules", "pstack-models.mdc"), "run /setup-pstack"
-    yield "agents-md", has(p, "AGENTS.md"), "add AGENTS.md"
-    yield "ci", has(p, ".github", "workflows", "*.y*ml"), "add a CI workflow"
-    yield "verify-skill", verify_skill([p, *o.plugins_dir]), "add verify, grill-rubric, or references/verify.md"
-    yield "hooks", has(p, ".cursor", "hooks.json"), "add .cursor/hooks.json"
-    yield "aliases", bool(re.search(r"\blaptop-\d\b|\bmac-mini\b", text(os.path.join(p, "AGENTS.md")) + text(os.path.join(p, "docs", "host-aliases.md")))), "name host aliases"
-    for name in ("pstack", "craft"):
-        yield name, any(installed(d, name) for d in o.plugins_dir), f"/add-plugin {name}"
+def load_checks(path):
+    lines = [l.rstrip("\n").split("\t") for l in open(path, encoding="utf-8") if l.strip()]
+    if not lines or lines[0] != COLS:
+        die(f"{path}: header must be {' '.join(COLS)}")
+    rows, seen = [], set()
+    for n, c in enumerate(lines[1:], 2):
+        c += [""] * (5 - len(c))
+        name, req, kind, arg, fix = (x.strip() for x in c[:5])
+        base = os.path.basename(path)
+        if not name:
+            die(f"{base}:{n}: missing name")
+        if name in seen:
+            die(f"{base}:{n}: duplicate name {name}")
+        if req not in ("required", "optional"):
+            die(f"{base}:{n}: required must be required or optional")
+        if kind not in KINDS:
+            die(f"{base}:{n}: bad kind {kind}")
+        if kind in NEED_ARG and not arg:
+            die(f"{base}:{n}: missing arg for {name}")
+        if arg.startswith("/") or ".." in arg.split("/"):
+            die(f"{base}:{n}: bad arg for {name}")
+        if kind == "regex":
+            try:
+                re.compile(arg)
+            except re.error:
+                die(f"{base}:{n}: bad regex for {name}")
+        if kind == "disk":
+            try:
+                float(arg)
+            except ValueError:
+                die(f"{base}:{n}: disk arg must be a number")
+        seen.add(name)
+        rows.append({"name": name, "required": req, "kind": kind, "arg": arg, "fix": fix})
+    return rows
+
+
+def passes(row, o):
+    kind, arg, p = row["kind"], row["arg"], o.project
+    if kind == "file":
+        return os.path.isfile(os.path.join(p, arg))
+    if kind == "glob":
+        return has(p, *arg.split("/"))
+    if kind == "verify":
+        return verify_skill([p, *o.plugins_dir])
+    if kind == "regex":
+        blob = text(os.path.join(p, "AGENTS.md")) + text(os.path.join(p, "docs", "host-aliases.md"))
+        return bool(re.search(arg, blob))
+    if kind == "plugin":
+        return any(installed(d, arg) for d in o.plugins_dir)
+    return False
+
+
+def emit_disk(row, disk, fixes):
+    over = disk >= float(row["arg"])
+    label = row["name"]
+    if not over:
+        print(f"ok disk {disk:.0f}%" if label == "disk" else f"ok {label}")
+        return 0
+    if row["required"] != "required":
+        print(f"optional disk {disk:.0f}%" if label == "disk" else f"optional {label}\t{row['fix']}")
+        return 0
+    print(f"fail disk {disk:.0f}%" if label == "disk" else f"missing {label}\t{row['fix']}")
+    fixes.append(row["fix"])
+    return 1
 
 
 def main():
@@ -68,17 +135,31 @@ def main():
     o = a.parse_args()
     u = shutil.disk_usage(o.project)
     disk = o.disk_percent if o.disk_percent is not None else 100 * u.used / u.total
-    bad = 0
-    for name, ok, fix in checks(o, disk):
-        print(f"ok {name}" if ok else f"missing {name}\t{fix}")
-        bad += not ok
+    rows = load_checks(os.path.join(plugin_root(), "doctor.tsv"))
+    user = user_path("FLOWINGSTACK_DOCTOR", os.path.join(o.project, ".flowingstack", "doctor.tsv"))
+    if user:
+        rows = merge_rows(rows, load_checks(user), "name")
+    bad, fixes = 0, []
+    for row in rows:
+        if row["kind"] == "disk":
+            continue
+        if passes(row, o):
+            print(f"ok {row['name']}")
+        elif row["required"] == "required":
+            print(f"missing {row['name']}\t{row['fix']}")
+            fixes.append(row["fix"])
+            bad += 1
+        else:
+            print(f"optional {row['name']}\t{row['fix']}")
     if o.ci_status and re.search(r"(?i)\b(failure|failed|billing|cancelled)\b", text(o.ci_status)):
         print("fail ci-health\tread the CI status before any build step")
+        fixes.append("read the CI status before any build step")
         bad += 1
-    print(f"fail disk {disk:.0f}%" if disk >= 70 else f"ok disk {disk:.0f}%")
-    bad += disk >= 70
+    for row in rows:
+        if row["kind"] == "disk":
+            bad += emit_disk(row, disk, fixes)
     if o.init:
-        print("next: /setup-pstack" if not has(o.project, ".cursor", "rules", "pstack-models.mdc") else "next: none, /setup-pstack already applied")
+        print(f"next: {fixes[0]}" if fixes else "next: none")
     return 1 if bad else 0
 
 
