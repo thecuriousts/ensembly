@@ -16,7 +16,7 @@ ROOT = os.environ.get("FLOWINGSTACK_ROOT") or os.path.dirname(os.path.dirname(os
 FORMAL = os.path.join(ROOT, "formal")
 JAR = "tla2tools-1.8.0.jar"
 URL = "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar"
-SHA = "011267fca25d0752cf18894dd585cd28b96960c112ea8a20b823ea770e7e10cd"
+SHA = "e1f11b75c4b5bc4478ba0ac5cb6ae28e40a01b0016bc33e0aa97da22dfdbcd7f"
 SKIP = 3
 
 

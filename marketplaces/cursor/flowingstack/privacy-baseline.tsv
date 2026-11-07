@@ -12,3 +12,9 @@ skills/intelli-route/README.md	cv	1
 docs/img/skills-pstack-map-references-handover-1.svg	cv	1
 routing.tsv	private-data	1
 test/test_route_rule.py	private-data	1
+contracts/record-layer-m2-commit.yml	private-data	1
+contracts/record-layer-m3-replay.yml	private-data	1
+contracts/record-layer-m4-reconcile.yml	private-data	1
+contracts/record-layer-m5-read-contract.yml	private-data	1
+contracts/record-layer-m6-sync-ttl.yml	private-data	1
+contracts/record-layer-mcp-cli.yml	private-data	1
