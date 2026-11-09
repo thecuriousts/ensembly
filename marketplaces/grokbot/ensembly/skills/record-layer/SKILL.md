@@ -11,16 +11,14 @@ description: >
 # record-layer
 
 ```mermaid
-sequenceDiagram
-  participant B as Bot
-  participant L as Record layer
-  B->>L: Intent plus owner, time, key
-  L-->>B: Accepted or refused
-  B->>L: Act
-  B->>L: Read back the row
-  L-->>B: Dated row or rollback
+flowchart LR
+  I[Intent plus owner, time, key] --> D{Accepted?}
+  D -->|no| X[Refuse and stop]
+  D -->|yes| A[Act]
+  A --> V[Read the row back]
+  V --> R[Dated row or rollback]
   classDef x fill:#1e3a5f,stroke:#93c5fd,color:#ffffff
-  class B,L x
+  class I,D,X,A,V,R x
 ```
 
 ## Spec
