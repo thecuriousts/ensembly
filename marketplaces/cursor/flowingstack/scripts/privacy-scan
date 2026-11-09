@@ -30,23 +30,51 @@ def deny_rules(path):
     return [("deny-list", r"(?i)\b" + re.escape(l.strip()) + r"\b") for l in open(path) if l.strip()]
 
 
-def scan_text(name, text, rules):
+def allow_rules(path):
+    """Load rule\tliteral rows. Matching spans are removed before that rule runs."""
+    if not path or not os.path.exists(path):
+        return []
+    out = []
+    for raw in open(path):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "\t" not in line:
+            raise SystemExit(f"privacy-allow: need rule<TAB>literal, got {line!r}")
+        rule, lit = line.split("\t", 1)
+        lit = lit.strip()
+        if not lit:
+            raise SystemExit(f"privacy-allow: empty literal on rule {rule!r}")
+        out.append((rule.strip(), re.compile(re.escape(lit), re.I)))
+    return out
+
+
+def scrub_allows(line, rule, allows):
+    for a_rule, a_pat in allows:
+        if a_rule in ("*", rule):
+            line = a_pat.sub("", line)
+    return line
+
+
+def scan_text(name, text, rules, allows=None):
+    allows = allows or []
     hits = []
     for n, line in enumerate(text.split("\n"), 1):
         for rule, pat in rules:
-            if re.search(pat, line):
+            probe = scrub_allows(line, rule, allows)
+            if re.search(pat, probe):
                 hits.append(f"{name}:{n}: {rule}")
     return hits
 
 
-def scan_file(root, r, rules):
+def scan_file(root, r, rules, allows=None):
     full = os.path.join(root, r)
     if os.path.islink(full):
         return [f"{r}: symlink"]
     data = open(full, "rb").read()
     if b"\0" in data or data.startswith(MAGIC):
         return [f"{r}: binary"]
-    return scan_text(r, data.decode("utf-8", "replace"), rules)
+    return scan_text(r, data.decode("utf-8", "replace"), rules, allows)
 
 
 def own_catalog(repo, mk, root):
@@ -72,21 +100,23 @@ def main():
     o = a.parse_args()
     root = plugin_root(o.root)
     rules = RULES + deny_rules(o.deny)
+    allow_path = os.path.join(root, "privacy-allow")
+    allows = allow_rules(allow_path)
     hits, n = [], 0
     if o.stdin:
-        hits += scan_text("stdin", sys.stdin.read(), rules)
+        hits += scan_text("stdin", sys.stdin.read(), rules, allows)
         n += 1
     files = list(walk(root, "privacy-ignore")) if o.all else []
     for p in o.paths:
         full = rel(root, p)
         files += [os.path.relpath(os.path.join(full, q), root) for q in walk(full, "\0")] if os.path.isdir(full) else [p]
     for r in files:
-        hits += scan_file(root, r, rules)
+        hits += scan_file(root, r, rules, allows)
     n += len(files)
     if o.repo_root:
         mk = os.path.join(o.repo_root, ".cursor-plugin", "marketplace.json")
         if os.path.exists(mk):
-            hits += scan_text(os.path.relpath(mk, o.repo_root), own_catalog(o.repo_root, mk, root), rules)
+            hits += scan_text(os.path.relpath(mk, o.repo_root), own_catalog(o.repo_root, mk, root), rules, allows)
             n += 1
     if o.all and not o.baseline and os.path.exists(os.path.join(root, "privacy-baseline.tsv")):
         o.baseline = "privacy-baseline.tsv"

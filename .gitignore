@@ -38,3 +38,7 @@ target/
 crates/**/target/
 prototype/crates/**/target/
 **/*.rs.bk
+
+# Python
+__pycache__/
+*.py[cod]

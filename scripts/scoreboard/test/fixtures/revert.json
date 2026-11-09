@@ -1,0 +1,35 @@
+{
+  "repos": [
+    {
+      "full_name": "alice/alpha",
+      "visibility": "public",
+      "private": false
+    }
+  ],
+  "pulls": [
+    {
+      "repo": "alice/alpha",
+      "number": 5,
+      "title": "Add then undo",
+      "body": "",
+      "labels": [],
+      "created_at": "2026-10-10T08:00:00Z",
+      "merged_at": "2026-10-10T09:00:00Z",
+      "check_runs": [
+        {
+          "name": "ci",
+          "started_at": "2026-10-10T08:10:00Z",
+          "conclusion": "SUCCESS"
+        }
+      ]
+    }
+  ],
+  "commits": [
+    {
+      "repo": "alice/alpha",
+      "sha": "r1",
+      "message": "Revert \"Add then undo\"",
+      "committed_at": "2026-10-11T09:00:00Z"
+    }
+  ]
+}

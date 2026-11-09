@@ -1,0 +1,23 @@
+{
+  "repos": [
+    {
+      "full_name": "alice/alpha",
+      "visibility": "public",
+      "private": false
+    }
+  ],
+  "pulls": [
+    {
+      "repo": "alice/alpha",
+      "number": 4,
+      "title": "Missing checks",
+      "body": "",
+      "labels": [],
+      "created_at": "2026-10-10T10:00:00Z",
+      "merged_at": "2026-10-10T11:00:00Z",
+      "first_head_sha": null,
+      "check_runs": []
+    }
+  ],
+  "commits": []
+}

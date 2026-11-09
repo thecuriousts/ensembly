@@ -1,0 +1,131 @@
+{
+  "repos": [
+    {
+      "full_name": "alice/alpha",
+      "visibility": "public",
+      "private": false
+    },
+    {
+      "full_name": "alice/beta",
+      "visibility": "PUBLIC",
+      "private": false
+    },
+    {
+      "full_name": "alice/idle",
+      "visibility": "public",
+      "private": false
+    },
+    {
+      "full_name": "alice/hidden",
+      "visibility": "private",
+      "private": true
+    }
+  ],
+  "pulls": [
+    {
+      "repo": "alice/alpha",
+      "number": 1,
+      "title": "Add feature",
+      "body": "",
+      "labels": [],
+      "created_at": "2026-10-12T10:00:00Z",
+      "merged_at": "2026-10-12T12:00:00Z",
+      "first_head_sha": "aaa",
+      "check_runs": [
+        {
+          "name": "ci",
+          "head_sha": "aaa",
+          "started_at": "2026-10-12T10:05:00Z",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "repo": "alice/alpha",
+      "number": 2,
+      "title": "fix: follow up on #1",
+      "body": "Follow up on https://github.com/alice/alpha/pull/1",
+      "labels": [
+        "fix"
+      ],
+      "created_at": "2026-10-13T10:00:00Z",
+      "merged_at": "2026-10-13T11:00:00Z",
+      "first_head_sha": "bbb",
+      "check_runs": [
+        {
+          "name": "ci",
+          "head_sha": "bbb",
+          "started_at": "2026-10-13T10:05:00Z",
+          "conclusion": "failure"
+        },
+        {
+          "name": "ci",
+          "head_sha": "bbb",
+          "started_at": "2026-10-13T10:20:00Z",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "repo": "alice/beta",
+      "number": 3,
+      "title": "No checks here",
+      "body": "",
+      "labels": [],
+      "created_at": "2026-10-14T10:00:00Z",
+      "merged_at": "2026-10-16T10:00:00Z",
+      "first_head_sha": "ccc",
+      "check_runs": []
+    },
+    {
+      "repo": "alice/hidden",
+      "number": 99,
+      "title": "must not appear",
+      "body": "",
+      "labels": [],
+      "created_at": "2026-10-14T10:00:00Z",
+      "merged_at": "2026-10-14T11:00:00Z",
+      "first_head_sha": "zzz",
+      "check_runs": [
+        {
+          "name": "ci",
+          "head_sha": "zzz",
+          "started_at": "2026-10-14T10:05:00Z",
+          "conclusion": "success"
+        }
+      ]
+    },
+    {
+      "repo": "alice/alpha",
+      "number": 8,
+      "title": "fix: late follow up on #1",
+      "body": "See #1",
+      "labels": [],
+      "created_at": "2026-10-22T10:00:00Z",
+      "merged_at": "2026-10-22T12:00:00Z",
+      "first_head_sha": "fff",
+      "check_runs": [
+        {
+          "name": "ci",
+          "head_sha": "fff",
+          "started_at": "2026-10-22T10:05:00Z",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "commits": [
+    {
+      "repo": "alice/beta",
+      "sha": "ddd",
+      "message": "Revert \"old change\"\n\nThis reverts commit abc.",
+      "committed_at": "2026-10-15T12:00:00Z"
+    },
+    {
+      "repo": "alice/hidden",
+      "sha": "eee",
+      "message": "Revert \"secret\"",
+      "committed_at": "2026-10-15T12:00:00Z"
+    }
+  ]
+}
