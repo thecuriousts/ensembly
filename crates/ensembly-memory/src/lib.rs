@@ -19,8 +19,8 @@ pub use coherence::{
     CoherenceReport, GoalProposal, Reflection, SkillPattern,
 };
 pub use crdt::{
-    entry_id, ContextEntry, CrdtDocument, Goal, GoalStatus, GoalUpdate, Skill, TrajectoryEntry,
-    TrajectoryType,
+    entry_id, ContextEntry, CrdtDocument, Goal, GoalStatus, GoalUpdate, Skill, SupersededContext,
+    TrajectoryEntry, TrajectoryType,
 };
 pub use memory::{EpisodicMemory, FilePersistence, MemoryError};
 

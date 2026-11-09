@@ -23,6 +23,7 @@ use ensembly_kernel::pulse_pack::{
     export_pulse_pack, import_pulse_pack, local_pulse_status, read_pulse_pack, write_pulse_pack,
     PulseExportOpts, PulseImportOpts, DEFAULT_ARCHIVE_SIDECAR,
 };
+use ensembly_kernel::pulse_supersede as ps;
 use ensembly_kernel::runtime::Runtime;
 use ensembly_kernel::store::OpsStore;
 use ensembly_kernel::turn::{
@@ -73,6 +74,88 @@ enum PulseCoreCmd {
     Missions {
         #[command(subcommand)]
         sub: MissionsCmd,
+    },
+    /// Live memory traces: kind = memory and not superseded. Default limit 8.
+    List {
+        #[arg(long, default_value_t = 8)]
+        limit: i64,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Archive chain for one nat_key, including superseded rows.
+    History {
+        nat_key: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Archive `old` under `new`. The old row stays; list hides it.
+    Supersede {
+        old: String,
+        new: String,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        time: String,
+        #[arg(long)]
+        reason: String,
+        /// Public host alias: laptop-1, laptop-2, mac-mini, or box.
+        #[arg(long)]
+        writer: String,
+        #[arg(long)]
+        conflict: Option<i64>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Insert a trace. `--supersedes` archives that key instead of forking it.
+    Admit {
+        #[arg(long)]
+        key: String,
+        #[arg(long)]
+        snippet: String,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        time: String,
+        #[arg(long)]
+        status: String,
+        #[arg(long)]
+        kind: String,
+        #[arg(long, default_value = "open")]
+        lock: String,
+        #[arg(long)]
+        supersedes: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long)]
+        writer: String,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Turn an open or abstaining conflict into a supersession.
+    Conflict {
+        #[command(subcommand)]
+        sub: ConflictCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConflictCmd {
+    /// The winner stays live. The other row is archived and linked.
+    Resolve {
+        #[arg(long)]
+        id: i64,
+        #[arg(long)]
+        winner: String,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        time: String,
+        #[arg(long)]
+        reason: String,
+        #[arg(long)]
+        writer: String,
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -164,7 +247,7 @@ enum Commands {
         #[command(subcommand)]
         sub: PulsePackCmd,
     },
-    /// Pulse core (read-only): health check and read over pulse-memory, mission store import
+    /// Pulse: read-only check and read, plus explicit supersession of a trace
     Pulse {
         /// pulse-memory SQLite (opened read-only). Default: ~/.local/share/pulse-memory/pulse.sqlite
         #[arg(long, global = true)]
@@ -688,7 +771,167 @@ fn run_pulse(
         PulseCoreCmd::Missions {
             sub: MissionsCmd::List { json },
         } => pulse_list(&cfg, json),
+        PulseCoreCmd::List { limit, json } => pulse_live(&cfg, limit, json),
+        PulseCoreCmd::History { nat_key, json } => pulse_history(&cfg, &nat_key, json),
+        PulseCoreCmd::Supersede {
+            old,
+            new,
+            source,
+            time,
+            reason,
+            writer,
+            conflict,
+            json,
+        } => pulse_supersede_cmd(
+            &cfg,
+            ps::SupersedeRequest {
+                old_key: old,
+                new_key: new,
+                source,
+                event_time: time,
+                reason,
+                writer,
+                conflict_id: conflict,
+            },
+            json,
+        ),
+        PulseCoreCmd::Admit {
+            key,
+            snippet,
+            source,
+            time,
+            status,
+            kind,
+            lock,
+            supersedes,
+            reason,
+            writer,
+            json,
+        } => pulse_admit_cmd(
+            &cfg,
+            ps::AdmitRequest {
+                key,
+                snippet,
+                source,
+                time,
+                status,
+                kind,
+                lock,
+                supersedes,
+                reason,
+                writer,
+            },
+            json,
+        ),
+        PulseCoreCmd::Conflict {
+            sub:
+                ConflictCmd::Resolve {
+                    id,
+                    winner,
+                    source,
+                    time,
+                    reason,
+                    writer,
+                    json,
+                },
+        } => pulse_resolve_cmd(
+            &cfg,
+            ps::ResolveRequest {
+                conflict_id: id,
+                winner,
+                source,
+                event_time: time,
+                reason,
+                writer,
+            },
+            json,
+        ),
     }
+}
+
+fn refuse_or<T>(result: Result<T, ps::SupersedeError>) -> Result<T> {
+    match result {
+        Ok(value) => Ok(value),
+        Err(err @ ps::SupersedeError::Refused(_)) => {
+            eprintln!("{err}");
+            std::process::exit(pc::REFUSED_WRITE_EXIT);
+        }
+        Err(err) => Err(anyhow::anyhow!("{err}")),
+    }
+}
+
+fn print_supersede(receipt: &ps::SupersedeReceipt, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string(receipt)?);
+    } else {
+        let replay = if receipt.idempotent {
+            ", idempotent"
+        } else {
+            ""
+        };
+        println!(
+            "superseded {} -> {} ({}{replay})",
+            receipt.old_key, receipt.new_key, receipt.phase
+        );
+    }
+    Ok(())
+}
+
+fn pulse_live(cfg: &pc::PulseCfg, limit: i64, json: bool) -> Result<()> {
+    let conn = pc::open_ro(&cfg.db)?;
+    let rows = ps::list_live(&conn, limit).map_err(|err| anyhow::anyhow!("{err}"))?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+    } else {
+        print!("{}", pc::render_traces(&rows));
+    }
+    Ok(())
+}
+
+fn pulse_history(cfg: &pc::PulseCfg, key: &str, json: bool) -> Result<()> {
+    let conn = pc::open_ro(&cfg.db)?;
+    match ps::read_history(&conn, key) {
+        Ok(history) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&history)?);
+            } else {
+                print!("{}", pc::render_traces(&history.chain));
+            }
+            Ok(())
+        }
+        Err(err @ ps::SupersedeError::Refused(_)) => {
+            eprintln!("{err}");
+            std::process::exit(pc::REFUSED_WRITE_EXIT);
+        }
+        Err(err) => Err(anyhow::anyhow!("{err}")),
+    }
+}
+
+fn pulse_supersede_cmd(cfg: &pc::PulseCfg, req: ps::SupersedeRequest, json: bool) -> Result<()> {
+    let receipt = refuse_or(ps::supersede(&cfg.db, &req, &ps::SupersedeFault::default()))?;
+    print_supersede(&receipt, json)
+}
+
+fn pulse_admit_cmd(cfg: &pc::PulseCfg, req: ps::AdmitRequest, json: bool) -> Result<()> {
+    let receipt = refuse_or(ps::admit(&cfg.db, &req, &ps::SupersedeFault::default()))?;
+    if json {
+        println!("{}", serde_json::to_string(&receipt)?);
+    } else {
+        println!("admitted {} seen {}x", receipt.nat_key, receipt.seen_count);
+        if let Some(link) = &receipt.superseded {
+            print_supersede(link, false)?;
+        }
+    }
+    Ok(())
+}
+
+fn pulse_resolve_cmd(cfg: &pc::PulseCfg, req: ps::ResolveRequest, json: bool) -> Result<()> {
+    let receipt = refuse_or(ps::resolve_conflict(
+        &cfg.db,
+        &req,
+        &ps::SupersedeFault::default(),
+    ))?;
+    print_supersede(&receipt, json)
 }
 
 fn main() -> Result<()> {

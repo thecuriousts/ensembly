@@ -339,3 +339,19 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 **Ship path:** [RENAME.md](../RENAME.md) · `cargo test -p ensembly-kernel` · `cargo test -p ensembly-memory` · `cargo build -p ensembly-agents --bin ensembly-mcp`  
 **Law tests preserved:** Issue #12 fixture dogfood + no-G reconcile (`reconcile_fixture_empty_store_does_not_write_g`).
+
+---
+
+## Memory supersession (2026-11-09)
+
+**Verdict:** Supersession is an explicit freshness link, not a similarity hit and not a silent overwrite. The old trace or context value stays as archive. The live pulse hides it. Raw logs are not deleted.
+
+| Adopt | Refuse |
+|-------|--------|
+| `ensembly pulse supersede OLD NEW` records source, event time, reason, and a public host alias, then sets `superseded_by` | Deleting the old row, or inventing `nat_key-2` with no link |
+| `pulse list` shows `kind = memory` and `superseded_by` empty; `pulse history` reads the chain | Treating a near snippet as the current fact |
+| `pulse conflict resolve` turns `open` or `not in the evidence` into `superseded by KEY` | A second writer retargeting a row that already has a successor |
+| CRDT `set_context` keeps the prior value with an explicit link; merge unions those links and stays order-independent | Last-writer-wins that drops the previous preference |
+| Intent, then pointer, then read-back. Same request again is idempotent | A cycle, a self-link, or an unknown key |
+
+Essay: [Archive is not memory](https://captain.kingsparrow.space/articles/memory-issue/archive-not-memory). Pulse check and read stay read-only. One writer owns a given supersession.

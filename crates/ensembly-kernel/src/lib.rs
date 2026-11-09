@@ -23,6 +23,7 @@ pub mod paths;
 pub mod privacy;
 pub mod pulse_core;
 pub mod pulse_pack;
+pub mod pulse_supersede;
 pub mod realm;
 pub mod runtime;
 pub mod store;

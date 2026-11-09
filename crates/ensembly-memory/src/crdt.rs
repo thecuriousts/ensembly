@@ -7,7 +7,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::coherence::CoherenceRecord;
 
@@ -77,13 +77,37 @@ pub enum GoalStatus {
     Archived,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A context value kept after a later write replaced it.
+///
+/// The link is supersession: who replaced this value, and when that write
+/// happened. It is not a similarity score. Raw values stay in the archive.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SupersededContext {
+    pub value: serde_json::Value,
+    pub updated_at: DateTime<Utc>,
+    pub agent_id: String,
+    pub version: u64,
+    pub superseded_by_version: u64,
+    pub superseded_by_agent: String,
+    /// `true` when a later `set_context` on a replica replaced this value.
+    /// `false` when merge archived a concurrent live value under the winner.
+    /// Merge unions the explicit links and recomputes the rest, so replica
+    /// order cannot change the successor.
+    #[serde(default)]
+    pub explicit: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ContextEntry {
     pub key: String,
     pub value: serde_json::Value,
     pub updated_at: DateTime<Utc>,
     pub agent_id: String,
     pub version: u64,
+    /// Priors displaced by an explicit later write, or by a deterministic
+    /// merge when two live values meet. Empty on a first write.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub superseded: Vec<SupersededContext>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -170,11 +194,23 @@ impl CrdtDocument {
             }
         }
 
-        for (key, entry) in &other.context {
-            match self.context.get(key) {
-                Some(existing) if existing.version >= entry.version => {}
+        let context_keys: BTreeSet<String> = self
+            .context
+            .keys()
+            .chain(other.context.keys())
+            .cloned()
+            .collect();
+        for key in context_keys {
+            let merged = match (self.context.get(&key), other.context.get(&key)) {
+                (Some(left), Some(right)) => merge_context_entries(left, right),
+                (Some(left), None) => left.clone(),
+                (None, Some(right)) => right.clone(),
+                (None, None) => continue,
+            };
+            match self.context.get(&key) {
+                Some(existing) if existing == &merged => {}
                 _ => {
-                    self.context.insert(key.clone(), entry.clone());
+                    self.context.insert(key, merged);
                 }
             }
         }
@@ -320,20 +356,47 @@ impl CrdtDocument {
     }
 
     pub fn set_context(&mut self, key: &str, value: serde_json::Value) {
-        let version = self.context.get(key).map(|e| e.version + 1).unwrap_or(1);
-        let entry = ContextEntry {
-            key: key.to_string(),
-            value,
-            updated_at: Utc::now(),
-            agent_id: self.agent_id.clone(),
-            version,
+        let now = Utc::now();
+        let agent = self.agent_id.clone();
+        let (version, superseded) = if let Some(prev) = self.context.get(key) {
+            let version = prev.version.saturating_add(1);
+            let mut superseded = prev.superseded.clone();
+            superseded.push(SupersededContext {
+                value: prev.value.clone(),
+                updated_at: prev.updated_at,
+                agent_id: prev.agent_id.clone(),
+                version: prev.version,
+                superseded_by_version: version,
+                superseded_by_agent: agent.clone(),
+                explicit: true,
+            });
+            sort_superseded(&mut superseded);
+            (version, superseded)
+        } else {
+            (1, Vec::new())
         };
-        self.context.insert(key.to_string(), entry);
+        self.context.insert(
+            key.to_string(),
+            ContextEntry {
+                key: key.to_string(),
+                value,
+                updated_at: now,
+                agent_id: agent,
+                version,
+                superseded,
+            },
+        );
         self.increment_version();
     }
 
     pub fn get_context(&self, key: &str) -> Option<&serde_json::Value> {
         self.context.get(key).map(|e| &e.value)
+    }
+
+    /// Archive of context values replaced for `key`. The live value is
+    /// [`Self::get_context`]. `None` when the key was never written.
+    pub fn context_archive(&self, key: &str) -> Option<&[SupersededContext]> {
+        self.context.get(key).map(|e| e.superseded.as_slice())
     }
 
     pub fn get_recent_trajectory(&self, hours: i64) -> Vec<&TrajectoryEntry> {
@@ -375,6 +438,186 @@ impl CrdtDocument {
         let mut hasher = Sha256::new();
         hasher.update(serde_json::to_vec(self).unwrap_or_default());
         self.hash = hex::encode(hasher.finalize());
+    }
+}
+
+#[derive(Clone)]
+struct ContextObs {
+    value: serde_json::Value,
+    updated_at: DateTime<Utc>,
+    agent_id: String,
+    version: u64,
+}
+
+fn obs_rank(obs: &ContextObs) -> (u64, i64, &str, String) {
+    (
+        obs.version,
+        obs.updated_at.timestamp_micros(),
+        obs.agent_id.as_str(),
+        obs.value.to_string(),
+    )
+}
+
+fn obs_id(obs: &ContextObs) -> String {
+    format!("{}\u{1f}{}\u{1f}{}", obs.agent_id, obs.version, obs.value)
+}
+
+fn sort_superseded(items: &mut [SupersededContext]) {
+    items.sort_by(|a, b| {
+        a.version
+            .cmp(&b.version)
+            .then(a.agent_id.cmp(&b.agent_id))
+            .then(a.value.to_string().cmp(&b.value.to_string()))
+            .then(a.superseded_by_version.cmp(&b.superseded_by_version))
+            .then(a.superseded_by_agent.cmp(&b.superseded_by_agent))
+            .then(a.explicit.cmp(&b.explicit))
+    });
+}
+
+fn push_obs(into: &mut BTreeMap<String, ContextObs>, obs: ContextObs) {
+    let id = obs_id(&obs);
+    match into.get(&id) {
+        Some(existing) if obs_rank(existing) >= obs_rank(&obs) => {}
+        _ => {
+            into.insert(id, obs);
+        }
+    }
+}
+
+fn successor_id(obs: &BTreeMap<String, ContextObs>, agent: &str, version: u64) -> Option<String> {
+    obs.iter()
+        .filter(|(_, item)| item.agent_id == agent && item.version == version)
+        .max_by(|(_, a), (_, b)| obs_rank(a).cmp(&obs_rank(b)))
+        .map(|(id, _)| id.clone())
+}
+
+/// Union both replicas' values and explicit supersession links, then pick one
+/// live value. A concurrent live value is kept in the archive with a link to
+/// the winner. The same inputs always produce the same entry.
+fn merge_context_entries(left: &ContextEntry, right: &ContextEntry) -> ContextEntry {
+    let mut observed: BTreeMap<String, ContextObs> = BTreeMap::new();
+    for entry in [left, right] {
+        push_obs(
+            &mut observed,
+            ContextObs {
+                value: entry.value.clone(),
+                updated_at: entry.updated_at,
+                agent_id: entry.agent_id.clone(),
+                version: entry.version,
+            },
+        );
+        for prior in &entry.superseded {
+            push_obs(
+                &mut observed,
+                ContextObs {
+                    value: prior.value.clone(),
+                    updated_at: prior.updated_at,
+                    agent_id: prior.agent_id.clone(),
+                    version: prior.version,
+                },
+            );
+        }
+    }
+
+    // Explicit links only. Links created by an earlier merge are recomputed
+    // below so they cannot depend on which replica arrived first.
+    let mut explicit: BTreeMap<String, String> = BTreeMap::new();
+    for entry in [left, right] {
+        for prior in &entry.superseded {
+            if !prior.explicit {
+                continue;
+            }
+            let from = ContextObs {
+                value: prior.value.clone(),
+                updated_at: prior.updated_at,
+                agent_id: prior.agent_id.clone(),
+                version: prior.version,
+            };
+            let from_id = obs_id(&from);
+            let Some(to_id) = successor_id(
+                &observed,
+                &prior.superseded_by_agent,
+                prior.superseded_by_version,
+            ) else {
+                continue;
+            };
+            if to_id == from_id {
+                continue;
+            }
+            match explicit.get(&from_id) {
+                None => {
+                    explicit.insert(from_id, to_id);
+                }
+                Some(existing) => {
+                    let keep_new = observed
+                        .get(&to_id)
+                        .zip(observed.get(existing))
+                        .is_some_and(|(next, prev)| obs_rank(next) > obs_rank(prev));
+                    if keep_new {
+                        explicit.insert(from_id, to_id);
+                    }
+                }
+            }
+        }
+    }
+
+    let heads: Vec<String> = observed
+        .keys()
+        .filter(|id| !explicit.contains_key(*id))
+        .cloned()
+        .collect();
+    let live_id = if heads.is_empty() {
+        observed
+            .iter()
+            .max_by(|(_, a), (_, b)| obs_rank(a).cmp(&obs_rank(b)))
+            .map(|(id, _)| id.clone())
+            .expect("context merge has at least one value")
+    } else {
+        heads
+            .iter()
+            .max_by(|a, b| obs_rank(&observed[*a]).cmp(&obs_rank(&observed[*b])))
+            .cloned()
+            .expect("context merge has a live value")
+    };
+    let mut links = explicit.clone();
+    for id in observed.keys() {
+        if id != &live_id && !links.contains_key(id) {
+            links.insert(id.clone(), live_id.clone());
+        }
+    }
+    // A cycle of explicit links leaves every node with a successor. Point the
+    // chosen live value at nobody and point the node that targeted it aside.
+    if links.contains_key(&live_id) {
+        links.remove(&live_id);
+    }
+
+    let live = observed.get(&live_id).expect("live context value").clone();
+    let mut superseded = Vec::with_capacity(links.len());
+    for (from_id, to_id) in &links {
+        let Some(from) = observed.get(from_id) else {
+            continue;
+        };
+        let Some(to) = observed.get(to_id) else {
+            continue;
+        };
+        superseded.push(SupersededContext {
+            value: from.value.clone(),
+            updated_at: from.updated_at,
+            agent_id: from.agent_id.clone(),
+            version: from.version,
+            superseded_by_version: to.version,
+            superseded_by_agent: to.agent_id.clone(),
+            explicit: explicit.contains_key(from_id),
+        });
+    }
+    sort_superseded(&mut superseded);
+    ContextEntry {
+        key: left.key.clone(),
+        value: live.value,
+        updated_at: live.updated_at,
+        agent_id: live.agent_id,
+        version: live.version,
+        superseded,
     }
 }
 
@@ -446,13 +689,137 @@ mod tests {
     }
 
     #[test]
-    fn context_last_write_wins_by_version() {
-        let mut a = CrdtDocument::new("agent-a");
-        a.set_context("k", serde_json::json!(1));
-        a.set_context("k", serde_json::json!(2));
-        let mut b = CrdtDocument::new("agent-b");
-        b.set_context("k", serde_json::json!(99));
+    fn context_live_value_keeps_the_superseded_prior() {
+        let mut a = CrdtDocument::new("laptop-1");
+        a.set_context("pref", serde_json::json!("tea"));
+        a.set_context("pref", serde_json::json!("coffee"));
+        let archive = a.context_archive("pref").expect("archive");
+        assert_eq!(archive.len(), 1);
+        assert_eq!(archive[0].value, serde_json::json!("tea"));
+        assert_eq!(archive[0].superseded_by_version, 2);
+        assert_eq!(archive[0].superseded_by_agent, "laptop-1");
+        assert!(archive[0].explicit, "a later write is supersession");
+        assert_eq!(a.get_context("pref"), Some(&serde_json::json!("coffee")));
+
+        let mut b = CrdtDocument::new("laptop-2");
+        b.set_context("pref", serde_json::json!("juice"));
         b.merge(&a);
-        assert_eq!(b.get_context("k"), Some(&serde_json::json!(2)));
+        assert_eq!(b.get_context("pref"), Some(&serde_json::json!("coffee")));
+        let kept: Vec<_> = b
+            .context_archive("pref")
+            .unwrap()
+            .iter()
+            .map(|s| s.value.clone())
+            .collect();
+        assert!(kept.contains(&serde_json::json!("tea")));
+        assert!(kept.contains(&serde_json::json!("juice")));
+    }
+
+    /// Supersession links survive every merge order. Live value and archive
+    /// are a function of the replicas, not of the order they arrive.
+    #[test]
+    fn context_supersession_merge_is_order_independent() {
+        let a = pref_doc("laptop-1", &["tea", "coffee"]);
+        let b = pref_doc("laptop-2", &["juice"]);
+        let c = pref_doc("mac-mini", &["water"]);
+
+        let mut seen = Vec::new();
+        for order in [
+            [&a, &b, &c],
+            [&a, &c, &b],
+            [&b, &a, &c],
+            [&b, &c, &a],
+            [&c, &a, &b],
+            [&c, &b, &a],
+        ] {
+            let mut merged = CrdtDocument::new("box");
+            for doc in order {
+                merged.merge(doc);
+            }
+            seen.push(context_projection(&merged, "pref"));
+        }
+        for item in &seen[1..] {
+            assert_eq!(item, &seen[0]);
+        }
+        assert_eq!(seen[0].0, serde_json::json!("coffee"));
+        let archived = &seen[0].1;
+        assert!(archived.iter().any(|s| s.0 == serde_json::json!("tea")));
+        assert!(archived.iter().any(|s| s.0 == serde_json::json!("juice")));
+        assert!(archived.iter().any(|s| s.0 == serde_json::json!("water")));
+
+        let mut ab = CrdtDocument::new("box");
+        ab.merge(&a);
+        ab.merge(&b);
+        let mut left = ab.clone();
+        left.merge(&c);
+        let mut bc = CrdtDocument::new("box");
+        bc.merge(&b);
+        bc.merge(&c);
+        let mut right = CrdtDocument::new("box");
+        right.merge(&a);
+        right.merge(&bc);
+        assert_eq!(
+            context_projection(&left, "pref"),
+            context_projection(&right, "pref")
+        );
+
+        let hash = left.hash.clone();
+        let again = CrdtDocument::decode_state(&left.encode_state()).unwrap();
+        left.merge(&again);
+        assert_eq!(left.hash, hash, "re-merge must be a no-op");
+        assert_eq!(left.context_archive("pref").unwrap().len(), 3);
+    }
+
+    #[test]
+    fn context_without_superseded_field_still_decodes() {
+        let mut doc = CrdtDocument::new("laptop-1");
+        doc.set_context("pref", serde_json::json!("tea"));
+        let mut value: serde_json::Value = serde_json::from_slice(&doc.encode_state()).unwrap();
+        value["context"]["pref"]
+            .as_object_mut()
+            .unwrap()
+            .remove("superseded");
+        let decoded = CrdtDocument::decode_state(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(decoded.get_context("pref"), Some(&serde_json::json!("tea")));
+        assert!(decoded.context_archive("pref").unwrap().is_empty());
+    }
+
+    fn pref_doc(agent: &str, values: &[&str]) -> CrdtDocument {
+        let mut doc = CrdtDocument::new(agent);
+        for value in values {
+            doc.set_context("pref", serde_json::json!(value));
+        }
+        doc
+    }
+
+    fn context_projection(
+        doc: &CrdtDocument,
+        key: &str,
+    ) -> (
+        serde_json::Value,
+        Vec<(serde_json::Value, u64, String, bool)>,
+    ) {
+        let live = doc.get_context(key).cloned().unwrap();
+        let mut archive: Vec<_> = doc
+            .context_archive(key)
+            .unwrap()
+            .iter()
+            .map(|s| {
+                (
+                    s.value.clone(),
+                    s.superseded_by_version,
+                    s.superseded_by_agent.clone(),
+                    s.explicit,
+                )
+            })
+            .collect();
+        archive.sort_by(|a, b| {
+            a.0.to_string()
+                .cmp(&b.0.to_string())
+                .then(a.1.cmp(&b.1))
+                .then(a.2.cmp(&b.2))
+                .then(a.3.cmp(&b.3))
+        });
+        (live, archive)
     }
 }
