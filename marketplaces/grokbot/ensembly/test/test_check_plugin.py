@@ -81,6 +81,22 @@ class CatalogScan(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     c.check_catalog(self.catalog([self.row("see " + leak)]))
 
+    def test_legit_catalog_text_passes(self):
+        at = "@"
+        legit = ("npx demo" + at + "0.1.0", "@scope/pkg" + at + "1.2.3", "git" + at + "github.com:org/repo.git",
+                 ".claude/settings.local.json", ".env.local", "~/.local/share/tstack",
+                 "docs" + at + "example.net", "team" + at + "docs.example.com", "1+bot" + at + "users.noreply.github.com")
+        for text in legit:
+            with self.subTest(text):
+                c.check_catalog(self.catalog([self.row("see " + text)]))
+
+    def test_mdns_and_real_email_still_fail(self):
+        leaks = ("laptop-1." + "local", "a.b." + "local.", "bot@" + "thecuriousts.dev", "x@" + "mail.co.uk")
+        for leak in leaks:
+            with self.subTest(leak):
+                with self.assertRaises(SystemExit):
+                    c.check_catalog(self.catalog([self.row("see " + leak)]))
+
     def test_leak_in_other_row_fails(self):
         other = {"name": "x", "source": "marketplaces/cursor/x", "description": "see " + HOME}
         with self.assertRaises(SystemExit):

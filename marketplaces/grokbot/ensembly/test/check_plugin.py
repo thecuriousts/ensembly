@@ -20,8 +20,10 @@ HOST_PATTERNS = [
     (re.compile(r"\b100\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"), "tailnet address"),
     (re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I), "machine id or uuid"),
     (re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.ts\.net\b", re.I), "tailnet hostname"),
-    (re.compile(r"\b[\w-]+\.local\b", re.I), "mdns hostname"),
-    (re.compile(r"[\w.+-]+@(?!users\.noreply\.github\.com\b|example\.(?:com|org)\b)[\w-]+(?:\.[\w-]+)+"), "email"),
+    (re.compile(r"(?<![.\w-])[\w-]+(?:\.[\w-]+)*\.local\b(?!\.\w)", re.I), "mdns hostname"),
+    (re.compile(r"(?<![\w.+-])(?!git@)[\w.+-]+@"
+                r"(?!(?:[\w-]+\.)*(?:example\.(?:com|org|net)|users\.noreply\.github\.com)\b)"
+                r"(?:[\w-]+\.)+[A-Za-z]{2,}\b"), "email"),
 ]
 MERMAID_FILL = "fill:#1e3a5f"
 MERMAID_COLOR = "color:#ffffff"
