@@ -95,6 +95,31 @@ A5  hits(path, rule) > count → all live, exit 1; row without count → exit 2
 
 Every script and how they connect: [docs/flow.md](docs/flow.md).
 
+## Install
+
+Clone the public repo and load this folder as a local Cursor plugin:
+
+```text
+git clone https://github.com/thecuriousts/ensembly/
+ln -s "$PWD/ensembly/marketplaces/cursor/flowingstack" ~/.cursor/plugins/local/flowingstack
+```
+
+Reload Cursor so the skills appear. Then run `scripts/doctor --project <project>`.
+After a marketplace listing exists, install `flowingstack` from there instead.
+
+## Usage
+
+`scripts/doctor --project .` reports missing setup. Required rows fail the run. pstack, craft, and host aliases are optional: a miss prints `optional` and does not fail. Add them with `/add-plugin pstack` and `/add-plugin craft` when you want those checks. Write host aliases in `AGENTS.md` or `docs/host-aliases.md` as `laptop-1`, `laptop-2`, or `mac-mini`.
+
+For one change: `intelli-route` picks at most four skills, `task-contract` writes the contract, the work runs, `grill` reviews it, and `run-ledger` records the run. Freeze cases with `eval-freeze`. Ship after `scripts/check --src <upstream>` and [references/verify.md](references/verify.md) pass.
+
+## Skills
+
+Kernel: `task-contract`, `grill-rubric`, `run-ledger`, `eval-freeze`, `doctor`, `intelli-route`, `route-rule`.
+Capture: `capture-sweep`, `capture-mail`, `capture-calendar`, `capture-chat`, `capture-pr`.
+Shipped from the pin for matching house maps: `aihero-map`, `pstack-map`, `harvest`, `tomato-loop`. They stay so sync matches the pin. Skip them when those maps are unused.
+
+
 ## Route rule
 
 | Layer | Path | Effect |
