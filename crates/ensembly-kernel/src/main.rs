@@ -249,7 +249,7 @@ enum Commands {
     },
     /// Pulse: read-only check and read, plus explicit supersession of a trace
     Pulse {
-        /// pulse-memory SQLite (opened read-only). Default: ~/.local/share/pulse-memory/pulse.sqlite
+        /// pulse-memory SQLite. Check and read open it read-only. Supersede, admit, and conflict resolve write it. Default: ~/.local/share/pulse-memory/pulse.sqlite
         #[arg(long, global = true)]
         pulse_db: Option<PathBuf>,
         /// premflow binary. Default: first `premflow` on PATH, else ~/.local/bin/premflow

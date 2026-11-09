@@ -352,6 +352,6 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 | `pulse list` shows `kind = memory` and `superseded_by` empty; `pulse history` reads the chain | Treating a near snippet as the current fact |
 | `pulse conflict resolve` turns `open` or `not in the evidence` into `superseded by KEY` | A second writer retargeting a row that already has a successor |
 | CRDT `set_context` keeps the prior value with an explicit link; merge unions those links and stays order-independent | Last-writer-wins that drops the previous preference |
-| Intent, then pointer, then read-back. Same request again is idempotent | A cycle, a self-link, or an unknown key |
+| Intent, then pointer, then read-back, with the check and the pointer in one transaction. A refused admit rolls the new row back. Same request again is idempotent | A cycle, a self-link, an unknown key, or a committed trace with no link |
 
 Essay: [Archive is not memory](https://captain.kingsparrow.space/articles/memory-issue/archive-not-memory). Pulse check and read stay read-only. One writer owns a given supersession.

@@ -5,8 +5,12 @@
 //! earlier row stays in the table as archive. [`list_live`] hides it.
 //! [`read_history`] reads the chain. Checks in `pulse_core` stay read-only.
 //!
-//! The write is intent, then the pointer, then a read-back. A crash between
-//! those commits resumes on the same request. Raw rows are not deleted.
+//! The write is intent, then the pointer, then a read-back. The check and the
+//! pointer share one immediate transaction, so two writers cannot close a
+//! cycle. `admit --supersedes` validates every refusal before insert, then
+//! commits the new row, the pointer, and the event together. A refusal rolls
+//! that row back. A crash between the supersede commits resumes on the same
+//! request. Raw rows are not deleted.
 //!
 //! Essay: <https://captain.kingsparrow.space/articles/memory-issue/archive-not-memory>
 
@@ -14,6 +18,7 @@ use crate::pulse_core::{self, TraceRow};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::Serialize;
 use std::path::Path;
+use std::time::Duration;
 use thiserror::Error;
 
 const HOST_ALIASES: &[&str] = &["laptop-1", "laptop-2", "mac-mini", "box"];
@@ -158,17 +163,7 @@ pub fn supersede(
 ) -> Result<SupersedeReceipt, SupersedeError> {
     let prepared = prepare_supersede(req)?;
     let mut conn = open_existing(path)?;
-    let old = load_trace(&conn, &prepared.old_key)?;
-    let _new = load_trace(&conn, &prepared.new_key)?;
-    if let Some(existing) = nonempty(old.superseded_by.as_deref()) {
-        if existing != prepared.new_key {
-            return Err(refused(format!(
-                "already superseded by {existing}; chain from that key"
-            )));
-        }
-    } else if reaches(&conn, &prepared.new_key, &prepared.old_key)? {
-        return Err(refused("cycle"));
-    }
+    let old = check_link(&conn, &prepared.old_key, &prepared.new_key, true)?;
     let prepared = Prepared {
         old_snippet: old.snippet,
         ..prepared
@@ -181,6 +176,9 @@ pub fn admit(
     req: &AdmitRequest,
     fault: &SupersedeFault,
 ) -> Result<AdmitReceipt, SupersedeError> {
+    // Admit commits the row and the link together. A crash split would leave
+    // the unlinked row this function refuses to keep.
+    let _ = fault;
     let key = require_key(&req.key)?;
     let snippet = require_text("snippet", &req.snippet, 4000)?;
     let source = require_text("source", &req.source, 200)?;
@@ -208,56 +206,73 @@ pub fn admit(
 
     let mut conn = open_existing(path)?;
     if let Some(old) = &supersedes {
-        let _ = load_trace(&conn, old)?;
+        let _ = check_link(&conn, old, &key, false)?;
     }
-    let existing = load_trace_optional(&conn, &key)?;
-    let inserted = if let Some(row) = &existing {
-        if row.snippet != snippet {
-            return Err(refused(
-                "locked snippet changed; pass --supersedes to archive the old fact",
-            ));
+    let existed = match load_trace_optional(&conn, &key)? {
+        Some(row) => {
+            if row.snippet != snippet {
+                return Err(refused(snippet_refusal(&row.lock)));
+            }
+            true
         }
-        if supersedes.is_none() {
-            bump_seen(&mut conn, &key, &time)?;
-        }
-        false
-    } else {
-        insert_trace(
-            &mut conn,
-            &NewTrace {
-                key: &key,
-                snippet: &snippet,
-                source: &source,
-                time: &time,
-                status: &status,
-                kind: &kind,
-                lock: &lock,
-            },
-        )?;
-        true
+        None => false,
     };
 
-    let superseded = if let Some(old) = supersedes {
-        let link = SupersedeRequest {
+    let link = in_tx(&mut conn, |tx| {
+        if let Some(old) = &supersedes {
+            let _ = check_link(tx, old, &key, false)?;
+        }
+        let existing = load_trace_optional(tx, &key)?;
+        if let Some(row) = &existing {
+            if row.snippet != snippet {
+                return Err(refused(snippet_refusal(&row.lock)));
+            }
+        } else {
+            insert_trace_tx(
+                tx,
+                &NewTrace {
+                    key: &key,
+                    snippet: &snippet,
+                    source: &source,
+                    time: &time,
+                    status: &status,
+                    kind: &kind,
+                    lock: &lock,
+                },
+            )?;
+        }
+        let Some(old) = supersedes.clone() else {
+            if existing.is_some() {
+                bump_seen_tx(tx, &key, &time)?;
+            }
+            return Ok(None);
+        };
+        let old_row = load_trace(tx, &old)?;
+        let prepared = Prepared {
             old_key: old,
             new_key: key.clone(),
-            source,
-            event_time: time,
-            reason: reason.unwrap_or_default(),
-            writer,
+            source: source.clone(),
+            event_time: time.clone(),
+            reason: reason.clone().unwrap_or_default(),
+            writer: writer.clone(),
             conflict_id: None,
+            old_snippet: old_row.snippet,
         };
-        Some(supersede(path, &link, fault)?)
-    } else {
-        None
-    };
+        let idempotent = commit_link_tx(tx, &prepared)?;
+        Ok(Some(receipt(
+            &prepared,
+            SupersedePhase::Verified,
+            idempotent,
+        )))
+    })?;
+
     let seen_count = load_trace(&conn, &key)?.seen_count;
-    let idempotent = !inserted && superseded.as_ref().is_some_and(|r| r.idempotent);
+    let idempotent = existed && link.as_ref().is_some_and(|row| row.idempotent);
     Ok(AdmitReceipt {
         nat_key: key,
         seen_count,
         idempotent,
-        superseded,
+        superseded: link,
     })
 }
 
@@ -392,6 +407,59 @@ fn prepare_supersede(req: &SupersedeRequest) -> Result<Prepared, SupersedeError>
     })
 }
 
+/// Refuse a bad link before any pointer write. `new_must_exist` is false
+/// while admit still has to insert the successor in the same transaction.
+fn check_link(
+    conn: &Connection,
+    old_key: &str,
+    new_key: &str,
+    new_must_exist: bool,
+) -> Result<TraceRow, SupersedeError> {
+    if old_key == new_key {
+        return Err(refused("self-supersession"));
+    }
+    let old = load_trace(conn, old_key)?;
+    let new = load_trace_optional(conn, new_key)?;
+    if new.is_none() && new_must_exist {
+        return Err(refused(format!("unknown key: {new_key}")));
+    }
+    if let Some(existing) = nonempty(old.superseded_by.as_deref()) {
+        if existing != new_key {
+            return Err(refused(format!(
+                "already superseded by {existing}; chain from that key"
+            )));
+        }
+    } else if new.is_some() && reaches(conn, new_key, old_key)? {
+        return Err(refused("cycle"));
+    }
+    Ok(old)
+}
+
+fn commit_link_tx(conn: &Connection, req: &Prepared) -> Result<bool, SupersedeError> {
+    ensure_schema(conn)?;
+    let existing = load_event(conn, &req.old_key, &req.new_key)?;
+    if let Some(event) = &existing {
+        if !same_provenance(event, req) {
+            return Err(refused("provenance already recorded"));
+        }
+    }
+    let phase = if let Some(event) = &existing {
+        event.phase
+    } else {
+        insert_intent_tx(conn, req)?;
+        SupersedePhase::Intent
+    };
+    let idempotent = phase == SupersedePhase::Verified;
+    if phase == SupersedePhase::Intent {
+        apply_pointer_tx(conn, req)?;
+    }
+    if phase != SupersedePhase::Verified {
+        verify_pointer_tx(conn, req)?;
+    }
+    note_conflict_tx(conn, req)?;
+    Ok(idempotent)
+}
+
 fn advance(
     conn: &mut Connection,
     req: &Prepared,
@@ -446,7 +514,7 @@ fn same_provenance(event: &StoredEvent, req: &Prepared) -> bool {
         }
 }
 
-fn ensure_schema(conn: &mut Connection) -> Result<(), SupersedeError> {
+fn ensure_schema(conn: &Connection) -> Result<(), SupersedeError> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS supersession_events (
             id INTEGER PRIMARY KEY,
@@ -465,41 +533,79 @@ fn ensure_schema(conn: &mut Connection) -> Result<(), SupersedeError> {
 }
 
 fn insert_intent(conn: &mut Connection, req: &Prepared) -> Result<(), SupersedeError> {
-    in_tx(conn, |tx| {
-        tx.execute(
-            "INSERT INTO supersession_events (old_key, new_key, source, event_time, reason, writer, conflict_id, phase)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'intent')",
-            params![
-                req.old_key,
-                req.new_key,
-                req.source,
-                req.event_time,
-                req.reason,
-                req.writer,
-                req.conflict_id
-            ],
-        )
-        .map_err(store)?;
-        Ok(())
-    })
+    in_tx(conn, |tx| insert_intent_tx(tx, req))
+}
+
+fn insert_intent_tx(conn: &Connection, req: &Prepared) -> Result<(), SupersedeError> {
+    conn.execute(
+        "INSERT INTO supersession_events (old_key, new_key, source, event_time, reason, writer, conflict_id, phase)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'intent')",
+        params![
+            req.old_key,
+            req.new_key,
+            req.source,
+            req.event_time,
+            req.reason,
+            req.writer,
+            req.conflict_id
+        ],
+    )
+    .map_err(store)?;
+    Ok(())
 }
 
 fn apply_pointer(conn: &mut Connection, req: &Prepared) -> Result<(), SupersedeError> {
-    in_tx(conn, |tx| {
-        let changed = tx
-            .execute(
-                "UPDATE memory_traces SET superseded_by = ?1 \
-                 WHERE nat_key = ?2 AND (superseded_by IS NULL OR superseded_by = '' OR superseded_by = ?1)",
-                params![req.new_key, req.old_key],
+    let result = in_tx(conn, |tx| apply_pointer_tx(tx, req));
+    if matches!(result, Err(SupersedeError::Refused(_))) {
+        let _ = drop_intent(conn, req);
+    }
+    result
+}
+
+fn apply_pointer_tx(conn: &Connection, req: &Prepared) -> Result<(), SupersedeError> {
+    let old = check_link(conn, &req.old_key, &req.new_key, true)?;
+    if old.snippet != req.old_snippet {
+        return Err(refused(
+            "verify failed: archive row or supersession pointer changed",
+        ));
+    }
+    let changed = conn
+        .execute(
+            "UPDATE memory_traces SET superseded_by = ?1 \
+             WHERE nat_key = ?2 AND (superseded_by IS NULL OR superseded_by = '' OR superseded_by = ?1)",
+            params![req.new_key, req.old_key],
+        )
+        .map_err(store)?;
+    if changed != 1 {
+        let pointer: Option<String> = conn
+            .query_row(
+                "SELECT superseded_by FROM memory_traces WHERE nat_key = ?1",
+                [&req.old_key],
+                |row| row.get(0),
             )
             .map_err(store)?;
-        if changed != 1 {
+        if pointer.as_deref() != Some(req.new_key.as_str()) {
             return Err(refused(
                 "already superseded; chain from that key".to_string(),
             ));
         }
+    }
+    conn.execute(
+        "UPDATE supersession_events SET phase = 'applied' WHERE old_key = ?1 AND new_key = ?2",
+        params![req.old_key, req.new_key],
+    )
+    .map_err(store)?;
+    Ok(())
+}
+
+fn drop_intent(conn: &mut Connection, req: &Prepared) -> Result<(), SupersedeError> {
+    if !events_table(conn)? {
+        return Ok(());
+    }
+    in_tx(conn, |tx| {
         tx.execute(
-            "UPDATE supersession_events SET phase = 'applied' WHERE old_key = ?1 AND new_key = ?2",
+            "DELETE FROM supersession_events \
+             WHERE old_key = ?1 AND new_key = ?2 AND phase = 'intent'",
             params![req.old_key, req.new_key],
         )
         .map_err(store)?;
@@ -508,67 +614,71 @@ fn apply_pointer(conn: &mut Connection, req: &Prepared) -> Result<(), SupersedeE
 }
 
 fn verify_pointer(conn: &mut Connection, req: &Prepared) -> Result<(), SupersedeError> {
-    in_tx(conn, |tx| {
-        let (snippet, pointer): (String, Option<String>) = tx
-            .query_row(
-                "SELECT snippet, superseded_by FROM memory_traces WHERE nat_key = ?1",
-                [&req.old_key],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(store)?;
-        if snippet != req.old_snippet || pointer.as_deref() != Some(req.new_key.as_str()) {
-            return Err(refused(
-                "verify failed: archive row or supersession pointer changed".to_string(),
-            ));
-        }
-        let new_exists: i64 = tx
-            .query_row(
-                "SELECT COUNT(*) FROM memory_traces WHERE nat_key = ?1",
-                [&req.new_key],
-                |row| row.get(0),
-            )
-            .map_err(store)?;
-        if new_exists != 1 {
-            return Err(refused("verify failed: new key is missing".to_string()));
-        }
-        tx.execute(
-            "UPDATE supersession_events SET phase = 'verified', conflict_id = COALESCE(?3, conflict_id) \
-             WHERE old_key = ?1 AND new_key = ?2",
-            params![req.old_key, req.new_key, req.conflict_id],
+    in_tx(conn, |tx| verify_pointer_tx(tx, req))
+}
+
+fn verify_pointer_tx(conn: &Connection, req: &Prepared) -> Result<(), SupersedeError> {
+    let (snippet, pointer): (String, Option<String>) = conn
+        .query_row(
+            "SELECT snippet, superseded_by FROM memory_traces WHERE nat_key = ?1",
+            [&req.old_key],
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(store)?;
-        Ok(())
-    })
+    if snippet != req.old_snippet || pointer.as_deref() != Some(req.new_key.as_str()) {
+        return Err(refused(
+            "verify failed: archive row or supersession pointer changed".to_string(),
+        ));
+    }
+    let new_exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM memory_traces WHERE nat_key = ?1",
+            [&req.new_key],
+            |row| row.get(0),
+        )
+        .map_err(store)?;
+    if new_exists != 1 {
+        return Err(refused("verify failed: new key is missing".to_string()));
+    }
+    conn.execute(
+        "UPDATE supersession_events SET phase = 'verified', conflict_id = COALESCE(?3, conflict_id) \
+         WHERE old_key = ?1 AND new_key = ?2",
+        params![req.old_key, req.new_key, req.conflict_id],
+    )
+    .map_err(store)?;
+    Ok(())
 }
 
 fn note_conflict(conn: &mut Connection, req: &Prepared) -> Result<(), SupersedeError> {
+    in_tx(conn, |tx| note_conflict_tx(tx, req))
+}
+
+fn note_conflict_tx(conn: &Connection, req: &Prepared) -> Result<(), SupersedeError> {
     let Some(conflict_id) = req.conflict_id else {
         return Ok(());
     };
     let resolution = format!("superseded by {}", req.new_key);
-    in_tx(conn, |tx| {
-        let current: String = tx
-            .query_row(
-                "SELECT resolution FROM conflicts WHERE id = ?1",
-                [conflict_id],
-                |row| row.get(0),
-            )
-            .map_err(store)?;
-        if current == resolution {
-            return Ok(());
-        }
-        if !resolution_can_become_supersession(&current) {
-            return Err(refused(format!(
-                "conflict {conflict_id} is already resolved ({current})"
-            )));
-        }
-        tx.execute(
-            "UPDATE conflicts SET resolution = ?1 WHERE id = ?2",
-            params![resolution, conflict_id],
+    let current: String = conn
+        .query_row(
+            "SELECT resolution FROM conflicts WHERE id = ?1",
+            [conflict_id],
+            |row| row.get(0),
         )
         .map_err(store)?;
-        Ok(())
-    })
+    if current == resolution {
+        return Ok(());
+    }
+    if !resolution_can_become_supersession(&current) {
+        return Err(refused(format!(
+            "conflict {conflict_id} is already resolved ({current})"
+        )));
+    }
+    conn.execute(
+        "UPDATE conflicts SET resolution = ?1 WHERE id = ?2",
+        params![resolution, conflict_id],
+    )
+    .map_err(store)?;
+    Ok(())
 }
 
 fn resolution_can_become_supersession(resolution: &str) -> bool {
@@ -682,35 +792,31 @@ struct NewTrace<'a> {
     lock: &'a str,
 }
 
-fn insert_trace(conn: &mut Connection, row: &NewTrace<'_>) -> Result<(), SupersedeError> {
-    in_tx(conn, |tx| {
-        tx.execute(
-            "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, lock, seen_count, first_seen, last_seen)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?4, ?4)",
-            params![row.key, row.snippet, row.source, row.time, row.status, row.kind, row.lock],
+fn insert_trace_tx(conn: &Connection, row: &NewTrace<'_>) -> Result<(), SupersedeError> {
+    conn.execute(
+        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, lock, seen_count, first_seen, last_seen)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?4, ?4)",
+        params![row.key, row.snippet, row.source, row.time, row.status, row.kind, row.lock],
+    )
+    .map_err(store)?;
+    let id = conn.last_insert_rowid();
+    if fts_table(conn)? {
+        conn.execute(
+            "INSERT INTO memory_fts(rowid, nat_key, snippet, source) VALUES (?1, ?2, ?3, ?4)",
+            params![id, row.key, row.snippet, row.source],
         )
         .map_err(store)?;
-        let id = tx.last_insert_rowid();
-        if fts_table(tx)? {
-            tx.execute(
-                "INSERT INTO memory_fts(rowid, nat_key, snippet, source) VALUES (?1, ?2, ?3, ?4)",
-                params![id, row.key, row.snippet, row.source],
-            )
-            .map_err(store)?;
-        }
-        Ok(())
-    })
+    }
+    Ok(())
 }
 
-fn bump_seen(conn: &mut Connection, key: &str, time: &str) -> Result<(), SupersedeError> {
-    in_tx(conn, |tx| {
-        tx.execute(
-            "UPDATE memory_traces SET seen_count = seen_count + 1, last_seen = ?1 WHERE nat_key = ?2",
-            params![time, key],
-        )
-        .map_err(store)?;
-        Ok(())
-    })
+fn bump_seen_tx(conn: &Connection, key: &str, time: &str) -> Result<(), SupersedeError> {
+    conn.execute(
+        "UPDATE memory_traces SET seen_count = seen_count + 1, last_seen = ?1 WHERE nat_key = ?2",
+        params![time, key],
+    )
+    .map_err(store)?;
+    Ok(())
 }
 
 fn fts_table(conn: &Connection) -> Result<bool, SupersedeError> {
@@ -795,23 +901,25 @@ fn trace_row(row: &rusqlite::Row) -> rusqlite::Result<TraceRow> {
     })
 }
 
-fn in_tx(
+fn in_tx<T>(
     conn: &mut Connection,
-    body: impl FnOnce(&rusqlite::Transaction) -> Result<(), SupersedeError>,
-) -> Result<(), SupersedeError> {
+    body: impl FnOnce(&rusqlite::Transaction) -> Result<T, SupersedeError>,
+) -> Result<T, SupersedeError> {
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(store)?;
-    body(&tx)?;
+    let value = body(&tx)?;
     tx.commit().map_err(store)?;
-    Ok(())
+    Ok(value)
 }
 
 fn open_existing(path: &Path) -> Result<Connection, SupersedeError> {
     if !path.is_file() {
         return Err(SupersedeError::Store("pulse db missing".into()));
     }
-    Connection::open(path).map_err(store)
+    let conn = Connection::open(path).map_err(store)?;
+    conn.busy_timeout(Duration::from_secs(5)).map_err(store)?;
+    Ok(conn)
 }
 
 fn require_writer(writer: &str) -> Result<String, SupersedeError> {
@@ -877,6 +985,15 @@ fn receipt(req: &Prepared, phase: SupersedePhase, idempotent: bool) -> Supersede
         idempotent,
         conflict_id: req.conflict_id,
     }
+}
+
+fn snippet_refusal(lock: &str) -> String {
+    let which = if lock == "open" {
+        "snippet changed"
+    } else {
+        "locked snippet changed"
+    };
+    format!("{which}; pass --supersedes to archive the old fact")
 }
 
 fn refused(message: impl Into<String>) -> SupersedeError {
