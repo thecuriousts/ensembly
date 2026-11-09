@@ -1,0 +1,20 @@
+{
+  "name": "ensembly",
+  "version": "0.1.0",
+  "description": "Record layer for every bot: one owner per fact, dated rows, write intent then act then verify, idempotency keys, and verified retrieve.",
+  "author": {
+    "name": "thecuriousts"
+  },
+  "homepage": "https://github.com/thecuriousts/ensembly",
+  "repository": "https://github.com/thecuriousts/ensembly",
+  "license": "MIT",
+  "keywords": [
+    "ensembly",
+    "record-layer",
+    "pulse",
+    "idempotency",
+    "retrieve",
+    "ownership"
+  ],
+  "skills": "./skills/"
+}
