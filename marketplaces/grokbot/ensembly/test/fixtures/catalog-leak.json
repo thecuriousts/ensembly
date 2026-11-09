@@ -1,0 +1,7 @@
+{
+  "name": "thecuriousts-plugins",
+  "owner": {"name": "thecuriousts"},
+  "plugins": [
+    {"name": "ensembly", "source": "marketplaces/grokbot/ensembly", "description": "Record layer, built on demo-host.tail-demo.ts.net"}
+  ]
+}
