@@ -1,0 +1,30 @@
+name: plugins
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugins-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: grokbot ensembly
+        working-directory: marketplaces/grokbot/ensembly/test
+        run: |
+          python3 check_plugin.py
+          python3 -m unittest test_check_plugin
+      - name: cursor flowingstack
+        working-directory: marketplaces/cursor/flowingstack
+        run: python3 -m unittest discover -s test
