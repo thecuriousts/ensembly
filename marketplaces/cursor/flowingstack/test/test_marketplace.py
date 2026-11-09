@@ -32,14 +32,29 @@ class Marketplace(unittest.TestCase):
         self.assertTrue(10 <= len(d) <= 200, d)
         for w in ("thecuriousts", "p10ns11y", "author"):
             self.assertNotIn(w, d.lower())
-        self.assertNotIn("author", p)
+        self.assertEqual(p["author"]["name"], "thecuriousts")
+        self.assertNotIn("email", p["author"])
+        self.assertEqual(p.get("repository"), "https://github.com/thecuriousts/ensembly/")
+        self.assertEqual(p.get("publisher"), "thecuriousts")
         self.assertEqual(run("doc-lint", os.path.join(".cursor-plugin", "plugin.json"))[0], 0)
 
     def test_plugin_manifest_fields(self):
         p = json.loads(read(os.path.join(ROOT, ".cursor-plugin", "plugin.json")))
+        self.assertEqual(p.get("version"), "0.1.0")
         self.assertRegex(p.get("version", ""), r"^\d+\.\d+\.\d+$")
         self.assertEqual(p.get("license"), "MIT")
         self.assertTrue(p.get("keywords") and all(isinstance(k, str) and k for k in p["keywords"]))
+        self.assertEqual(p.get("logo"), "assets/logo.svg")
+        self.assertTrue(os.path.isfile(os.path.join(ROOT, p["logo"])))
+
+    def test_license_files(self):
+        plugin_license = read(os.path.join(ROOT, "LICENSE"))
+        root_license = read(os.path.join(REPO, "LICENSE.md"))
+        for text in (plugin_license, root_license):
+            self.assertIn("MIT License", text)
+            self.assertIn("Copyright (c) 2026 Peramanathan Sathyamoorthy", text)
+            self.assertNotIn("Maximilian Stoiber", text)
+            self.assertNotIn("@", text)
 
     def test_marketplace_entry_fields(self):
         m = json.loads(read(os.path.join(REPO, ".cursor-plugin", "marketplace.json")))
