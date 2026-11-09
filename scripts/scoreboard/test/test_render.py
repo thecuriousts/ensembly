@@ -32,6 +32,8 @@ class RenderDoc(unittest.TestCase):
         self.assertIn('"theme": "base"', head)
         self.assertIn("flowchart TB", head)
         self.assertIn("primaryColor", head)
+        self.assertIn("#1e3a5f", head)
+        self.assertIn("#ffffff", head)
         self.assertLess(self.md.index("```mermaid"), self.md.index("## Definitions"))
         self.assertLess(self.md.index("## Definitions"), self.md.index("## Results"))
 
@@ -47,12 +49,12 @@ class RenderDoc(unittest.TestCase):
         self.assertNotIn("hidden", self.md)
         self.assertNotIn("must not appear", self.md)
 
-    def test_special_repo_name_uses_trailing_slash(self):
+    def test_public_repo_full_name_has_no_trailing_slash(self):
         leaf = "ensembl" + "y"
         snapshot = load("empty.json")
-        snapshot["repos"] = [{"full_name": f"owner/{leaf}", "visibility": "public", "private": False}]
+        snapshot["repos"] = [{"full_name": f"thecuriousts/{leaf}", "visibility": "public", "private": False}]
         snapshot["pulls"] = [{
-            "repo": f"owner/{leaf}",
+            "repo": f"thecuriousts/{leaf}",
             "number": 1,
             "title": "Add docs",
             "body": "",
@@ -62,8 +64,9 @@ class RenderDoc(unittest.TestCase):
             "check_runs": [{"name": "ci", "started_at": "2026-10-10T10:05:00Z", "conclusion": "success"}],
         }]
         md = render(compute(snapshot, "2026-10-01", "2026-10-31"))
-        self.assertIn(f"owner/{leaf}/", md)
-        self.assertIsNone(re.search(r"(?i)\bensembl" + r"y\b(?!/)", md))
+        self.assertIn(f"| thecuriousts/{leaf} |", md)
+        self.assertNotIn(f"thecuriousts/{leaf}/", md)
+        self.assertIn("fill:#1e3a5f,stroke:#93c5fd,color:#ffffff", md)
 
 
 class CliFixture(unittest.TestCase):

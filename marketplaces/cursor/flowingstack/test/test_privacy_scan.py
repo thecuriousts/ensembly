@@ -15,6 +15,17 @@ OK = ["laptop-1 and mac-mini", "Co-authored-by: A <1+a@users.noreply.github.com>
       "v1.2.3 at https://example.com/home", "contact a@example.com"]
 
 
+
+class Allowlist(unittest.TestCase):
+    def test_public_repo_full_name_allowlisted(self):
+        code, out = run("privacy-scan", "--stdin", stdin="see thecuriousts/" + "ensembly" + " table\n")
+        self.assertEqual(code, 0, out)
+
+    def test_bare_product_name_still_fails(self):
+        code, out = run("privacy-scan", "--stdin", stdin="Ensembly member data\n")
+        self.assertEqual(code, 1, out)
+        self.assertIn("private-data", out)
+
 class Text(unittest.TestCase):
     def test_red_lines_fail(self):
         for name, line in RED.items():

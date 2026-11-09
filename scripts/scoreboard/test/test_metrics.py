@@ -164,10 +164,11 @@ class PrivateOnly(unittest.TestCase):
 
 
 class DisplayName(unittest.TestCase):
-    def test_special_leaf_gets_trailing_slash(self):
+    def test_keeps_public_full_name(self):
         full = "thecuriousts/" + ("ensembl" + "y")
-        self.assertEqual(display_repo(full), full + "/")
+        self.assertEqual(display_repo(full), full)
         self.assertEqual(display_repo("alice/alpha"), "alice/alpha")
+        self.assertEqual(display_repo("alice/alpha/"), "alice/alpha")
 
 
 if __name__ == "__main__":

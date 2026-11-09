@@ -1,7 +1,7 @@
 # Public engineering scoreboard
 
 ```mermaid
-%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#1e3a5f", "primaryBorderColor": "#93c5fd", "primaryTextColor": "#ffffff", "secondaryColor": "#1e3a5f", "tertiaryColor": "#1e3a5f", "lineColor": "#93c5fd", "fontFamily": "Inter"}}}%%
 flowchart TB
   title["Public repo scoreboard 10 Oct 2026 to 9 Nov 2026 UTC"]
   title --> pillars
@@ -19,10 +19,10 @@ flowchart TB
       p9["Open to merge p90 1.0d"]
     end
   end
-  classDef correct fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17
-  classDef effective fill:#d0ebff,stroke:#1971c2,color:#0b2e4f
-  classDef efficient fill:#fff3bf,stroke:#f08c00,color:#4a3000
-  classDef frame fill:#fff4e6,stroke:#e8590c,color:#4a3000
+  classDef correct fill:#1e3a5f,stroke:#93c5fd,color:#ffffff
+  classDef effective fill:#1e3a5f,stroke:#93c5fd,color:#ffffff
+  classDef efficient fill:#1e3a5f,stroke:#93c5fd,color:#ffffff
+  classDef frame fill:#1e3a5f,stroke:#93c5fd,color:#ffffff
   class fp correct
   class mg,rv effective
   class md,p9 efficient
@@ -51,7 +51,7 @@ Owners are `p10ns11y` and `thecuriousts`. A repository is included only when `vi
 | p10ns11y/p10ns11y | 1 | — | 0 | 1.0m | 1.0m |
 | p10ns11y/plugins | 33 | 94% (31/33) | 0 | 16.6m | 5.3h |
 | p10ns11y/skills | 3 | — | 0 | 24.4m | 4.3d |
-| thecuriousts/ensembly/ | 26 | 64% (16/25) | 1 | 29.0m | 1.0d |
+| thecuriousts/ensembly | 26 | 64% (16/25) | 1 | 29.0m | 1.0d |
 | **Total** | 91 | 82% (70/85) | 1 | 20.3m | 1.0d |
 
 Scanned 186 public repositories; 8 had a merged pull request or a revert or follow-up fix in the window and appear above.

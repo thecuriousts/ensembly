@@ -4,11 +4,12 @@ from metrics import display_repo, fmt_day
 
 THEME = (
     '%%{init: {"theme": "base", "themeVariables": {'
-    '"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", '
-    '"primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", '
-    '"tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", '
+    '"primaryColor": "#1e3a5f", "primaryBorderColor": "#93c5fd", '
+    '"primaryTextColor": "#ffffff", "secondaryColor": "#1e3a5f", '
+    '"tertiaryColor": "#1e3a5f", "lineColor": "#93c5fd", '
     '"fontFamily": "Inter"}}}%%'
 )
+DARK = "fill:#1e3a5f,stroke:#93c5fd,color:#ffffff"
 
 
 def _esc(text):
@@ -41,10 +42,10 @@ def render(result):
         f'      p9["Open to merge p90 {total["p90"]}"]',
         "    end",
         "  end",
-        "  classDef correct fill:#d3f9d8,stroke:#2f9e44,color:#0b3d17",
-        "  classDef effective fill:#d0ebff,stroke:#1971c2,color:#0b2e4f",
-        "  classDef efficient fill:#fff3bf,stroke:#f08c00,color:#4a3000",
-        "  classDef frame fill:#fff4e6,stroke:#e8590c,color:#4a3000",
+        f"  classDef correct {DARK}",
+        f"  classDef effective {DARK}",
+        f"  classDef efficient {DARK}",
+        f"  classDef frame {DARK}",
         "  class fp correct",
         "  class mg,rv effective",
         "  class md,p9 efficient",

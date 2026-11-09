@@ -3,7 +3,6 @@ import math
 import re
 from datetime import date, datetime, timedelta, timezone
 
-LEAF = "ensembl" + "y"
 FIX_WORD = re.compile(r"\bfix\b", re.I)
 REVERT_MSG = re.compile(r'^(?:Revert\b|revert:\s|This reverts commit\b)', re.I | re.M)
 PR_URL = re.compile(r"https://github\.com/([^/]+)/([^/]+)/pull/(\d+)")
@@ -79,9 +78,6 @@ def display_repo(full_name):
     name = str(full_name or "").strip().strip("/")
     if not name:
         return "unknown"
-    leaf = name.rsplit("/", 1)[-1]
-    if leaf == LEAF:
-        return name + "/"
     return name
 
 
