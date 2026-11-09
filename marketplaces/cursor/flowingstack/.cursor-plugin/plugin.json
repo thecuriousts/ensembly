@@ -2,7 +2,14 @@
   "name": "flowingstack",
   "version": "0.1.0",
   "description": "Task contracts, a run ledger, frozen eval sets, a review rubric, doc and privacy checks, and pinned tstack skills",
+  "author": {
+    "name": "thecuriousts"
+  },
+  "publisher": "thecuriousts",
+  "homepage": "https://github.com/thecuriousts/ensembly/tree/master/marketplaces/cursor/flowingstack",
+  "repository": "https://github.com/thecuriousts/ensembly/",
   "license": "MIT",
   "keywords": ["task-contract", "run-ledger", "eval-freeze", "review", "privacy", "skills"],
+  "logo": "assets/logo.svg",
   "skills": "./skills/"
 }

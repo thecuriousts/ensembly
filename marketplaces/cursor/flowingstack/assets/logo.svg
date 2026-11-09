@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="flowingstack">
+  <rect width="128" height="128" rx="28" fill="#0b2e4f"/>
+  <path d="M14 46c22-16 36 8 54 0s32-16 46 2v18c-18-14-30 8-48 0S32 50 14 64Z" fill="#1971c2"/>
+  <path d="M14 64c22-16 36 8 54 0s32-16 46 2v18c-18-14-30 8-48 0S32 68 14 82Z" fill="#2f9e44"/>
+  <path d="M14 82c22-16 36 8 54 0s32-16 46 2v18c-18-14-30 8-48 0S32 86 14 100Z" fill="#f08c00"/>
+</svg>
