@@ -27,7 +27,8 @@
 
 | Term | Full text | What it means here |
 |------|-----------|---------------------|
-| **CRDT** | Conflict-free Replicated Data Type | Data structure whose replicas merge without coordination; our trajectory/skills/goals document converges under concurrent CLI writers. |
+| **CRDT** | Conflict-free Replicated Data Type | Data structure whose replicas merge without coordination; our trajectory/skills/goals document converges under concurrent CLI writers. Context merge keeps superseded values; it does not drop the prior preference. |
+| **Supersession** | Freshness link | A later fact names the row or context value it replaces. Distinct from similarity. The old value stays as archive and leaves the live pulse. `ensembly pulse supersede` / `context_archive`. Essay: [Archive is not memory](https://captain.kingsparrow.space/articles/memory-issue/archive-not-memory). |
 | **Trajectory** | Episodic trajectory | Append-only log of what actually happened: observations, actions, reflections. |
 | **Coherence** | Coherence score | 0–1 similarity measure (word-set Jaccard) between consecutive trajectory entries; proxy for "does what I'm doing hang together". |
 | **Skill synthesis** | — | When the same 3-action pattern repeats past threshold, it is crystallized into a named, reusable `Skill`. |

@@ -3,7 +3,8 @@
 //!
 //! Law: this module never writes to the pulse DB, to premflow data, or to any
 //! mission goal graph (G) source. The only writes are the new mission store
-//! under `missions_dir`, created by [`import_missions`].
+//! under `missions_dir`, created by [`import_missions`]. Supersession of a
+//! trace (`superseded_by`, kept as archive) is [`crate::pulse_supersede`].
 
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::{DateTime, NaiveDate, Utc};
@@ -207,7 +208,7 @@ pub fn db_stats(conn: &Connection) -> Result<DbStats> {
     Ok(s)
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TraceRow {
     pub nat_key: String,
     pub snippet: String,

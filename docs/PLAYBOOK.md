@@ -79,6 +79,21 @@ Memory flags: `--memory <path>` (explicit; open failure fatal) · `--no-memory`.
 
 **Topology:** Grok Bot = **canonical kernel host** (single writer on ops DB). Laptop = client — imports pulse packs, never dual-writes ops.
 
+**Supersession (freshness, not nearness).** A changed preference does not delete the old trace and does not rely on a similar snippet. Archive the old key, keep it readable, and hide it from the live list:
+
+```bash
+cargo run -p ensembly-kernel -- pulse admit \
+  --pulse-db "$PULSE_MEMORY_DB" \
+  --key pref/drink-2 --snippet coffee --source operator \
+  --time 2026-11-09T12:00:00+00:00 --status user-stated --kind memory \
+  --supersedes pref/drink --reason "preference changed" --writer laptop-1
+
+cargo run -p ensembly-kernel -- pulse list --pulse-db "$PULSE_MEMORY_DB"
+cargo run -p ensembly-kernel -- pulse history pref/drink --pulse-db "$PULSE_MEMORY_DB"
+```
+
+`list` shows `coffee` only. `history` still shows `tea` and the link. An open conflict, or one left at `not in the evidence`, becomes that link with `pulse conflict resolve --id N --winner pref/drink-2` plus the same source, time, reason, and writer. Refusals (cycle, self-link, unknown key, second target, bad writer) exit 7.
+
 ### Bot exports after session
 
 ```bash

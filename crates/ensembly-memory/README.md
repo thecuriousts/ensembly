@@ -8,7 +8,7 @@ Episodic learning layer for the ensembly operator kernel: a durable, mergeable m
 
 | Module | Role |
 |--------|------|
-| `crdt` | Conflict-free Replicated Data Type document: trajectory / skills / goals / context with idempotent, commutative merge. Durable pattern counts + coherence history live *inside* the document, so learning survives across command-line invocations. |
+| `crdt` | Conflict-free Replicated Data Type document: trajectory / skills / goals / context with idempotent, commutative merge. Context keeps superseded values (an explicit later write, or a concurrent live value linked at merge). Durable pattern counts + coherence history live *inside* the document, so learning survives across command-line invocations. |
 | `memory` | `EpisodicMemory` + atomic file persistence (write-temp-then-rename) and `sync_and_save` (load-merge-persist) for concurrent writers. |
 | `coherence` | Explicit `reflect`: word-set Jaccard coherence scoring, repeated-pattern skill synthesis, goal proposals. Deterministic — no model required. |
 
@@ -55,6 +55,7 @@ Global flags: `--memory <path>` (explicit path; open failure is fatal) · `--no-
 
 - **Applied-only recording:** the kernel appends a trajectory entry only after a bus message applies successfully — memory logs what happened, never what was attempted.
 - **Merge law:** re-merging state you already hold is a true no-op (stable hash). Concurrent command-line writers converge via `sync_and_save`; no write is lost.
+- **Context supersession:** `set_context` on a key that already has a value keeps the prior value and records who replaced it (`explicit`). Merge unions those links. A concurrent live value is archived under the deterministic winner and marked not explicit, so supersession stays a different signal from nearness. Live read is `get_context`. The archive is `context_archive`. Order of merges does not change the live value or the links. Essay: [Archive is not memory](https://captain.kingsparrow.space/articles/memory-issue/archive-not-memory) — freshness, not only similarity. A preference that moves from `tea` to `coffee` still has `tea` in the archive, linked to the coffee write. The pulse store does the same for traces: `ensembly pulse supersede` / `pulse history` (see [MAP.md](../../docs/MAP.md)).
 - **Aux failure semantics:** a memory save failure warns on stderr and never fails a committed control operation. An explicit `--memory` path that fails to open *is* fatal — you asked for it.
 - **Privacy:** the default path lives under `data/local/` (gitignored, Tier-1 boundary). Memory contains real action ids/titles; redaction is required before any remote/export surface (roadmap P4).
 - **Inference (roadmap P2):** `reflect` uses deterministic Jaccard by default. **First optional adapters:** Grok Model Context Protocol (inference) and Grok Agent Client Protocol (sessions). Secondary: opencode, pi, Ollama (feature). Never a hard dependency. See SN-8 in [coming-next.md](../../docs/arch-design/coming-next.md).
@@ -62,7 +63,8 @@ Global flags: `--memory <path>` (explicit path; open failure is fatal) · `--no-
 ## Tests
 
 ```bash
-cargo test -p ensembly-memory    # 9 tests: merge convergence/idempotence, persistence
+cargo test -p ensembly-memory    # 11 tests: merge convergence/idempotence, context
+                              # supersession (including merge order), persistence
                               # roundtrip, concurrent writers, reflection threshold,
                               # durable skill synthesis, report, similarity
 ```
