@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import json
 import os
 import re
 import sys
@@ -48,6 +49,17 @@ def scan_file(root, r, rules):
     return scan_text(r, data.decode("utf-8", "replace"), rules)
 
 
+def own_catalog(repo, mk, root):
+    text = open(mk, encoding="utf-8", errors="replace").read()
+    try:
+        m = json.loads(text)
+        mine = os.path.realpath(root)
+        m["plugins"] = [e for e in m.get("plugins", []) if os.path.realpath(os.path.join(repo, e.get("source", ""))) == mine]
+    except (ValueError, AttributeError, TypeError):
+        return text
+    return json.dumps(m, indent=2, ensure_ascii=False)
+
+
 def main():
     a = argparse.ArgumentParser()
     a.add_argument("paths", nargs="*")
@@ -74,7 +86,7 @@ def main():
     if o.repo_root:
         mk = os.path.join(o.repo_root, ".cursor-plugin", "marketplace.json")
         if os.path.exists(mk):
-            hits += scan_file(o.repo_root, os.path.relpath(mk, o.repo_root), rules)
+            hits += scan_text(os.path.relpath(mk, o.repo_root), own_catalog(o.repo_root, mk, root), rules)
             n += 1
     if o.all and not o.baseline and os.path.exists(os.path.join(root, "privacy-baseline.tsv")):
         o.baseline = "privacy-baseline.tsv"

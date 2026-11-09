@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -84,6 +85,24 @@ class Scope(unittest.TestCase):
             self.assertEqual(code, 0, out)
             self.assertIn("scanned 2 ", out)
             write(os.path.join(t, ".cursor-plugin", "marketplace.json"), '{"o": "a@gmail.com"}\n')
+            self.assertEqual(run("privacy-scan", "--root", plug, "--repo-root", t, "--all")[0], 1)
+
+    def test_catalog_scans_only_own_entry(self):
+        with tempfile.TemporaryDirectory() as t:
+            plug = os.path.join(t, "marketplaces", "cursor", "flowingstack")
+            os.makedirs(os.path.join(plug, "skills"))
+            os.makedirs(os.path.join(t, ".cursor-plugin"))
+            write(os.path.join(plug, "skills", "a.md"), "clean\n")
+            other = {"name": "other", "source": "marketplaces/grokbot/other", "description": "see /home/someone"}
+            own = {"name": "flowingstack", "source": "marketplaces/cursor/flowingstack", "description": "clean"}
+            mk = os.path.join(t, ".cursor-plugin", "marketplace.json")
+            write(mk, json.dumps({"name": "x", "plugins": [own, other]}))
+            code, out = run("privacy-scan", "--root", plug, "--repo-root", t, "--all")
+            self.assertEqual(code, 0, out)
+            own["description"] = "see /home/someone"
+            write(mk, json.dumps({"name": "x", "plugins": [own, other]}))
+            self.assertEqual(run("privacy-scan", "--root", plug, "--repo-root", t, "--all")[0], 1)
+            write(mk, "not json /home/someone\n")
             self.assertEqual(run("privacy-scan", "--root", plug, "--repo-root", t, "--all")[0], 1)
 
 

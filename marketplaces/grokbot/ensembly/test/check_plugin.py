@@ -9,10 +9,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_PLUGIN_KEYS = {"name", "version", "description", "author", "license", "skills"}
-SKILL_NAME_RE = re.compile(r"^name:\s*(\S+)\s*$", re.M)
-SKILL_DESC_RE = re.compile(r"^description:\s*(.+)$", re.M)
 HOST_PATTERNS = [
     (re.compile(r"/home/(?!box\b)[A-Za-z0-9._-]+"), "home path"),
+    (re.compile(r"/Users/[A-Za-z0-9._-]+"), "home path"),
     (re.compile(r"\b100\.\d{1,3}\.\d{1,3}\.\d{1,3}\b"), "tailnet address"),
     (re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I), "machine id or uuid"),
 ]
@@ -44,10 +43,34 @@ def check_plugin_json(path: Path) -> dict:
     author = data.get("author")
     if not isinstance(author, dict) or not author.get("name"):
         fail(f"{path}: author.name required")
-    if "stoiber" in path.read_text().lower() or "2016" in json.dumps(data):
-        # year in version-adjacent metadata is fine; 2016 leftover copyright is not in this file
-        pass
     return data
+
+def frontmatter(text: str) -> dict[str, str]:
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return {}
+    try:
+        end = lines.index("---", 1)
+    except ValueError:
+        return {}
+    fields: dict[str, str] = {}
+    body = lines[1:end]
+    i = 0
+    while i < len(body):
+        m = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$", body[i])
+        i += 1
+        if not m:
+            continue
+        key, value = m.group(1), m.group(2).strip()
+        if re.fullmatch(r"[>|][+-]?", value):
+            block = []
+            while i < len(body) and (not body[i].strip() or body[i][:1] in " \t"):
+                block.append(body[i].strip())
+                i += 1
+            joiner = " " if value[0] == ">" else "\n"
+            value = joiner.join(line for line in block if line)
+        fields[key] = value.strip().strip("\"'")
+    return fields
 
 def skill_dirs() -> list[Path]:
     skills = ROOT / "skills"
@@ -62,13 +85,14 @@ def check_skill(path: Path) -> None:
         fail(f"{path}/SKILL.md missing")
     if not text.startswith("---"):
         fail(f"{path.name}: missing frontmatter")
-    name = SKILL_NAME_RE.search(text)
-    desc = SKILL_DESC_RE.search(text)
+    fields = frontmatter(text)
+    name = fields.get("name", "")
+    desc = fields.get("description", "")
     if not name:
         fail(f"{path.name}: missing name")
-    if name.group(1) != path.name:
-        fail(f"{path.name}: folder and name: {name.group(1)} differ")
-    if not desc:
+    if name != path.name:
+        fail(f"{path.name}: folder and name: {name} differ")
+    if len(desc) < 20:
         fail(f"{path.name}: missing description")
     if "```mermaid" not in text:
         fail(f"{path.name}: README-style diagram required")
@@ -88,8 +112,6 @@ def scan_public(path: Path) -> None:
     if leftover:
         fail(f"{rel}: leftover 2016 boilerplate license")
     for pat, label in HOST_PATTERNS:
-        if path.name == "check_plugin.py":
-            continue
         hit = pat.search(text)
         if hit:
             fail(f"{rel}: {label} leaked: {hit.group(0)}")
