@@ -1,0 +1,28 @@
+{
+  "repos": [
+    {
+      "full_name": "alice/hidden",
+      "visibility": "private",
+      "private": true
+    }
+  ],
+  "pulls": [
+    {
+      "repo": "alice/hidden",
+      "number": 1,
+      "title": "secret",
+      "body": "",
+      "labels": [],
+      "created_at": "2026-10-10T10:00:00Z",
+      "merged_at": "2026-10-10T11:00:00Z",
+      "check_runs": [
+        {
+          "name": "ci",
+          "started_at": "2026-10-10T10:05:00Z",
+          "conclusion": "success"
+        }
+      ]
+    }
+  ],
+  "commits": []
+}
