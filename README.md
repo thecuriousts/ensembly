@@ -9,6 +9,8 @@ Bots and harnesses **propose**. ensembly **authorizes, claims, and completes**. 
 | **Law** | [PRODUCT-CHARTER.md](docs/PRODUCT-CHARTER.md) · [AGENTS.md](AGENTS.md) |
 | **Map** | [docs/MAP.md](docs/MAP.md) · [GLOSSARY.md](docs/GLOSSARY.md) |
 | **Cut** | [Musk algorithm](docs/MUSK-CUT-2026-09-04.md) — question, delete, simplify, accelerate, automate |
+| **Score** | [docs/scoreboard.md](docs/scoreboard.md) — public CI first-pass, merges, open-to-merge time |
+| **Essays** | [captain.kingsparrow.space/articles](https://captain.kingsparrow.space/articles) |
 
 ---
 
@@ -75,13 +77,35 @@ cargo build -p ensembly-agents --bin ensembly-mcp
 
 ---
 
+## Plugins
+
+Catalog `thecuriousts-plugins` ([.cursor-plugin/marketplace.json](.cursor-plugin/marketplace.json)).
+
+```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#1e3a5f","primaryTextColor":"#ffffff","lineColor":"#f59e0b"}}}%%
+flowchart LR
+  C[thecuriousts-plugins]:::cat --> F[flowingstack]:::fs
+  C --> E[ensembly]:::en
+  classDef cat fill:#1e3a5f,stroke:#60a5fa,color:#ffffff
+  classDef fs fill:#4c1d95,stroke:#a78bfa,color:#ffffff
+  classDef en fill:#065f46,stroke:#34d399,color:#ffffff
+```
+
+| Plugin | Path | Job |
+|--------|------|-----|
+| [flowingstack](marketplaces/cursor/flowingstack/README.md) | `marketplaces/cursor/flowingstack` | Task contracts, run ledger, frozen eval sets, review checks |
+| [ensembly](marketplaces/grokbot/ensembly/README.md) | `marketplaces/grokbot/ensembly` | Record layer for every bot |
+
+---
+
 ## Repo map
 
 ```text
 crates/ensembly-kernel/   authorize/claim · MsgBus · SQLite · pulse-pack
 crates/ensembly-memory/   episodic CRDT (aux)
 crates/ensembly-agents/   ensembly-mcp (read-only)
-docs/                     charter · MAP · PLAYBOOK · mesh bridge
+docs/                     charter · MAP · PLAYBOOK · mesh bridge · scoreboard
+marketplaces/             flowingstack (cursor) · ensembly (grokbot)
 prototype/                parked — not product
 ```
 
