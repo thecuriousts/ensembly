@@ -13,6 +13,7 @@ PAGES = {
     "connections.md": ["flowchart"],
     "sequence.md": ["sequenceDiagram"],
     "install.md": ["flowchart"],
+    "verify-hooks.md": ["stateDiagram-v2"],
 }
 FENCE = re.compile(r"^```(mermaid|[a-zA-Z0-9-]+-beta)[^\n]*\n(.*?)^```", re.M | re.S)
 

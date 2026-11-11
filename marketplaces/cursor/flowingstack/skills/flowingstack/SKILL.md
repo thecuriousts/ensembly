@@ -37,7 +37,7 @@ flowchart LR
 A1  load(flowingstack) → load ≤ 4 more from the table
 A2  default path: task-contract, eval-freeze, run-ledger, grill-rubric
 A3  support: intelli-route, doctor, route-rule
-A4  route-rule shipped roles: engineering, review, docs
+A4  route-rule shipped roles: engineering, review, docs, unknown
 A5  a user file adds a row or replaces one key
 A6  engineering PR: task-contract, grill-rubric, references/verify.md
 A7  craft and ub-mode load only when installed
