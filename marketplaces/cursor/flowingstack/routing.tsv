@@ -2,3 +2,4 @@ task_type	lead	note	keywords
 engineering	engineering	code releases PRs infra	code,release,pr,prs,infra,engineering,build,deploy,ci,repo,bug
 review	review	review before merge	review,grill
 docs	docs	docs and written specs	docs,doc,readme,spec
+unknown	unknown	do not guess	unknown,unclassified,missing-config,unnamed-check,unknown-tool,unknown-error

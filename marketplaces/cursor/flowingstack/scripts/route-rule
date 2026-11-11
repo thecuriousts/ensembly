@@ -69,7 +69,7 @@ def main():
         return 2
     rule = f"route to {r['lead']}; do not do it yourself"
     if a.json:
-        print(json.dumps({"task_type": r["task_type"], "lead": r["lead"], "rule": rule}))
+        print(json.dumps({"task_type": r["task_type"], "lead": r["lead"], "note": r["note"], "rule": rule}))
     else:
         print(f"{r['task_type']}\n{r['lead']}\n{rule}")
     return 0

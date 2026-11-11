@@ -6,7 +6,7 @@ import unittest
 
 from lib import ROOT, read, run, write
 
-HOUSE = "c9950759ac2d50828b308d6dd40445752ab028f52f9b1ca7fb0316b5249cda21"
+HOUSE = "df05be3922a4c55b48c53894f7cef948514a64d018c6c30a3afdf7dafebb7c92"
 CLEAN = {"FLOWINGSTACK_ROUTING": None}
 HEADER = "task_type\tlead\tnote\tkeywords\n"
 
@@ -31,7 +31,7 @@ class Defaults(unittest.TestCase):
                 self.assertIn(f"route to {lead}; do not do it yourself", out)
         code, out = route("--list")
         self.assertEqual(code, 0, out)
-        for lead in ("engineering", "review", "docs"):
+        for lead in ("engineering", "review", "docs", "unknown"):
             self.assertIn(lead, out)
         for house in ("Fleet Desk", "Chief of Staff", "Life Desk", "Director", "Originals"):
             self.assertNotIn(house, out)
@@ -39,7 +39,7 @@ class Defaults(unittest.TestCase):
     def test_shipped_table_has_generic_leads_only(self):
         rows = [l.split("\t") for l in read(os.path.join(ROOT, "routing.tsv")).splitlines()[1:] if l]
         leads = [r[1] for r in rows]
-        self.assertEqual(leads, ["engineering", "review", "docs"])
+        self.assertEqual(leads, ["engineering", "review", "docs", "unknown"])
         self.assertEqual(len(leads), len(set(leads)))
 
     def test_unknown_task(self):
@@ -122,6 +122,20 @@ class Overlay(unittest.TestCase):
         code, out = route("--task", "update the readme docs", env=env)
         self.assertEqual(code, 0, out)
         self.assertIn("route to docs; do not do it yourself", out)
+
+    def test_house_unknown_routes_to_eva_emptiness(self):
+        env = {"FLOWINGSTACK_ROUTING": os.path.join(ROOT, "examples", "house-routing.tsv")}
+        code, out = route("--task", "unclassified missing-config", "--json", env=env)
+        self.assertEqual(code, 0, out)
+        data = json.loads(out)
+        self.assertEqual(data["task_type"], "unknown")
+        self.assertEqual(data["lead"], "eva-emptiness")
+        self.assertIn("odysseus-navigator", data["note"])
+
+    def test_shipped_unknown_stays_generic(self):
+        code, out = route("--task", "unclassified missing-config")
+        self.assertEqual(code, 0, out)
+        self.assertIn("route to unknown; do not do it yourself", out)
 
     def test_explicit_table_skips_user_file(self):
         with tempfile.TemporaryDirectory() as d:

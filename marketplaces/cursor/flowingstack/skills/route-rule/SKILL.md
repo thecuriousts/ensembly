@@ -3,7 +3,7 @@ name: route-rule
 description: Use to route a task to a shipped role or a user row and run scripts/route-rule --task
 owner: flowingstack
 source: routing facts set 31 Oct 2026
-last-reviewed: 2026-11-07
+last-reviewed: 2026-11-11
 ---
 
 # route-rule
@@ -42,7 +42,7 @@ A3  U missing → rows = B
 A4  match keeps the row with the most keyword hits
 A5  a tie keeps the earlier row
 A6  no hit → exit 2, ask engineering
-A7  B roles are engineering, review, docs
+A7  B roles are engineering, review, docs, unknown
 A8  --table reads that file alone and does not merge U
 ```
 

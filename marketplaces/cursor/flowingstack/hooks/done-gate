@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import hooklib
+
+
+def main():
+    a = argparse.ArgumentParser(description="run configured checks and write a ready marker")
+    a.add_argument("--checks")
+    a.add_argument("--repo")
+    a.add_argument("--session")
+    a.add_argument("--state-dir")
+    a.add_argument("--marker")
+    a.add_argument("--reviewer")
+    a.add_argument("--verify-marker")
+    args = a.parse_args()
+    if args.state_dir:
+        os.environ["FS_HOOK_STATE_DIR"] = args.state_dir
+    if args.session:
+        os.environ["FS_SESSION_ID"] = args.session
+    repo = hooklib.repo_root(args.repo)
+    if args.verify_marker:
+        ok = hooklib.verify_marker(args.verify_marker, repo)
+        print(json.dumps({"ok": ok, "head": hooklib.head_sha(repo)}))
+        return 0 if ok else 1
+    plugin = hooklib.plugin_root()
+    path = hooklib.checks_path(args.checks, repo, plugin)
+    result = hooklib.run_checks(path, repo, plugin)
+    result["head"] = hooklib.head_sha(repo)
+    if result["ok"]:
+        marker, reviewer, sha = hooklib.write_ready(repo, hooklib.session_id(), args.marker, args.reviewer)
+        result["marker"] = marker
+        result["reviewer"] = reviewer
+        result["head"] = sha
+    print(json.dumps(result))
+    return 0 if result["ok"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

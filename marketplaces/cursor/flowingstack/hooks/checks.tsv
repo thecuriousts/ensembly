@@ -1,0 +1,4 @@
+name	command
+tests	python3 -m unittest discover -s test
+privacy	scripts/privacy-scan --all --root .
+host-alias	scripts/host-alias --all --root .

@@ -21,6 +21,9 @@ flowchart LR
 | [install](docs/install.md) | install and sync | [svg](docs/img/install-1.svg) |
 | [harness](docs/harness.md) | Cursor, Grok Bot, other lanes | [svg](docs/img/harness-1.svg) |
 | [formal](docs/formal.md) | statechart, TLC, Kani, Bend | [svg](docs/img/formal-1.svg) |
+| [verify-hooks](docs/verify-hooks.md) | host done and repeat guard | [svg](docs/img/verify-hooks-1.svg) |
+| [verify-hooks](docs/verify-hooks.md) | Grok Build turn loop | [svg](docs/img/verify-hooks-2.svg) |
+| [verify-hooks](docs/verify-hooks.md) | mechanism to hook map | [svg](docs/img/verify-hooks-3.svg) |
 
 ## Flow
 
@@ -92,6 +95,12 @@ A5  hits(path, rule) > count → all live, exit 1; row without count → exit 2
 | `scripts/formal-check [--bend]` | proved | counterexample | — (3 = tool missing, skip) |
 | `skills/intelli-route/bin/route WHEN \| --signals JSON` | route; `task` matching formal-verification adds loads | missing map or when | bad signals |
 | `python3 -m unittest discover -s test` | green | red | — |
+| `hooks/done-gate` | ready | check fail | bad args |
+| `hooks/stop` | `{}` | continue | — |
+| `hooks/repeat-guard` | `{}` | deny at 5 | — |
+| `scripts/host-alias --all` | clean | hit | — |
+
+Grok Build's inner mechanism inspired the `done-gate` and `repeat-guard` hooks.
 
 Every script and how they connect: [docs/flow.md](docs/flow.md).
 
@@ -124,7 +133,7 @@ Shipped from the pin for matching house maps: `aihero-map`, `pstack-map`, `harve
 
 | Layer | Path | Effect |
 |---|---|---|
-| shipped roles | [routing.tsv](routing.tsv) | engineering, review, docs |
+| shipped roles | [routing.tsv](routing.tsv) | engineering, review, docs, unknown |
 | user roles | `.flowingstack/routing.tsv` or `FLOWINGSTACK_ROUTING` | same task_type replaces, new task_type adds |
 | role example | [examples/house-routing.tsv](examples/house-routing.tsv) | loaded only when a user path points at it |
 | shipped checks | [doctor.tsv](doctor.tsv) | required kernel checks, optional pstack, craft, aliases |
