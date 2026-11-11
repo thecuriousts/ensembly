@@ -1,6 +1,7 @@
 import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -12,6 +13,8 @@ UNCLASSIFIED = {"missing-config", "unnamed-check", "unknown-tool", "unknown-erro
 MAX_CONT = 8
 NUDGE_AT = 3
 DENY_AT = 5
+DENY_AT_MAX = 20
+SESSION_OK = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def here():
@@ -26,13 +29,52 @@ def repo_root(arg=None):
     return os.path.abspath(arg or os.environ.get("FS_REPO_ROOT") or os.getcwd())
 
 
+def env_int(name, default, lo=None, hi=None):
+    raw = os.environ.get(name)
+    try:
+        n = int(raw) if raw not in (None, "") else default
+    except (TypeError, ValueError):
+        n = default
+    if lo is not None:
+        n = max(lo, n)
+    if hi is not None:
+        n = min(hi, n)
+    return n
+
+
+def ensure_private_dir(path):
+    os.makedirs(path, exist_ok=True)
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        pass
+    return path
+
+
 def state_dir():
-    return os.environ.get("FS_HOOK_STATE_DIR") or os.path.join(tempfile.gettempdir(), "flowingstack-hooks")
+    explicit = os.environ.get("FS_HOOK_STATE_DIR")
+    if explicit:
+        path = explicit
+    else:
+        xdg = os.environ.get("XDG_STATE_HOME")
+        if xdg:
+            path = os.path.join(xdg, "flowingstack-hooks")
+        else:
+            path = os.path.join(os.path.expanduser("~"), ".cache", "flowingstack-hooks")
+    return ensure_private_dir(path)
+
+
+def sanitize_session(value):
+    value = str(value if value is not None else "default") or "default"
+    if SESSION_OK.fullmatch(value):
+        return value
+    return hashlib.sha256(value.encode()).hexdigest()
 
 
 def session_id(payload=None):
     payload = payload or {}
-    return os.environ.get("FS_SESSION_ID") or payload.get("session_id") or payload.get("conversation_id") or "default"
+    raw = os.environ.get("FS_SESSION_ID") or payload.get("session_id") or payload.get("conversation_id") or "default"
+    return sanitize_session(raw)
 
 
 def read_stdin():
@@ -45,13 +87,30 @@ def read_stdin():
         return {}
 
 
-def write_json(path, data):
+def atomic_write(path, text):
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f)
-        f.write("\n")
+    fd, tmp = tempfile.mkstemp(dir=parent or ".", prefix=".tmp-")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def write_json(path, data):
+    atomic_write(path, json.dumps(data) + "\n")
 
 
 def load_json(path, default):
@@ -157,7 +216,6 @@ def run_checks(path, repo, plugin):
 
 def marker_paths(session, marker=None, reviewer=None):
     base = state_dir()
-    os.makedirs(base, exist_ok=True)
     return (
         marker or os.environ.get("FS_READY_MARKER") or os.path.join(base, f"{session}.ready.json"),
         reviewer or os.environ.get("FS_REVIEWER_REQUEST") or os.path.join(base, f"{session}.reviewer.txt"),
@@ -173,16 +231,13 @@ def write_ready(repo, session, marker=None, reviewer=None):
         "review": "A no-context reviewer must pass this exact sha. If HEAD moves, this marker is invalid.",
     }
     write_json(marker, payload)
-    parent = os.path.dirname(reviewer)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-    with open(reviewer, "w", encoding="utf-8") as f:
-        f.write(
-            "Review request: no-context reviewer\n"
-            f"Exact sha: {sha or 'missing'}\n"
-            "Do not invoke a cloud reviewer from this hook\n"
-            "Pass only this sha; if HEAD moves, review again\n"
-        )
+    atomic_write(
+        reviewer,
+        "Review request: no-context reviewer\n"
+        f"Exact sha: {sha or 'missing'}\n"
+        "Do not invoke a cloud reviewer from this hook\n"
+        "Pass only this sha; if HEAD moves, review again\n",
+    )
     return marker, reviewer, sha
 
 
@@ -219,7 +274,6 @@ def continuation_message(result):
 
 
 def state_path(session):
-    os.makedirs(state_dir(), exist_ok=True)
     return os.path.join(state_dir(), f"{session}.json")
 
 
@@ -243,7 +297,7 @@ def handle_stop(payload, checks=None, repo=None, marker=None, reviewer=None):
         return {}
     st = load_json(state_path(session), {"continuations": 0, "result": None})
     st["continuations"] = int(st.get("continuations") or 0) + 1
-    limit = int(os.environ.get("FS_MAX_CONTINUATIONS") or MAX_CONT)
+    limit = env_int("FS_MAX_CONTINUATIONS", MAX_CONT, lo=1)
     msg = continuation_message(result)
     if st["continuations"] > limit:
         st["result"] = "failed-gate"
@@ -285,22 +339,28 @@ def block_queue(reason):
     row_id = os.environ.get("FS_QUEUE_ROW")
     if not path or not row_id or not os.path.isfile(path):
         return
-    lines = []
-    for line in open(path, encoding="utf-8"):
-        if not line.strip():
-            continue
-        try:
-            row = json.loads(line)
-        except ValueError:
-            lines.append(line.rstrip("\n"))
-            continue
-        if row.get("id") == row_id:
-            row["state"] = "blocked"
-            row["result"] = reason
-            row["updated"] = now_iso()
-        lines.append(json.dumps(row, separators=(",", ":")))
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + ("\n" if lines else ""))
+    try:
+        lines = []
+        for line in open(path, encoding="utf-8"):
+            if not line.strip():
+                continue
+            raw = line.rstrip("\n")
+            try:
+                row = json.loads(raw)
+            except ValueError:
+                lines.append(raw)
+                continue
+            if not isinstance(row, dict):
+                lines.append(raw)
+                continue
+            if row.get("id") == row_id:
+                row["state"] = "blocked"
+                row["result"] = reason
+                row["updated"] = now_iso()
+            lines.append(json.dumps(row, separators=(",", ":")))
+        atomic_write(path, "\n".join(lines) + ("\n" if lines else ""))
+    except Exception:
+        return
 
 
 def handle_pretool(payload):
@@ -313,12 +373,15 @@ def handle_pretool(payload):
     else:
         st = {"hash": h, "count": 1}
     write_json(path, st)
-    nudge_at = int(os.environ.get("FS_NUDGE_AT") or NUDGE_AT)
-    deny_at = int(os.environ.get("FS_DENY_AT") or DENY_AT)
+    nudge_at = env_int("FS_NUDGE_AT", NUDGE_AT, lo=1)
+    deny_at = env_int("FS_DENY_AT", DENY_AT, lo=1, hi=DENY_AT_MAX)
     n = st["count"]
     if n >= deny_at:
         reason = f"Repeat guard: {n} identical consecutive calls. Stopping."
-        block_queue(reason)
+        try:
+            block_queue(reason)
+        except Exception:
+            pass
         return {
             "permission": "deny",
             "decision": "block",
@@ -336,18 +399,10 @@ def handle_pretool(payload):
     if n >= nudge_at:
         msg = f"Repeat guard: identical call {n} times. Change the input or stop looping."
         return {
-            "permission": "allow",
             "agent_message": msg,
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
-                "permissionDecision": "allow",
                 "additionalContext": msg,
             },
         }
-    return {
-        "permission": "allow",
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": "allow",
-        },
-    }
+    return {}

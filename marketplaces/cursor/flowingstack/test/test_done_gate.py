@@ -15,6 +15,8 @@ CLEAN = {
     "FS_QUEUE_ROW": None,
     "FS_READY_MARKER": None,
     "FS_REVIEWER_REQUEST": None,
+    "FS_HOOK_STATE_DIR": None,
+    "FS_SESSION_ID": None,
 }
 
 
@@ -132,6 +134,28 @@ class PassMarker(unittest.TestCase):
             self.assertFalse(json.loads(out)["ok"])
             self.assertNotEqual(json.loads(out)["head"], json.loads(Path(marker).read_text())["head"])
 
+    def test_stop_on_pass_writes_marker_and_returns_empty_object(self):
+        with tempfile.TemporaryDirectory() as t:
+            git_repo(t)
+            sha = subprocess.check_output(["git", "-C", t, "rev-parse", "HEAD"], text=True).strip()
+            checks = os.path.join(t, "checks.tsv")
+            write(checks, "name\tcommand\nok\tpython3 -c \"raise SystemExit(0)\"\n")
+            env = {
+                "FS_HOOK_STATE_DIR": t,
+                "FS_CHECKS_FILE": checks,
+                "FS_REPO_ROOT": t,
+                "FS_SESSION_ID": "okstop",
+            }
+            code, out, err = stop(env, session="okstop")
+            self.assertEqual(code, 0, err + out)
+            self.assertEqual(json.loads(out), {})
+            marker = Path(t, "okstop.ready.json")
+            self.assertTrue(marker.is_file())
+            saved = json.loads(marker.read_text())
+            self.assertEqual(saved["head"], sha)
+            self.assertEqual(saved["status"], "ready")
+            self.assertIn(sha, Path(t, "okstop.reviewer.txt").read_text())
+
 
 class Unclassified(unittest.TestCase):
     def test_missing_config_routes_through_flowingstack(self):
@@ -154,3 +178,28 @@ class Unclassified(unittest.TestCase):
             self.assertIn("eva-emptiness", msg)
             self.assertIn("odysseus-navigator", msg)
             self.assertEqual(data.get("followup_message"), msg)
+
+
+class ContinuationClamp(unittest.TestCase):
+    def test_max_continuations_clamped_to_at_least_one(self):
+        with tempfile.TemporaryDirectory() as t:
+            checks = os.path.join(t, "checks.tsv")
+            write(checks, "name\tcommand\ntests\tpython3 -c \"raise SystemExit(1)\"\n")
+            env = {
+                "FS_HOOK_STATE_DIR": t,
+                "FS_CHECKS_FILE": checks,
+                "FS_REPO_ROOT": t,
+                "FS_SESSION_ID": "c1",
+                "FS_MAX_CONTINUATIONS": "0",
+            }
+            code, out, err = stop(env, session="c1")
+            self.assertEqual(code, 0, err)
+            data = json.loads(out)
+            self.assertEqual(data.get("decision"), "block")
+            code, out, err = stop(env, session="c1")
+            self.assertEqual(code, 0, err)
+            data = json.loads(out)
+            self.assertNotIn("decision", data)
+            state = json.loads(Path(t, "c1.json").read_text())
+            self.assertEqual(state["result"], "failed-gate")
+            self.assertEqual(state["continuations"], 2)
