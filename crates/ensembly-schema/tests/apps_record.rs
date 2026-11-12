@@ -245,7 +245,7 @@ fn return_to_an_earlier_stage_names_the_link() {
         Some("2026-10-26T18:59:00+01:00"),
         false,
     );
-    let first = import_plan(&[], &[submitted.clone()], "laptop-1", AT).unwrap();
+    let first = import_plan(&[], std::slice::from_ref(&submitted), "laptop-1", AT).unwrap();
     let second = import_plan(&first, &[interview], "laptop-1", AT).unwrap();
     let mut log = first;
     log.extend(second);

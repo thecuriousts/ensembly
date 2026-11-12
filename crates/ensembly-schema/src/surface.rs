@@ -17,16 +17,24 @@ use std::path::{Path, PathBuf};
 #[serde(transparent)]
 pub struct JsonPayload(pub serde_json::Value);
 
+pub const PUBLIC_HOST_ALIASES: &[&str] = &["laptop-1", "laptop-2", "mac-mini"];
+
+pub fn require_public_host_alias(writer: &str) -> Result<(), String> {
+    if PUBLIC_HOST_ALIASES.contains(&writer) {
+        Ok(())
+    } else {
+        Err("writer must be a public host alias".into())
+    }
+}
+
 impl Checked for JsonPayload {
     fn check(&self) -> Result<(), String> {
         let Some(obj) = self.0.as_object() else {
             return Err("writer must be a public host alias".into());
         };
         match obj.get("writer") {
-            Some(serde_json::Value::String(writer))
-                if matches!(writer.as_str(), "laptop-1" | "laptop-2" | "mac-mini") => {}
-            Some(serde_json::Value::String(_))
-            | Some(serde_json::Value::Number(_))
+            Some(serde_json::Value::String(writer)) => require_public_host_alias(writer)?,
+            Some(serde_json::Value::Number(_))
             | Some(serde_json::Value::Object(_))
             | Some(serde_json::Value::Array(_))
             | Some(serde_json::Value::Bool(_))

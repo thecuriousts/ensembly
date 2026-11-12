@@ -27,7 +27,7 @@ pub fn import_ledger(
     let before = read_only(ledger)?;
     let text = std::str::from_utf8(&before).map_err(|err| err.to_string())?;
     let rows = application_ledger::parse_ledger(text).map_err(|err| err.to_string())?;
-    let existing = read_log(log)?;
+    let existing = read_log(log, true)?;
     let planned = import_plan(&existing, &rows, writer, observed_at)?;
     let current = current_count(&rows);
     if !planned.is_empty() {
@@ -47,7 +47,7 @@ pub fn compare_files(ledger: &Path, log: &Path) -> Result<CompareReport, String>
     let bytes = read_only(ledger)?;
     let text = std::str::from_utf8(&bytes).map_err(|err| err.to_string())?;
     let rows = application_ledger::parse_ledger(text).map_err(|err| err.to_string())?;
-    let events = read_log(log)?;
+    let events = read_log(log, false)?;
     compare_ledger(&rows, &events)
 }
 
@@ -59,9 +59,19 @@ fn current_count(rows: &[application_ledger::Row]) -> usize {
     keys.len()
 }
 
-fn read_log(path: &Path) -> Result<Vec<EventEnvelope<AppEventPayload>>, String> {
+fn read_log(
+    path: &Path,
+    create_missing: bool,
+) -> Result<Vec<EventEnvelope<AppEventPayload>>, String> {
+    if path.is_dir() {
+        return Err(format!("record log is a directory: {}", path.display()));
+    }
     if !path.is_file() {
-        return Ok(Vec::new());
+        return if create_missing {
+            Ok(Vec::new())
+        } else {
+            Err(format!("record log is missing: {}", path.display()))
+        };
     }
     let bytes = read_only(path)?;
     let text = std::str::from_utf8(&bytes).map_err(|err| err.to_string())?;

@@ -22,8 +22,9 @@ mod view;
 mod wire;
 
 pub use apps_record::{
-    compare_ledger, import_plan, map_ledger_status, map_ledger_status_name, stage_token,
-    AppEventPayload, CompareMismatch, CompareReport, MappedStage,
+    closed_record_status, closed_stage, compare_ledger, import_plan, map_ledger_status,
+    map_ledger_status_name, stage_token, AppEventPayload, CompareMismatch, CompareReport,
+    MappedStage,
 };
 pub use audit::*;
 pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
@@ -43,8 +44,8 @@ pub use replay::{
     MaterializedAggregate, ReplayError,
 };
 pub use surface::{
-    commit_json, feed_json, recover_json, snapshot_json, stockholm_record_now, JsonPayload,
-    RecordSurfaceError,
+    commit_json, feed_json, recover_json, require_public_host_alias, snapshot_json,
+    stockholm_record_now, JsonPayload, RecordSurfaceError, PUBLIC_HOST_ALIASES,
 };
 pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};
 pub use view::{

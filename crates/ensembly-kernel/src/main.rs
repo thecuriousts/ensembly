@@ -339,14 +339,15 @@ enum RecordAppsCmd {
         ledger: PathBuf,
         #[arg(long)]
         log: PathBuf,
-        /// Public host alias: laptop-1 or mac-mini
+        /// Public host alias: laptop-1, laptop-2, or mac-mini
         #[arg(long)]
         writer: String,
-        /// Stockholm time used when a row has no submit time
+        /// Stockholm time stored when a row has no submit time. Marked synthetic.
         #[arg(long)]
         at: Option<String>,
     },
     /// Replay the record log and diff it against the ledger. Writes nothing.
+    /// Exit 1 when a link differs. Exit 2 when the ledger or the log cannot be read.
     Compare {
         #[arg(long)]
         ledger: PathBuf,
@@ -1082,16 +1083,23 @@ fn cmd_record_apps(cmd: RecordAppsCmd) -> Result<()> {
             Ok(())
         }
         RecordAppsCmd::Compare { ledger, log } => {
-            let report =
-                ensembly_kernel::compare_files(&ledger, &log).map_err(anyhow::Error::msg)?;
-            let mismatched = !report.mismatches.is_empty();
-            println!("{}", serde_json::to_string(&report)?);
-            if mismatched {
-                std::process::exit(1);
+            match ensembly_kernel::compare_files(&ledger, &log) {
+                Ok(report) => finish_compare(&report),
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    std::process::exit(2);
+                }
             }
-            Ok(())
         }
     }
+}
+
+fn finish_compare(report: &ensembly_schema::CompareReport) -> Result<()> {
+    println!("{}", serde_json::to_string(report)?);
+    if !report.mismatches.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {

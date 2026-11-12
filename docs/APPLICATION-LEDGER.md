@@ -93,7 +93,7 @@ Company audits (the gate before a pack or an application) live in a separate sto
 
 ## Record adapter
 
-The ledger stays the source of truth. `ensembly record apps import` reads it and appends record events. It does not rewrite or delete ledger rows. A second import of the same rows appends nothing. The idempotency key is the canonical link plus the stage.
+The ledger stays the source of truth. `ensembly record apps import` reads it and appends record events. It does not rewrite or delete ledger rows. A second import of the same rows appends nothing, including when the writer or the import clock differs. The idempotency key is the canonical link plus the stage. Sameness uses ledger fields only. A row with no submit time stores the import clock and marks `synthetic_time`; that clock is not compared. A corrected submit time on the same stage is refused: import does not rewrite the stored event. Append a later ledger stage, then import again. A return to an earlier stage is refused and names the link. Writers are the public host aliases `laptop-1`, `laptop-2`, and `mac-mini`.
 
 | Ledger status | Record stage |
 |---|---|
@@ -105,4 +105,4 @@ The ledger stays the source of truth. `ensembly record apps import` reads it and
 | silent-closed | silent |
 | none | confirmed (no ledger source) |
 
-`ensembly record apps compare` replays the log and prints matches and mismatches per link key. It writes nothing and exits non-zero when any link key differs. Writers on import are `laptop-1` and `mac-mini`.
+`ensembly record apps compare` replays the log and prints matches and mismatches per link key, including submit time on `submitted` and `silent`. It writes nothing. Exit 1 means a link differs. Exit 2 means the ledger or the log could not be read: a missing log, or a directory given as the log, is an error. Import may create a missing log. Compare does not.
