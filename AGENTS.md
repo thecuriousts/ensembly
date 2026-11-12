@@ -109,6 +109,7 @@ Prototype (parked)            → game/watch/Node — optional client experiment
 | [docs/PRIVACY.md](docs/PRIVACY.md) | Push boundary |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Material architecture decisions |
 | [RENAME.md](RENAME.md) | `peram-*` → `ensembly-*` crate map; on-disk paths stay |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | Agent terms: record status, event kind, ledger map, adapter words, abbreviations |
 
 **Footer:** Build the kernel you will still trust in 90 days — because harnesses come and go.
 Agent rules: .cursor/rules/ (pstack model roles, tstack skills-first workflow).
