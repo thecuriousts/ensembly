@@ -1,13 +1,27 @@
 Feature: Applications ledger record adapter
 
-  The application ledger stays the source of truth.
-  The adapter appends record events and never rewrites or deletes ledger rows.
-  Confirmed is a record status with no ledger source.
-  Rejected evidence uses source legacy-unknown.
-  Interview maps to next-stage 1. The record type requires evidence, so that evidence source is also legacy-unknown.
-  Silent uses the row submit time when it is known, and the caller-supplied observed time when it is not.
-  The idempotency key is the canonical link key, a tab, and the stage token.
-  Writers on this path are laptop-1 and mac-mini.
+  The ledger is the source of truth. The adapter appends record events and never rewrites or deletes rows.
+
+  ledger status     record
+  prepared          intended
+  submitted         submitted
+  interview         next-stage:1, evidence legacy-unknown
+  rejected          rejected, evidence legacy-unknown
+  withdrawn         withdrawn
+  silent-closed     silent
+  no ledger row     confirmed is not produced
+
+  Key = link_key, a tab, and the stage.
+  Re-import compares ledger fields only. Writer and clock are ignored, so a second import appends nothing.
+  After planning, import replays the log. A link whose stage differs is named and the command exits non-zero. Nothing is appended.
+  Compare checks the stage, the submit time, and silent since.
+  Exit 1 is a mismatch. Exit 2 is an error. A missing log, or a directory given as the log, is an error.
+  A row with no submit time stores the import clock and marks that stamp synthetic.
+  Writers: laptop-1, laptop-2, mac-mini.
+
+  Known limit: the key cannot record a return to an earlier stage.
+  submitted -> interview -> submitted is refused.
+  The ledger stays the truth. The log is never rewritten. That link blocks the rest of the import.
 
   Scenario: Every ledger status maps
     Given the six ledger statuses
@@ -25,17 +39,25 @@ Feature: Applications ledger record adapter
 
   Scenario: Import twice is once, and old ledger rows stay
     Given a ledger with an older row and a later row for the same link
-    When the adapter imports that ledger twice
+    When the adapter imports that ledger twice, with another writer or another clock
     Then the log gains the current stage once
     And the second import appends nothing
     And the ledger bytes are unchanged
-    And a same key with a different payload is refused
+    And a same key with different ledger fields is refused
+
+  Scenario: A return to an earlier stage is refused
+    Given one link that moved submitted, then interview, then submitted
+    When import runs
+    Then the command exits non-zero and names that link
+    And the log bytes match the log from before that import
+    And the ledger bytes are unchanged
 
   Scenario: Compare reports each link and writes nothing
     Given a log that replays to the ledger
     When compare runs
     Then each link key is a match and the command exits 0
     And the ledger and the log are byte-identical afterwards
-    When one record stage differs from the ledger
-    Then that link key is a mismatch and the command exits non-zero
-    And the ledger and the log are still byte-identical
+    When the stage, the submit time, or silent since differs
+    Then that link is a mismatch and the command exits 1
+    When the log is missing or the log path is a directory
+    Then compare exits 2 and writes nothing
