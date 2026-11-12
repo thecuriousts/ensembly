@@ -324,6 +324,35 @@ enum RecordCmd {
         #[command(subcommand)]
         sub: RecordViewCmd,
     },
+    /// Map the application ledger onto a record log, or compare the two
+    Apps {
+        #[command(subcommand)]
+        sub: RecordAppsCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum RecordAppsCmd {
+    /// Append one record event per current ledger row. Does not write the ledger.
+    Import {
+        #[arg(long)]
+        ledger: PathBuf,
+        #[arg(long)]
+        log: PathBuf,
+        /// Public host alias: laptop-1 or mac-mini
+        #[arg(long)]
+        writer: String,
+        /// Stockholm time used when a row has no submit time
+        #[arg(long)]
+        at: Option<String>,
+    },
+    /// Replay the record log and diff it against the ledger. Writes nothing.
+    Compare {
+        #[arg(long)]
+        ledger: PathBuf,
+        #[arg(long)]
+        log: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1034,6 +1063,34 @@ fn cmd_record(cmd: RecordCmd) -> Result<()> {
                 Ok(())
             }
         },
+        RecordCmd::Apps { sub } => cmd_record_apps(sub),
+    }
+}
+
+fn cmd_record_apps(cmd: RecordAppsCmd) -> Result<()> {
+    match cmd {
+        RecordAppsCmd::Import {
+            ledger,
+            log,
+            writer,
+            at,
+        } => {
+            let at = at.unwrap_or_else(ensembly_schema::stockholm_record_now);
+            let receipt = ensembly_kernel::import_ledger(&ledger, &log, &writer, &at)
+                .map_err(anyhow::Error::msg)?;
+            println!("{}", serde_json::to_string(&receipt)?);
+            Ok(())
+        }
+        RecordAppsCmd::Compare { ledger, log } => {
+            let report =
+                ensembly_kernel::compare_files(&ledger, &log).map_err(anyhow::Error::msg)?;
+            let mismatched = !report.mismatches.is_empty();
+            println!("{}", serde_json::to_string(&report)?);
+            if mismatched {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
     }
 }
 

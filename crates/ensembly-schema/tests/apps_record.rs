@@ -153,7 +153,7 @@ fn second_plan_is_empty_and_a_different_payload_conflicts() {
         Some("2026-10-26T18:59:00+01:00"),
         false,
     );
-    let first = import_plan(&[], &[older, current.clone()], "laptop-1", AT).unwrap();
+    let first = import_plan(&[], &[older.clone(), current.clone()], "laptop-1", AT).unwrap();
     assert_eq!(first.len(), 1);
     assert_eq!(first[0].aggregate.0, canonical);
     assert_eq!(first[0].key.0, format!("{canonical}\tsubmitted"));
@@ -175,7 +175,7 @@ fn writer_must_be_laptop_1_or_mac_mini() {
         None,
         false,
     )];
-    let err = import_plan(&[], &rows, "laptop-2", AT).unwrap_err();
+    let err = import_plan(&[], &rows, "not-a-host", AT).unwrap_err();
     assert!(err.contains("laptop-1"), "{err}");
     assert!(err.contains("mac-mini"), "{err}");
     let events = import_plan(&[], &rows, "mac-mini", AT).unwrap();

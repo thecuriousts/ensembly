@@ -10,6 +10,7 @@
 pub mod agent;
 pub mod application_ledger;
 pub mod approvals;
+pub mod apps_record;
 pub mod backup;
 pub mod channel_pulse;
 pub mod company_audit;
@@ -38,6 +39,7 @@ pub use approvals::{
     apply_decision, apply_physical_decision, derive_status, list_pending,
     upsert_pending_from_actions, upsert_physical, ApprovalStatus, Snapshot, SnapshotStatus,
 };
+pub use apps_record::{compare_files, import_ledger, ImportReceipt};
 pub use backup::{
     create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
     BackupPack, RestoreDryRunReport,

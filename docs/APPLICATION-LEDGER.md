@@ -90,3 +90,19 @@ same inputs (golden test `tests/tracker_golden.rs`, synthetic fixtures in
   when the script is retired.
 
 Company audits (the gate before a pack or an application) live in a separate store: see [COMPANY-AUDIT.md](COMPANY-AUDIT.md).
+
+## Record adapter
+
+The ledger stays the source of truth. `ensembly record apps import` reads it and appends record events. It does not rewrite or delete ledger rows. A second import of the same rows appends nothing. The idempotency key is the canonical link plus the stage.
+
+| Ledger status | Record stage |
+|---|---|
+| prepared | intended |
+| submitted | submitted |
+| interview | next-stage:1 |
+| rejected | rejected, evidence source `legacy-unknown` |
+| withdrawn | withdrawn |
+| silent-closed | silent |
+| none | confirmed (no ledger source) |
+
+`ensembly record apps compare` replays the log and prints matches and mismatches per link key. It writes nothing and exits non-zero when any link key differs. Writers on import are `laptop-1` and `mac-mini`.

@@ -8,6 +8,7 @@
 
 pub const SCHEMA_VERSION: u32 = 1;
 
+mod apps_record;
 mod audit;
 mod commit;
 mod ledger;
@@ -20,6 +21,10 @@ mod sync;
 mod view;
 mod wire;
 
+pub use apps_record::{
+    compare_ledger, import_plan, map_ledger_status, map_ledger_status_name, stage_token,
+    AppEventPayload, CompareMismatch, CompareReport, MappedStage,
+};
 pub use audit::*;
 pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
 pub use ledger::*;
@@ -30,8 +35,8 @@ pub use reconcile::{
 };
 pub use record::{
     transition, Aggregate, AggregateId, ConflictState, EventEnvelope, EventId, EventKind, Evidence,
-    Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Source, StockholmTime, TextForm,
-    Version,
+    Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Source, Status as RecordStatus,
+    StockholmTime, TextForm, Version,
 };
 pub use replay::{
     current_rows, parse_event_log, replay, replay_log_file, restore_drill, restore_log,

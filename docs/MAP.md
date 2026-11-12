@@ -38,7 +38,7 @@ Only features with a **dogfood path** today.
 | **Backup / restore** | `backup`, `restore-dry-run`, `restore-apply` | Sealed T2 pack |
 | **Ops bundle** | `ops-bundle` | Unsealed portable ops snapshot |
 | **Pulse pack** | `pulse-pack export\|import\|status` | New writes `ensembly-pulse-pack-v1`; still imports `peram-pulse-pack-v1` — **memory only**; no ops dual-write |
-| **Record log** | `ensembly record commit\|recover` and `ensembly record view snapshot\|feed` | Commit and read the schema record log. Reconcile and Sync stay out of MCP. MCP commit refuses source `human` and `owner`, stamps `record_time`, and only writes a sandbox path, `ENSEMBLY_RECORD_LOG`, or `data/local` under `ENSEMBLY_HOME` or the server cwd |
+| **Record log** | `ensembly record commit\|recover`, `ensembly record view snapshot\|feed`, `ensembly record apps import\|compare` | Commit and read the schema record log. `record apps import` appends one event per current application-ledger row (idempotency key is link key + stage) and does not write the ledger. `record apps compare` replays the log, diffs it against the ledger, and exits non-zero on a mismatch; it writes nothing. Reconcile and Sync stay out of MCP. MCP commit refuses source `human` and `owner`, stamps `record_time`, and only writes a sandbox path, `ENSEMBLY_RECORD_LOG`, or `data/local` under `ENSEMBLY_HOME` or the server cwd |
 
 Fixture: `fixtures/issue-1-runtime.json`. `--json` appends trailing `RUNTIME_OK …` line.
 

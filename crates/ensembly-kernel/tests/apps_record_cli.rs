@@ -43,7 +43,11 @@ fn snapshot(dir: &Path) -> Vec<(String, Vec<u8>)> {
     collect(dir, &mut paths);
     paths.sort();
     for path in paths {
-        let rel = path.strip_prefix(dir).unwrap().to_string_lossy().into_owned();
+        let rel = path
+            .strip_prefix(dir)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
         out.push((rel, fs::read(&path).unwrap_or_default()));
     }
     out
@@ -138,7 +142,10 @@ fn unknown_status_writes_neither_ledger_nor_log() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(!out.status.success(), "{text}");
-    assert!(text.contains("offered") || text.contains("unknown"), "{text}");
+    assert!(
+        text.contains("offered") || text.contains("unknown"),
+        "{text}"
+    );
     assert_eq!(fs::read(&ledger).unwrap(), body);
     assert!(!log.exists());
 }
