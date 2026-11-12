@@ -64,6 +64,8 @@ flowchart TD
 
 ## Ledger map
 
+Checked by hand, not by `glossary_drift.rs`.
+
 | Ledger | Record | Not | Source |
 | --- | --- | --- | --- |
 | `Prepared` | `Intended` | a submitted record | `ensembly_schema::apps_record::map_ledger_status` in schema `src/apps_record.rs` |
@@ -77,13 +79,15 @@ flowchart TD
 
 ## Adapter terms
 
+Checked by hand, not by `glossary_drift.rs`.
+
 | Term | Definition | Not | Source |
 | --- | --- | --- | --- |
 | `link_key` | Posting URL with trailing slashes removed and a final `/application` suffix removed | `apply_url`, or a link that still ends in `/application` | `ensembly_schema::ledger::link_key` in `src/ledger.rs` |
 | `stage` | Token from `stage_token`: intended, submitted, withdrawn, silent, rejected, confirmed, expired, or `next-stage` plus the index | the ledger words prepared, interview, or silent-closed | `ensembly_schema::apps_record::stage_token` in schema `src/apps_record.rs` |
 | `idempotency key` | The canonical `link_key`, a tab, and the stage token | a fresh key on retry, or the raw link plus the stage | `build_event` in schema `src/apps_record.rs` |
 | `synthetic_time` | True when the ledger has no known submit time, so the event stores the import clock and compare treats the submit as unknown | a known submit time, or part of the idempotency key | `ensembly_schema::apps_record::AppEventPayload` in schema `src/apps_record.rs` |
-| `replay` | Folds the log into the latest row per aggregate, skips the same key with the same payload, and conflicts when that payload differs | a write, or an import | `ensembly_schema::replay::replay` in `src/replay.rs` |
+| `replay` | Folds the log to the latest row per aggregate, where the highest version wins and a later line wins a tie, skips an identical event line for the same aggregate and key, and conflicts when any field of that line differs | a payload-only dedupe | `ensembly_schema::replay::replay` in `src/replay.rs` |
 | `compare` | CLI-only `record apps compare` prints the report and writes nothing. Exit 0 is a match, exit 1 is a mismatch, exit 2 is an error, including a missing log or a directory given as the log | an MCP call, or an import that creates a missing log | `finish_compare` in `src/main.rs` and `ensembly_kernel::apps_record::compare_files` in kernel `src/apps_record.rs` |
 | `writer alias` | The only writers accepted are `laptop-1`, `laptop-2`, and `mac-mini` | a hostname, a home path, or `box` | `ensembly_schema::surface::PUBLIC_HOST_ALIASES` in `src/surface.rs` |
 | `legacy-unknown` | On import, Rejected and NextStage store this evidence source and text. The same spelling is the only unknown `cv_version` marker | the evidence source on Silent, or an ad-hoc `cv_version` label | `ensembly_schema::apps_record::evidence` in schema `src/apps_record.rs` and `ensembly_kernel::application_ledger::LEGACY_UNKNOWN_CV` in `src/application_ledger.rs` |
