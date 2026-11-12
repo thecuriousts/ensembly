@@ -17,3 +17,4 @@ contracts/record-layer-m4-reconcile.yml	private-data	1
 contracts/record-layer-m5-read-contract.yml	private-data	1
 contracts/record-layer-m6-sync-ttl.yml	private-data	1
 contracts/record-layer-mcp-cli.yml	private-data	1
+contracts/apps-record-adapter.yml	private-data	1
