@@ -94,7 +94,8 @@
         "linear",
         "ats",
         "human",
-        "document"
+        "document",
+        "legacy-unknown"
       ]
     }
   }

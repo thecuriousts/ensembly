@@ -324,6 +324,36 @@ enum RecordCmd {
         #[command(subcommand)]
         sub: RecordViewCmd,
     },
+    /// Map the application ledger onto a record log, or compare the two
+    Apps {
+        #[command(subcommand)]
+        sub: RecordAppsCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum RecordAppsCmd {
+    /// Append one record event per current ledger row. Does not write the ledger.
+    Import {
+        #[arg(long)]
+        ledger: PathBuf,
+        #[arg(long)]
+        log: PathBuf,
+        /// Public host alias: laptop-1, laptop-2, or mac-mini
+        #[arg(long)]
+        writer: String,
+        /// Stockholm time stored when a row has no submit time. Marked synthetic.
+        #[arg(long)]
+        at: Option<String>,
+    },
+    /// Replay the record log and diff it against the ledger. Writes nothing.
+    /// Exit 1 when a link differs. Exit 2 when the ledger or the log cannot be read.
+    Compare {
+        #[arg(long)]
+        ledger: PathBuf,
+        #[arg(long)]
+        log: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1034,7 +1064,42 @@ fn cmd_record(cmd: RecordCmd) -> Result<()> {
                 Ok(())
             }
         },
+        RecordCmd::Apps { sub } => cmd_record_apps(sub),
     }
+}
+
+fn cmd_record_apps(cmd: RecordAppsCmd) -> Result<()> {
+    match cmd {
+        RecordAppsCmd::Import {
+            ledger,
+            log,
+            writer,
+            at,
+        } => {
+            let at = at.unwrap_or_else(ensembly_schema::stockholm_record_now);
+            let receipt = ensembly_kernel::import_ledger(&ledger, &log, &writer, &at)
+                .map_err(anyhow::Error::msg)?;
+            println!("{}", serde_json::to_string(&receipt)?);
+            Ok(())
+        }
+        RecordAppsCmd::Compare { ledger, log } => {
+            match ensembly_kernel::compare_files(&ledger, &log) {
+                Ok(report) => finish_compare(&report),
+                Err(err) => {
+                    eprintln!("Error: {err}");
+                    std::process::exit(2);
+                }
+            }
+        }
+    }
+}
+
+fn finish_compare(report: &ensembly_schema::CompareReport) -> Result<()> {
+    println!("{}", serde_json::to_string(report)?);
+    if !report.mismatches.is_empty() {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {

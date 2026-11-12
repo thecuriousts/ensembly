@@ -113,6 +113,7 @@ pub enum Source {
     Ats,
     Human,
     Document,
+    LegacyUnknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -400,7 +401,7 @@ impl From<ledger::Status> for Status {
 
 fn ledger_map_evidence(label: &str) -> Evidence {
     Evidence {
-        source: Source::Human,
+        source: Source::LegacyUnknown,
         at: StockholmTime::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
         text: TextForm(format!("from-ledger-{label}")),
     }
