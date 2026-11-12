@@ -1,0 +1,7 @@
+id: apps-record-adapter
+input: master record Commit, replay, and the application ledger Status enum
+output: ledger status maps onto record events; a second import appends nothing; compare is read-only and exits non-zero on a mismatch
+check: acceptance:cargo test --locked -p ensembly-schema --test apps_record && cargo test --locked -p ensembly-kernel --test apps_record_cli
+reversible: yes
+blast: low
+counter: ledger byte length unchanged after import and compare
