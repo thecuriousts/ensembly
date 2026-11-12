@@ -227,3 +227,212 @@ fn compare_is_read_only_and_exits_nonzero_on_mismatch() {
     assert_eq!(fs::read(&log).unwrap(), log_bytes);
     assert_eq!(fs::read(&bad).unwrap(), bad_bytes);
 }
+
+fn unknown_time_body() -> &'static str {
+    r#"{"company":"Drift Sample","role":"Signal Reader","link":"https://jobs.example.test/drift/4","status":"rejected","submit_time":null,"submit_time_unknown":true,"cv_version":"cv-sample-1"}
+{"company":"Fern Example","role":"Quiet Desk","link":"https://jobs.example.test/fern/7","status":"silent-closed","submit_time":null,"submit_time_unknown":true,"cv_version":"cv-sample-1"}
+"#
+}
+
+fn import_args<'a>(ledger: &'a str, log: &'a str, writer: &'a str) -> Vec<&'a str> {
+    vec![
+        "record", "apps", "import", "--ledger", ledger, "--log", log, "--writer", writer,
+    ]
+}
+
+#[test]
+fn reimport_without_at_appends_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    fs::create_dir_all(&data).unwrap();
+    let ledger = data.join("ledger.jsonl");
+    fs::write(&ledger, unknown_time_body()).unwrap();
+    let log = data.join("events.jsonl");
+    let ledger_s = ledger.to_str().unwrap();
+    let log_s = log.to_str().unwrap();
+    let first = run(ensembly(dir.path()).args(import_args(ledger_s, log_s, "laptop-1")));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&first.stdout),
+        String::from_utf8_lossy(&first.stderr)
+    );
+    assert!(first.status.success(), "{text}");
+    let once = fs::read(&log).unwrap();
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let second = run(ensembly(dir.path()).args(import_args(ledger_s, log_s, "laptop-1")));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&second.stdout),
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert!(second.status.success(), "{text}");
+    assert!(text.contains("\"appended\":0"), "{text}");
+    assert_eq!(fs::read(&log).unwrap(), once);
+    assert_eq!(fs::read(&ledger).unwrap(), unknown_time_body().as_bytes());
+}
+
+#[test]
+fn reimport_with_another_writer_appends_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    fs::create_dir_all(&data).unwrap();
+    let ledger = data.join("ledger.jsonl");
+    fs::write(&ledger, unknown_time_body()).unwrap();
+    let log = data.join("events.jsonl");
+    let ledger_s = ledger.to_str().unwrap();
+    let log_s = log.to_str().unwrap();
+    let first = run(ensembly(dir.path()).args(import_args(ledger_s, log_s, "laptop-1")));
+    assert!(
+        first.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&first.stdout),
+        String::from_utf8_lossy(&first.stderr)
+    );
+    let once = fs::read(&log).unwrap();
+    let second = run(ensembly(dir.path()).args(import_args(ledger_s, log_s, "laptop-2")));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&second.stdout),
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert!(second.status.success(), "{text}");
+    assert!(text.contains("\"appended\":0"), "{text}");
+    assert_eq!(fs::read(&log).unwrap(), once);
+}
+
+#[test]
+fn return_to_an_earlier_stage_exits_nonzero_and_names_the_link() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    fs::create_dir_all(&data).unwrap();
+    let ledger = data.join("ledger.jsonl");
+    let link = "https://jobs.example.test/birch/2";
+    let submitted = format!(
+        "{{\"company\":\"Birch Fictional\",\"role\":\"Ledger Clerk\",\"link\":\"{link}\",\"status\":\"submitted\",\"submit_time\":\"2026-10-26T18:59:00+01:00\",\"cv_version\":\"cv-sample-1\"}}\n"
+    );
+    let interview = submitted.replace("submitted", "interview");
+    fs::write(&ledger, &submitted).unwrap();
+    let log = data.join("events.jsonl");
+    let ledger_s = ledger.to_str().unwrap();
+    let log_s = log.to_str().unwrap();
+    let at = ["--at", "2026-11-01T12:00:00+01:00"];
+    let first = run(ensembly(dir.path())
+        .args(import_args(ledger_s, log_s, "laptop-1"))
+        .args(at));
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+    fs::write(&ledger, format!("{submitted}{interview}")).unwrap();
+    let second = run(ensembly(dir.path())
+        .args(import_args(ledger_s, log_s, "laptop-1"))
+        .args(at));
+    assert!(
+        second.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    let log_twice = fs::read(&log).unwrap();
+    fs::write(&ledger, format!("{submitted}{interview}{submitted}")).unwrap();
+    let ledger_bytes = fs::read(&ledger).unwrap();
+    let third = run(ensembly(dir.path())
+        .args(import_args(ledger_s, log_s, "laptop-1"))
+        .args(at));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&third.stdout),
+        String::from_utf8_lossy(&third.stderr)
+    );
+    assert!(!third.status.success(), "{text}");
+    assert!(text.contains(link), "{text}");
+    assert!(text.contains("submitted"), "{text}");
+    assert!(text.contains("next-stage:1"), "{text}");
+    assert_eq!(fs::read(&log).unwrap(), log_twice);
+    assert_eq!(fs::read(&ledger).unwrap(), ledger_bytes);
+    assert!(ledger_bytes.starts_with(submitted.as_bytes()));
+}
+
+#[test]
+fn compare_exit_code_splits_mismatch_from_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let ledger = write_ledger(dir.path());
+    let log = dir.path().join("data").join("events.jsonl");
+    fs::write(&log, b"not-json\n").unwrap();
+    let garbage = run(ensembly(dir.path()).args([
+        "record",
+        "apps",
+        "compare",
+        "--ledger",
+        ledger.to_str().unwrap(),
+        "--log",
+        log.to_str().unwrap(),
+    ]));
+    assert_eq!(
+        garbage.status.code(),
+        Some(2),
+        "{}{}",
+        String::from_utf8_lossy(&garbage.stdout),
+        String::from_utf8_lossy(&garbage.stderr)
+    );
+    let missing_ledger = dir.path().join("missing-ledger.jsonl");
+    let missing = run(ensembly(dir.path()).args([
+        "record",
+        "apps",
+        "compare",
+        "--ledger",
+        missing_ledger.to_str().unwrap(),
+        "--log",
+        log.to_str().unwrap(),
+    ]));
+    assert_eq!(
+        missing.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&missing.stderr)
+    );
+}
+
+#[test]
+fn compare_missing_log_or_directory_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let ledger = write_ledger(dir.path());
+    let missing = dir.path().join("data").join("no-such.jsonl");
+    assert!(!missing.exists());
+    let out = run(ensembly(dir.path()).args([
+        "record",
+        "apps",
+        "compare",
+        "--ledger",
+        ledger.to_str().unwrap(),
+        "--log",
+        missing.to_str().unwrap(),
+    ]));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(2), "{text}");
+    assert!(text.contains("missing"), "{text}");
+    assert!(!missing.exists());
+
+    let as_dir = dir.path().join("data").join("log-dir");
+    fs::create_dir(&as_dir).unwrap();
+    let out = run(ensembly(dir.path()).args([
+        "record",
+        "apps",
+        "compare",
+        "--ledger",
+        ledger.to_str().unwrap(),
+        "--log",
+        as_dir.to_str().unwrap(),
+    ]));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), Some(2), "{text}");
+    assert!(text.contains("directory"), "{text}");
+}
