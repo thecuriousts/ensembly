@@ -11,6 +11,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 mod apps_record;
 mod audit;
 mod commit;
+mod decision;
 mod ledger;
 mod pack;
 mod reconcile;
@@ -28,6 +29,11 @@ pub use apps_record::{
 };
 pub use audit::*;
 pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
+pub use decision::{
+    assign_split, proposal_rid, snapshot_hash, DecisionEvent, DecisionEventType, FitLabel,
+    GateVerdict, LabelRow, ModelDecision, SplitBucket, DEFAULT_TIMEOUT_HOURS, MODEL_VERSION,
+    SPLIT_SEED, TRIAGE_QUESTION,
+};
 pub use ledger::*;
 pub use pack::*;
 pub use reconcile::{

@@ -15,6 +15,7 @@ pub mod backup;
 pub mod channel_pulse;
 pub mod company_audit;
 pub mod critical_path;
+pub mod decision;
 pub mod digital_flow;
 pub mod doctor;
 pub mod graph;
@@ -53,6 +54,7 @@ pub use channel_pulse::{
 };
 pub use company_audit::{Audit, GateStatus};
 pub use critical_path::{compute_critical_path, explain_node, CriticalPathReport};
+pub use decision::{AnsweredMetrics, Band, FittedModel, FlagList, Phase, Score};
 pub use digital_flow::{
     activate, decide, execute_dry_run, flow_to_approval_record, map_flow_status_to_approval,
     run_cycle, DigitalFlow, FlowStatus,
@@ -89,7 +91,9 @@ pub use turn::{
 };
 pub use uncertainty_dive::{plan_dive, DiveReport, DEFAULT_PROBE_BUDGET, DIVE_IR_VERSION};
 pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
-pub use writer::{idempotency_key, KernelWriter, LedgerWriteReceipt, WriterError};
+pub use writer::{
+    idempotency_key, DecisionWriteReceipt, KernelWriter, LedgerWriteReceipt, WriterError,
+};
 
 /// Kernel banner for CLI / hosts.
 pub fn kernel_version() -> &'static str {
