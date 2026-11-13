@@ -1,0 +1,10 @@
+{
+  "id": "conflict-count-clash",
+  "left": "River Co. holds 12 teal crates.",
+  "right": "River Co. holds 4 teal crates.",
+  "recorded": {
+    "relation": "contradicts",
+    "confidence": 0.97,
+    "rationale": "The two counts of teal crates cannot both be true."
+  }
+}

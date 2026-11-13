@@ -1,0 +1,9 @@
+{
+  "id": "classify-cheerful-opinion",
+  "statement": "River Co. makes the most cheerful crates in the valley.",
+  "recorded": {
+    "label": "opinion",
+    "confidence": 0.91,
+    "rationale": "Uses a superlative judgment, not a measurable claim."
+  }
+}

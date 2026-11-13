@@ -1,0 +1,9 @@
+{
+  "id": "classify-maybe-uncertain",
+  "statement": "Someone may have already counted the teal crates at Northbridge.",
+  "recorded": {
+    "label": "uncertain",
+    "confidence": 0.86,
+    "rationale": "Hedges the claim with 'may have already'."
+  }
+}

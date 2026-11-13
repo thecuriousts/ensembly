@@ -1,0 +1,9 @@
+{
+  "id": "classify-move-instruction",
+  "statement": "Move the 12 teal crates from Northbridge to the East Wharf by Friday.",
+  "recorded": {
+    "label": "instruction",
+    "confidence": 0.95,
+    "rationale": "Gives an order to move stock by a deadline."
+  }
+}
