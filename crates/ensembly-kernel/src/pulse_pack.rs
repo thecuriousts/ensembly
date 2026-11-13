@@ -19,6 +19,8 @@ use thiserror::Error;
 
 use crate::store::OpsStore;
 
+pub mod canonical;
+
 pub const PULSE_PACK_FORMAT: &str = "ensembly-pulse-pack-v1";
 pub const PULSE_PACK_FORMAT_LEGACY: &str = "peram-pulse-pack-v1";
 

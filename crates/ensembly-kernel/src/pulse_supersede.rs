@@ -793,9 +793,19 @@ struct NewTrace<'a> {
 
 fn insert_trace_tx(conn: &Connection, row: &NewTrace<'_>) -> Result<(), SupersedeError> {
     conn.execute(
-        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, lock, seen_count, first_seen, last_seen)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?4, ?4)",
-        params![row.key, row.snippet, row.source, row.time, row.status, row.kind, row.lock],
+        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, lock, verify_hash, seen_count, first_seen, last_seen)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?4, ?4)",
+        // verify_hash pins the snippet bytes, as the Python admit writes it (D-E2-7).
+        params![
+            row.key,
+            row.snippet,
+            row.source,
+            row.time,
+            row.status,
+            row.kind,
+            row.lock,
+            crate::pulse_pack::canonical::content_hash(row.snippet)
+        ],
     )
     .map_err(store)?;
     let id = conn.last_insert_rowid();

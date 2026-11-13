@@ -1,0 +1,1 @@
+{"evidence":["demo/f-empty","demo/f-null","demo/f-wrong"],"exit":1,"supersession":["demo/s-a -> demo/s-a2 (intent)","demo/s-b -> demo/s-b2 (applied)"],"verdict":"warn"}

@@ -60,6 +60,26 @@ enum PulseCoreCmd {
         #[arg(long)]
         json: bool,
     },
+    /// Canonical pulse pack (pulse-pack-v1, canon 1) on stdout. Reads a Python or Rust
+    /// pack, or with --from-db the store (mode=ro + query_only). Invalid: verdict on stderr, exit 2.
+    Canon {
+        /// Pack file (Python pulse-pack-v1, ensembly-pulse-pack-v1 or peram-pulse-pack-v1)
+        pack: Option<PathBuf>,
+        /// Build from --pulse-db instead (mode=ro + query_only; never writes)
+        #[arg(long)]
+        from_db: bool,
+        #[arg(long)]
+        exported_at: Option<String>,
+        #[arg(long)]
+        host: Option<String>,
+    },
+    /// Check a pack against the canonical spec. Exit 0 ok, 1 warn, 2 fail. Never writes.
+    PackCheck {
+        pack: PathBuf,
+        /// Verdict as canonical JSON (the golden check.json shape)
+        #[arg(long)]
+        json: bool,
+    },
     /// Read traces by key prefix or full-text search. Never writes.
     Read {
         /// nat_key prefix, e.g. `civic/`
@@ -782,6 +802,72 @@ fn pulse_list(cfg: &pc::PulseCfg, json: bool) -> Result<()> {
     Ok(())
 }
 
+fn pulse_canon(
+    cfg: &pc::PulseCfg,
+    pack: Option<PathBuf>,
+    from_db: bool,
+    exported_at: Option<String>,
+    host: Option<String>,
+) -> Result<()> {
+    use ensembly_kernel::pulse_pack::canonical as canon;
+    use std::io::Write;
+    let (doc, verdict) = match (pack, from_db) {
+        (Some(p), false) => canon::check_bytes(&std::fs::read(&p)?),
+        (None, true) => {
+            let (Some(at), Some(h)) = (exported_at, host) else {
+                anyhow::bail!("canon --from-db needs --exported-at and --host");
+            };
+            match canon::canonical_from_db_path(&cfg.db, &at, &h) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("pulse store: {e:#}");
+                    std::process::exit(2);
+                }
+            }
+        }
+        _ => anyhow::bail!("canon needs exactly one of PACK or --from-db"),
+    };
+    match doc {
+        Some(d) => {
+            let bytes = canon::canonical_bytes(&d).map_err(|i| anyhow::anyhow!("{i:?}"))?;
+            std::io::stdout().write_all(&bytes)?;
+            Ok(())
+        }
+        None => {
+            std::io::stderr().write_all(&canon::verdict_bytes(&verdict))?;
+            std::process::exit(2);
+        }
+    }
+}
+
+fn pulse_pack_check(pack: &std::path::Path, json: bool) -> Result<()> {
+    use ensembly_kernel::pulse_pack::canonical as canon;
+    use std::io::Write;
+    let v = canon::check_pack(&std::fs::read(pack)?);
+    if json {
+        std::io::stdout().write_all(&canon::verdict_bytes(&v))?;
+    } else {
+        println!(
+            "{} ({} traces, {} archive, source {})",
+            v.verdict,
+            v.traces,
+            v.archive,
+            v.source_format.as_deref().unwrap_or("unknown")
+        );
+        for i in v.errors.iter().chain(v.warnings.iter()) {
+            println!(
+                "  {} {}",
+                i.code,
+                if i.path.is_empty() { "/" } else { &i.path }
+            );
+        }
+        if let Some(h) = &v.pack_sha256 {
+            println!("  pack_sha256 {h}");
+        }
+    }
+    std::process::exit(v.exit);
+}
+
 fn run_pulse(
     pulse_db: Option<PathBuf>,
     premflow_bin: Option<PathBuf>,
@@ -806,6 +892,13 @@ fn run_pulse(
             limit,
             json,
         } => pulse_read(&cfg, prefix, search, limit, json),
+        PulseCoreCmd::Canon {
+            pack,
+            from_db,
+            exported_at,
+            host,
+        } => pulse_canon(&cfg, pack, from_db, exported_at, host),
+        PulseCoreCmd::PackCheck { pack, json } => pulse_pack_check(&pack, json),
         PulseCoreCmd::Missions {
             sub: MissionsCmd::Import { spec, force },
         } => pulse_import(&cfg, &spec, force),
