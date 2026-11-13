@@ -113,6 +113,7 @@ cargo run -p ensembly-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.
 | Turn / FocusPlan | `ensembly turn --json` | Next physical + auth from CP |
 | **Channel pulse** | `ensembly turn --channel` · `channel-pulse reconcile` | Redacted one body + one gate; see [PLAYBOOK.md §5](PLAYBOOK.md#5-channel-pulse-issue-8) |
 | **Application ledger** | `ensembly apps validate\|append\|export` | SoT for job applications; real rows local-only; see [APPLICATION-LEDGER.md](APPLICATION-LEDGER.md) |
+| **Decision model** | `ensembly decision eval\|template\|propose\|confirm\|override\|expire` | Local apply/skip eval and propose-and-wait. The decider is not live. See [DECISION-MODEL.md](DECISION-MODEL.md) |
 | **Pulse core** | `ensembly pulse check\|read\|list\|history\|supersede\|admit\|conflict resolve\|missions` | Check and read stay read-only. `list` is live memory (`kind = memory`, `superseded_by` empty). `history` reads the archive chain. `supersede`, `admit --supersedes`, and `conflict resolve` record supersession (source, time, reason, writer) and keep the old row. Exit 0 ok, 1 warn, 2 fail, 7 refused write (audit keeps 3 for flag) |
 | **Company audit** | `ensembly apps audit validate\|append\|export\|status` | Scam-risk gate before packs/applications; exit 0/3/4/5; see [COMPANY-AUDIT.md](COMPANY-AUDIT.md) |
 | Pulse pack | `pulse-pack export` | Portable memory + archive events |
