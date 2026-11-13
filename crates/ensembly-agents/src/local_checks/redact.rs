@@ -12,7 +12,8 @@
 //! a detector; and a reversed-text view used only for email and token
 //! detection. Detectors also cover ISO 13616 account numbers (mod-97) and payment cards
 //! (Luhn, 13–19 digits). A dotted quad preceded by `v`, `version`, or
-//! `release` is treated as a version, not an IP.
+//! `release` is treated as a version, not an IP, unless the quad is
+//! RFC1918, loopback, or link-local (those stay IP hits).
 //! A hit on any view refuses the call.
 //!
 //! Tests build adversarial samples at runtime so this file does not embed
@@ -1366,10 +1367,14 @@ fn swedish_civic_kind(text: &str) -> Option<CivicKind> {
             digits.push(*ch);
         }
         if let Some(kind) = classify_civic_digits(&digits, sep, first, second) {
-            found = Some(kind);
-            // Prefer coordination if any match is one; otherwise keep ordinary.
-            if matches!(kind, CivicKind::Coordination) {
-                return Some(kind);
+            // Digit runs inside a longer identifier (AWS-style secrets)
+            // are not civic numbers; those tokens still hit high-entropy.
+            if ident_bound_ok(&chars, start, i) {
+                found = Some(kind);
+                // Prefer coordination if any match is one; otherwise keep ordinary.
+                if matches!(kind, CivicKind::Coordination) {
+                    return Some(kind);
+                }
             }
         } else if !sep {
             // already consumed only the first run
@@ -1448,14 +1453,29 @@ fn looks_like_bank_account(text: &str) -> bool {
                     j += 1;
                 } else if c == ' ' && !compact.is_empty() {
                     if bank_account_mod97_ok(&compact) {
+                        // Space after a complete account: do not scan into
+                        // trailing words. `j` is already at that space.
                         return true;
                     }
-                    j += 1;
+                    // Only count a separator when an alphanumeric follows it.
+                    let mut k = j + 1;
+                    while k < n && chars[k] == ' ' {
+                        k += 1;
+                    }
+                    if k < n && chars[k].is_ascii_alphanumeric() {
+                        j += 1;
+                    } else {
+                        break;
+                    }
                 } else {
                     break;
                 }
             }
-            if bank_account_mod97_ok(&compact) && ident_bound_ok(&chars, i, j) {
+            let mut end = j;
+            while end > i && chars[end - 1] == ' ' {
+                end -= 1;
+            }
+            if bank_account_mod97_ok(&compact) && ident_bound_ok(&chars, i, end) {
                 return true;
             }
         }
@@ -1509,13 +1529,25 @@ fn looks_like_credit_card(text: &str) -> bool {
                 if c.is_ascii_digit() {
                     digits.push(c);
                     j += 1;
-                } else if matches!(c, ' ' | '-') && !digits.is_empty() {
+                } else if matches!(c, ' ' | '-')
+                    && !digits.is_empty()
+                    && separator_followed_by_digit(&chars, j)
+                {
+                    // Only count a separator when a digit follows it.
                     j += 1;
                 } else {
                     break;
                 }
             }
-            if (13..=19).contains(&digits.len()) && ident_bound_ok(&chars, i, j) && luhn_ok(&digits)
+            // End is the index right after the last digit, so a trailing
+            // space or word is not treated as part of the number.
+            let mut end = j;
+            while end > i && matches!(chars[end - 1], ' ' | '-') {
+                end -= 1;
+            }
+            if (13..=19).contains(&digits.len())
+                && ident_bound_ok(&chars, i, end)
+                && luhn_ok(&digits)
             {
                 return true;
             }
@@ -1523,6 +1555,14 @@ fn looks_like_credit_card(text: &str) -> bool {
         i += 1;
     }
     false
+}
+
+fn separator_followed_by_digit(chars: &[char], sep_idx: usize) -> bool {
+    let mut k = sep_idx + 1;
+    while k < chars.len() && matches!(chars[k], ' ' | '-') {
+        k += 1;
+    }
+    k < chars.len() && chars[k].is_ascii_digit()
 }
 
 fn luhn_ok(digits: &str) -> bool {
@@ -1801,7 +1841,7 @@ fn looks_like_ip(text: &str) -> bool {
         if ipv6(trimmed) {
             return true;
         }
-        if ipv4(trimmed) && !ipv4_version_context(prev) {
+        if ipv4(trimmed) && !ipv4_version_context(prev, trimmed) {
             return true;
         }
         prev = Some(tok);
@@ -1810,7 +1850,12 @@ fn looks_like_ip(text: &str) -> bool {
     false
 }
 
-fn ipv4_version_context(prev: Option<&str>) -> bool {
+fn ipv4_version_context(prev: Option<&str>, quad: &str) -> bool {
+    // Private, loopback, and link-local quads stay IP hits even when a
+    // version word precedes them.
+    if ipv4_private_or_local(quad) {
+        return false;
+    }
     let Some(prev) = prev else {
         return false;
     };
@@ -1818,6 +1863,20 @@ fn ipv4_version_context(prev: Option<&str>) -> bool {
         .trim_matches(|c: char| !c.is_ascii_alphabetic())
         .to_ascii_lowercase();
     matches!(word.as_str(), "v" | "version" | "release")
+}
+
+fn ipv4_private_or_local(tok: &str) -> bool {
+    let mut parts = tok.split('.');
+    let Some(a) = parts.next().and_then(|p| p.parse::<u8>().ok()) else {
+        return false;
+    };
+    let Some(b) = parts.next().and_then(|p| p.parse::<u8>().ok()) else {
+        return false;
+    };
+    matches!(a, 10 | 127)
+        || (a == 172 && (16..=31).contains(&b))
+        || (a == 192 && b == 168)
+        || (a == 169 && b == 254)
 }
 
 fn ipv4(tok: &str) -> bool {
@@ -2840,6 +2899,46 @@ mod tests {
     }
 
     #[test]
+    fn credit_card_with_trailing_prose_is_refused() {
+        // Well-known Visa test PAN, split so the source is not a literal card number.
+        let spaced = format!("{} {} {} {}", "4111", "1111", "1111", "1111");
+        let compact = format!("{}{}{}{}", "4111", "1111", "1111", "1111");
+        let samples = [
+            format!("pay {spaced} please"),
+            format!("order {compact} shipped"),
+            format!("card {spaced}."),
+            format!("card {compact}."),
+            format!("card {spaced}\nnext line"),
+            format!("card {compact}\nnext line"),
+            format!("Paid with {spaced} today."),
+            format!("Paid with {compact} today."),
+            format!("pay ({spaced}) please"),
+            format!("order ({compact}) shipped"),
+        ];
+        for text in samples {
+            let hits = cloud_redaction_hits(&text);
+            assert!(hits.contains(&"credit-card"), "{text:?} -> {hits:?}");
+            assert!(
+                assert_safe_for_cloud(&[&text]).is_err(),
+                "{text:?} should refuse the cloud call"
+            );
+        }
+    }
+
+    #[test]
+    fn bank_account_with_trailing_words_is_refused() {
+        // Public ISO 13616 test account, built in parts.
+        let spaced = format!(
+            "{}{} {} {} {} {}",
+            "SE", "35", "5000", "0000", "0549", "1000 0003"
+        );
+        let text = format!("pay {spaced} please");
+        let hits = cloud_redaction_hits(&text);
+        assert!(hits.contains(&"bank-account"), "{text:?} -> {hits:?}");
+        assert!(assert_safe_for_cloud(&[&text]).is_err());
+    }
+
+    #[test]
     fn version_quad_in_release_notes_is_not_an_ip() {
         for sample in [
             "version 1.2.3.4",
@@ -2863,6 +2962,33 @@ mod tests {
     }
 
     #[test]
+    fn private_and_local_quads_stay_ip_hits_after_version_words() {
+        // RFC1918, loopback, and link-local stay IP hits even after v/version/release.
+        let samples = [
+            "version: 192.168.1.10",
+            "version 10.0.0.1",
+            "v 172.16.0.1",
+            "release 127.0.0.1",
+            "version 169.254.1.1",
+            "version 172.31.255.255",
+            "release 10.255.255.255",
+        ];
+        for sample in samples {
+            let hits = cloud_redaction_hits(sample);
+            assert!(
+                hits.contains(&"ip-address"),
+                "{sample} should stay an IP: {hits:?}"
+            );
+        }
+        // Documentation quads after version words are still not IPs.
+        let hits = cloud_redaction_hits("version 1.2.3.4");
+        assert!(!hits.contains(&"ip-address"), "{hits:?}");
+        // 172.15/16 is outside 172.16/12, so the version exception still applies.
+        let hits = cloud_redaction_hits("version 172.15.0.1");
+        assert!(!hits.contains(&"ip-address"), "{hits:?}");
+    }
+
+    #[test]
     fn aws_style_secret_is_refused_without_a_phone_label() {
         // High-entropy AWS-style value that embeds a 0-prefixed digit run.
         let secret = format!(
@@ -2878,6 +3004,10 @@ mod tests {
         assert!(
             !hits.contains(&"phone"),
             "secret must not also be labelled phone: {hits:?}"
+        );
+        assert!(
+            !hits.contains(&"civic-number"),
+            "secret must not also be labelled civic-number: {hits:?}"
         );
         assert!(assert_safe_for_cloud(&[&text]).is_err());
     }

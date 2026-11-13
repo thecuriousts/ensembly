@@ -47,7 +47,9 @@ model file.
   characters, not 16; a decoded run is kept only when it then hits a
   detector. International and Swedish phone numbers accept `.` and `/`
   separators. A dotted quad preceded by `v`, `version`, or `release` is
-  treated as a version, not an IP; other quads stay fail-closed.
+  treated as a version, not an IP, unless the quad is RFC1918, loopback,
+  or link-local (`10/8`, `172.16/12`, `192.168/16`, `127/8`, `169.254/16`);
+  those stay IP hits. Other quads stay fail-closed.
   Tests use synthetic fixtures only.
 
 ## Models and licences
