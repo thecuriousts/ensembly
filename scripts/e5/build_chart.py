@@ -59,7 +59,7 @@ card({{
   id: 'e5pulse',
   name: 'Pulse on vs off',
   of: 'first-pass score per rerun, synthetic replies, to scale',
-  note: 'Each jar is one rerun of the 12 frozen tasks. The fill is the first-pass score, to one scale from 0 to 100. The replies are synthetic, so the gap between shelves is set by the fixture, not measured. Touch a jar to read it.',
+  note: 'One jar per rerun of the 12 frozen tasks; fill = first-pass score, 0 to 100. Synthetic: scripts/e5/synthetic_replies.py sets the gap with its P_WRONG rates. Not measured.',
   draw() {{
     const Y0 = 338, K = 2.3, Y = v => Y0 - 4 - v * K;
     PT('the shelf, with 0, 50 and 100 marked', () => {{
@@ -82,7 +82,7 @@ card({{
         const glass = rrect(cx - 24, Y(100) - 14, 48, Y0 - Y(100) + 14, 9);
         wash(glass, '#e4eef0');
         const fill = [[cx - 20, Y0 - 4], [cx + 20, Y0 - 4], [cx + 20, top], [cx - 20, top]];
-        wash(fill, j.arm === 'on' ? '#8fbf9f' : '#e2b34d');
+        wash(fill, j.arm === 'on' ? '#9fb3c8' : '#b8b2a7');
         lid(fill, 0.8);
         lid(glass, 1.2);
         const cap = rrect(cx - 27, Y(100) - 24, 54, 12, 4);
