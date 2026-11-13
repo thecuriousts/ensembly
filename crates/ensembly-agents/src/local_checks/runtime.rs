@@ -127,6 +127,8 @@ pub struct LocalCheckConfig {
     pub max_tokens: u32,
     pub lock_path: PathBuf,
     pub prefer: RuntimeKind,
+    /// Extra memory probes when the first reading is short (Metal teardown).
+    pub memory_retries: u32,
 }
 
 impl Default for LocalCheckConfig {
@@ -170,6 +172,7 @@ impl LocalCheckConfig {
             lock_path: env_path("ENSEMBLY_LOCAL_LOCK", "PERAM_LOCAL_LOCK")
                 .unwrap_or_else(default_lock_path),
             prefer,
+            memory_retries: 8,
         }
     }
 }
@@ -386,25 +389,7 @@ impl<M: MemoryView> LocalChecker<M> {
                 format!("model stat: {e}"),
             )
         })?;
-        let available = self.memory.available_bytes().ok_or_else(|| {
-            fail(
-                FallbackReason::NotEnoughMemory,
-                started,
-                "could not measure free memory".into(),
-            )
-        })?;
-        if !can_load_model(available, size) {
-            return Err(fail(
-                FallbackReason::NotEnoughMemory,
-                started,
-                format!(
-                    "need {} bytes (model + headroom), have {} bytes available; will not load {}",
-                    required_bytes_for_model(size),
-                    available,
-                    kind.model_role()
-                ),
-            ));
-        }
+        let available = self.wait_for_memory(size, started)?;
         let _lock = ModelLock::acquire(&self.config.lock_path)
             .map_err(|e| fail(FallbackReason::RuntimeMissing, started, e))?;
         // Retry once on invalid JSON, then fall through to cloud.
@@ -520,6 +505,35 @@ impl<M: MemoryView> LocalChecker<M> {
                 format!("no model configured for {}", kind.model_role()),
             )),
         }
+    }
+
+    fn wait_for_memory(&self, model_size: u64, started: Instant) -> Result<u64, CheckFailure> {
+        let needed = required_bytes_for_model(model_size);
+        let attempts = self.config.memory_retries.saturating_add(1);
+        let mut last = 0u64;
+        for i in 0..attempts {
+            match self.memory.available_bytes() {
+                Some(available) if can_load_model(available, model_size) => return Ok(available),
+                Some(available) => last = available,
+                None => {
+                    return Err(fail(
+                        FallbackReason::NotEnoughMemory,
+                        started,
+                        "could not measure free memory".into(),
+                    ))
+                }
+            }
+            if i + 1 < attempts {
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        }
+        Err(fail(
+            FallbackReason::NotEnoughMemory,
+            started,
+            format!(
+                "need {needed} bytes (model + headroom), have {last} bytes available; will not load a local model"
+            ),
+        ))
     }
 
     fn invoke(
@@ -812,6 +826,7 @@ mod tests {
             max_tokens: 64,
             lock_path: dir.join("model.lock"),
             prefer: RuntimeKind::LlamaCpp,
+            memory_retries: 0,
         }
     }
 
@@ -889,6 +904,7 @@ mod tests {
             max_tokens: 64,
             lock_path: dir.path().join("model.lock"),
             prefer: RuntimeKind::LlamaCpp,
+            memory_retries: 0,
         };
         let checker = LocalChecker::new(cfg, FixedMemory(8 * 1024 * 1024 * 1024));
         let got = checker
