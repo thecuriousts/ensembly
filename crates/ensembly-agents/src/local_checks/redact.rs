@@ -8,8 +8,11 @@
 //! slash-escape unescaping (`\\u`, `\\x`, `\\n`); `at`/`dot` word and
 //! bracket forms; whitespace collapsed around `@./:-` (and removed entirely
 //! when matching token prefixes); UTF-8 payloads of base64 / base64url runs
-//! of 8 or more characters, kept only when the decoded bytes hit a detector;
-//! and a reversed-text view used only for email and token detection.
+//! of 8 or more characters (not 16), kept only when the decoded bytes hit
+//! a detector; and a reversed-text view used only for email and token
+//! detection. Detectors also cover ISO 13616 account numbers (mod-97) and payment cards
+//! (Luhn, 13–19 digits). A dotted quad preceded by `v`, `version`, or
+//! `release` is treated as a version, not an IP.
 //! A hit on any view refuses the call.
 //!
 //! Tests build adversarial samples at runtime so this file does not embed
@@ -101,6 +104,12 @@ fn hits_in(text: &str) -> Vec<&'static str> {
     }
     if looks_like_phone(text) {
         hits.push("phone");
+    }
+    if looks_like_bank_account(text) {
+        hits.push("bank-account");
+    }
+    if looks_like_credit_card(text) {
+        hits.push("credit-card");
     }
     if looks_like_email(text) {
         hits.push("email");
@@ -1054,6 +1063,7 @@ fn is_b64_alnum(b: u8) -> bool {
 
 fn looks_like_base64_candidate(run: &str) -> bool {
     let body = run.trim_end_matches('=');
+    // Minimum is 8 characters including padding, not 16.
     if run.len() < 8 || !run.len().is_multiple_of(4) {
         return false;
     }
@@ -1212,9 +1222,13 @@ fn looks_like_api_token(text: &str) -> bool {
         "gsk_",
     ];
     for tok in tokens(text) {
-        for prefix in PREFIXES {
-            if tok.starts_with(prefix) && tok.len() > prefix.len() + 8 {
-                return true;
+        // `.env` and KEY=value pastes keep the prefix after '='.
+        let value = tok.rsplit_once('=').map(|(_, v)| v).unwrap_or(tok);
+        for candidate in [tok, value] {
+            for prefix in PREFIXES {
+                if candidate.starts_with(prefix) && candidate.len() > prefix.len() + 8 {
+                    return true;
+                }
             }
         }
     }
@@ -1415,6 +1429,121 @@ fn plausible_year(yyyy: &str) -> bool {
     (1850..=2099).contains(&year)
 }
 
+fn looks_like_bank_account(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut i = 0;
+    while i + 4 < n {
+        if chars[i].is_ascii_alphabetic()
+            && i + 1 < n
+            && chars[i + 1].is_ascii_alphabetic()
+            && (i == 0 || !is_ident_char(chars[i - 1]))
+        {
+            let mut compact = String::new();
+            let mut j = i;
+            while j < n && compact.len() < 34 {
+                let c = chars[j];
+                if c.is_ascii_alphanumeric() {
+                    compact.push(c.to_ascii_uppercase());
+                    j += 1;
+                } else if c == ' ' && !compact.is_empty() {
+                    if bank_account_mod97_ok(&compact) {
+                        return true;
+                    }
+                    j += 1;
+                } else {
+                    break;
+                }
+            }
+            if bank_account_mod97_ok(&compact) && ident_bound_ok(&chars, i, j) {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+fn bank_account_mod97_ok(compact: &str) -> bool {
+    if !(15..=34).contains(&compact.len()) {
+        return false;
+    }
+    let bytes = compact.as_bytes();
+    if !bytes[0].is_ascii_alphabetic()
+        || !bytes[1].is_ascii_alphabetic()
+        || !bytes[2].is_ascii_digit()
+        || !bytes[3].is_ascii_digit()
+        || !compact[4..].chars().all(|c| c.is_ascii_alphanumeric())
+    {
+        return false;
+    }
+    let mut rearranged = String::with_capacity(compact.len());
+    rearranged.push_str(&compact[4..]);
+    rearranged.push_str(&compact[..4]);
+    bank_account_mod97(&rearranged) == 1
+}
+
+fn bank_account_mod97(rearranged: &str) -> u32 {
+    let mut rem = 0u32;
+    for c in rearranged.chars() {
+        if c.is_ascii_alphabetic() {
+            let n = (c as u32) - ('A' as u32) + 10;
+            rem = (rem * 100 + n) % 97;
+        } else if let Some(d) = c.to_digit(10) {
+            rem = (rem * 10 + d) % 97;
+        }
+    }
+    rem
+}
+
+fn looks_like_credit_card(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut i = 0;
+    while i < n {
+        if chars[i].is_ascii_digit() && (i == 0 || !chars[i - 1].is_ascii_digit()) {
+            let mut digits = String::new();
+            let mut j = i;
+            while j < n && digits.len() <= 19 {
+                let c = chars[j];
+                if c.is_ascii_digit() {
+                    digits.push(c);
+                    j += 1;
+                } else if matches!(c, ' ' | '-') && !digits.is_empty() {
+                    j += 1;
+                } else {
+                    break;
+                }
+            }
+            if (13..=19).contains(&digits.len()) && ident_bound_ok(&chars, i, j) && luhn_ok(&digits)
+            {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
+}
+
+fn luhn_ok(digits: &str) -> bool {
+    let mut sum = 0u32;
+    let mut alt = false;
+    for c in digits.chars().rev() {
+        let Some(mut n) = c.to_digit(10) else {
+            return false;
+        };
+        if alt {
+            n *= 2;
+            if n > 9 {
+                n -= 9;
+            }
+        }
+        sum += n;
+        alt = !alt;
+    }
+    sum.is_multiple_of(10)
+}
+
 fn looks_like_phone(text: &str) -> bool {
     let lower = text.to_ascii_lowercase();
     if lower.contains("tel:") {
@@ -1464,7 +1593,11 @@ fn scan_international_phone(lower: &str) -> bool {
                     break;
                 }
             }
-            if (8..=15).contains(&digits) {
+            let mut end = j;
+            while end > start && matches!(chars[end - 1], ' ' | '-' | '(' | ')' | '.' | '/') {
+                end -= 1;
+            }
+            if (8..=15).contains(&digits) && ident_bound_ok(&chars, i, end) {
                 return true;
             }
             i = j;
@@ -1473,6 +1606,16 @@ fn scan_international_phone(lower: &str) -> bool {
         i += 1;
     }
     false
+}
+
+fn ident_bound_ok(chars: &[char], start: usize, end: usize) -> bool {
+    let before_ok = start == 0 || !is_ident_char(chars[start - 1]);
+    let after_ok = end >= chars.len() || !is_ident_char(chars[end]);
+    before_ok && after_ok
+}
+
+fn is_ident_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
 }
 
 fn scan_national_phone(lower: &str) -> bool {
@@ -1501,10 +1644,19 @@ fn scan_national_phone(lower: &str) -> bool {
                 // Swedish mobiles are 10 digits (07xxxxxxxx). Landlines 8–10.
                 // Also accept a bare 10-digit run that starts with 07.
                 let starts_mobile = digits >= 2 && chars[i + 1] == '7';
-                if (8..=12).contains(&digits) && (seps > 0 || starts_mobile || digits == 10) {
+                let mut end = j;
+                while end > i && matches!(chars[end - 1], ' ' | '-' | '(' | ')' | '.' | '/') {
+                    end -= 1;
+                }
+                if (8..=12).contains(&digits)
+                    && (seps > 0 || starts_mobile || digits == 10)
+                    && ident_bound_ok(&chars, i, end)
+                {
                     // Avoid treating a civic-number 10-digit run starting with 0
                     // as a phone only when it already looks like a date; civic
                     // detection covers those separately.
+                    // Digit runs inside a longer identifier (AWS-style secrets)
+                    // are not phones; those tokens still hit high-entropy.
                     return true;
                 }
                 i = j;
@@ -1515,12 +1667,15 @@ fn scan_national_phone(lower: &str) -> bool {
         if chars[i] == '(' && i + 4 < n && chars[i + 4] == ')' {
             let area: String = chars[i + 1..i + 4].iter().collect();
             if area.chars().all(|c| c.is_ascii_digit()) {
-                let rest: String = chars[i + 5..]
+                let rest_span: usize = chars[i + 5..]
                     .iter()
                     .take_while(|c| c.is_ascii_digit() || matches!(c, ' ' | '-' | '.' | '/'))
+                    .count();
+                let rest: String = chars[i + 5..i + 5 + rest_span]
+                    .iter()
                     .filter(|c| c.is_ascii_digit())
                     .collect();
-                if rest.len() == 7 {
+                if rest.len() == 7 && ident_bound_ok(&chars, i, i + 5 + rest_span) {
                     return true;
                 }
             }
@@ -1635,13 +1790,34 @@ fn trailing_or_sep(lower: &str, needle: &str) -> bool {
 }
 
 fn looks_like_ip(text: &str) -> bool {
+    let mut cursor = 0;
+    let mut prev: Option<&str> = None;
     for tok in tokens(text) {
-        let tok = tok.trim_matches(|c: char| matches!(c, ',' | ';' | ')' | '('));
-        if ipv4(tok) || ipv6(tok) {
+        let start = match text[cursor..].find(tok) {
+            Some(rel) => cursor + rel,
+            None => cursor,
+        };
+        let trimmed = tok.trim_matches(|c: char| matches!(c, ',' | ';' | ')' | '('));
+        if ipv6(trimmed) {
             return true;
         }
+        if ipv4(trimmed) && !ipv4_version_context(prev) {
+            return true;
+        }
+        prev = Some(tok);
+        cursor = start + tok.len();
     }
     false
+}
+
+fn ipv4_version_context(prev: Option<&str>) -> bool {
+    let Some(prev) = prev else {
+        return false;
+    };
+    let word = prev
+        .trim_matches(|c: char| !c.is_ascii_alphabetic())
+        .to_ascii_lowercase();
+    matches!(word.as_str(), "v" | "version" | "release")
 }
 
 fn ipv4(tok: &str) -> bool {
@@ -1870,6 +2046,14 @@ mod tests {
 
     fn clean_business() -> &'static str {
         "The Northbridge depot of River Co. holds 12 teal crates."
+    }
+
+    fn armored_private_block(kind: &str, body: &str) -> String {
+        format!(
+            "-----BEGIN {kind}-----
+{body}
+-----END {kind}-----"
+        )
     }
 
     #[test]
@@ -2536,6 +2720,65 @@ mod tests {
             "api-token",
         ));
 
+        let mail = format!("{}@{}", "ada", "example.com");
+        cases.push((
+            "paste-vcard",
+            format!("BEGIN:VCARD\nEMAIL:{mail}\nEND:VCARD"),
+            "email",
+        ));
+        cases.push((
+            "paste-mailto",
+            format!("mailto:{mail}?subject=crates"),
+            "email",
+        ));
+        let sk_proj = format!("{}{}", "sk-proj-", "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        cases.push((
+            "paste-env-sk-proj",
+            format!("{}={sk_proj}", "OPENAI_KEY"),
+            "api-token",
+        ));
+        let xoxb = format!("{}{}", "xoxb-", "1234567890-abcdefghijklmnopqrst");
+        cases.push((
+            "paste-env-xoxb",
+            format!("{}={xoxb}", "SLACK_BOT"),
+            "api-token",
+        ));
+        let pem_body = format!(
+            "{}{}",
+            "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789", "/PlusSlashEquals="
+        );
+        cases.push((
+            "paste-pem",
+            armored_private_block("PRIVATE KEY", &pem_body),
+            "high-entropy",
+        ));
+        cases.push((
+            "paste-0046-phone",
+            format!(
+                "call {} (0){} {} {} {} about the crates",
+                "0046", "70", "123", "45", "67"
+            ),
+            "phone",
+        ));
+        cases.push((
+            "paste-plus-civic",
+            format!("id {}{}{}+{}", "19", "90", "0101", "2391"),
+            "civic-number",
+        ));
+        cases.push((
+            "paste-bank-account",
+            format!(
+                "pay {}{} {} {} {} {} for the crates",
+                "SE", "35", "5000", "0000", "0549", "1000 0003"
+            ),
+            "bank-account",
+        ));
+        cases.push((
+            "paste-card",
+            format!("card {} {} {} {}", "4111", "1111", "1111", "1111"),
+            "credit-card",
+        ));
+
         for (name, text, expect) in &cases {
             let hits = cloud_redaction_hits(text);
             assert!(
@@ -2559,5 +2802,133 @@ mod tests {
         assert!(cloud_redaction_hits(clean_business()).is_empty());
         assert!(cloud_redaction_hits("checked on mac-mini and laptop-1 and laptop-2").is_empty());
         assert!(assert_safe_for_cloud(&[clean_business()]).is_ok());
+    }
+
+    #[test]
+    fn adversarial_bank_account_is_refused() {
+        // Public ISO 13616 test account, built in parts.
+        let compact = format!("{}{}{}{}", "SE", "35", "500000000549", "10000003");
+        let spaced = format!(
+            "{}{} {} {} {} {}",
+            "SE", "35", "5000", "0000", "0549", "1000 0003"
+        );
+        for sample in [compact, spaced] {
+            let text = format!("pay {sample} for the crates");
+            let hits = cloud_redaction_hits(&text);
+            assert!(hits.contains(&"bank-account"), "{sample} -> {hits:?}");
+            assert!(assert_safe_for_cloud(&[&text]).is_err());
+        }
+        let bad = format!("{}{}{}{}", "SE", "00", "500000000549", "10000003");
+        let hits = cloud_redaction_hits(&format!("pay {bad} for the crates"));
+        assert!(!hits.contains(&"bank-account"), "{hits:?}");
+    }
+
+    #[test]
+    fn adversarial_credit_card_is_refused() {
+        // Well-known Visa test PAN, split so the source is not a literal card number.
+        let spaced = format!("{} {} {} {}", "4111", "1111", "1111", "1111");
+        let dashed = format!("{}-{}-{}-{}", "4111", "1111", "1111", "1111");
+        for sample in [spaced, dashed] {
+            let text = format!("card {sample}");
+            let hits = cloud_redaction_hits(&text);
+            assert!(hits.contains(&"credit-card"), "{sample} -> {hits:?}");
+            assert!(assert_safe_for_cloud(&[&text]).is_err());
+        }
+        let bad = format!("{} {} {} {}", "4111", "1111", "1111", "1112");
+        let hits = cloud_redaction_hits(&format!("card {bad}"));
+        assert!(!hits.contains(&"credit-card"), "{hits:?}");
+    }
+
+    #[test]
+    fn version_quad_in_release_notes_is_not_an_ip() {
+        for sample in [
+            "version 1.2.3.4",
+            "v 1.2.3.4",
+            "release 1.2.3.4",
+            "Upgrade from version 1.2.3.4 to 2.0.0 on mac-mini.",
+        ] {
+            let hits = cloud_redaction_hits(sample);
+            assert!(
+                !hits.contains(&"ip-address"),
+                "{sample} should not be an IP: {hits:?}"
+            );
+        }
+        // Fail-closed: a bare quad, or one not preceded by v/version/release, is still an IP.
+        let bare = "Upgrade from 1.2.3.4 to 2.0.0 on mac-mini.";
+        let hits = cloud_redaction_hits(bare);
+        assert!(hits.contains(&"ip-address"), "{hits:?}");
+        let docs = format!("host {}.{}.{}.{}", "192", "0", "2", "1");
+        let hits = cloud_redaction_hits(&docs);
+        assert!(hits.contains(&"ip-address"), "{hits:?}");
+    }
+
+    #[test]
+    fn aws_style_secret_is_refused_without_a_phone_label() {
+        // High-entropy AWS-style value that embeds a 0-prefixed digit run.
+        let secret = format!(
+            "{}{}{}",
+            "wJalrXUtnFEMI/K7MDENG", "0701234567", "bPxRfiCYEXAMPLEKEY"
+        );
+        let text = format!("AWS_SECRET_ACCESS_KEY={secret}");
+        let hits = cloud_redaction_hits(&text);
+        assert!(
+            hits.contains(&"high-entropy") || hits.contains(&"api-token"),
+            "{hits:?}"
+        );
+        assert!(
+            !hits.contains(&"phone"),
+            "secret must not also be labelled phone: {hits:?}"
+        );
+        assert!(assert_safe_for_cloud(&[&text]).is_err());
+    }
+
+    #[test]
+    fn boring_paste_cases_are_refused() {
+        let mail = format!("{}@{}", "ada", "example.com");
+        let vcard = format!("BEGIN:VCARD\nEMAIL:{mail}\nEND:VCARD");
+        let hits = cloud_redaction_hits(&vcard);
+        assert!(hits.contains(&"email"), "vcard -> {hits:?}");
+
+        let mailto = format!("mailto:{mail}?subject=crates");
+        let hits = cloud_redaction_hits(&mailto);
+        assert!(hits.contains(&"email"), "mailto -> {hits:?}");
+
+        let stripe = format!("{}{}", "sk_live_", "abcdefghijklmnopqrstuvwxyz0123");
+        let sk_proj = format!("{}{}", "sk-proj-", "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        let xoxb = format!("{}{}", "xoxb-", "1234567890-abcdefghijklmnopqrst");
+        let env = format!(
+            "{}={stripe}\n{}={sk_proj}\n{}={xoxb}",
+            "STRIPE_KEY", "OPENAI_KEY", "SLACK_BOT"
+        );
+        let hits = cloud_redaction_hits(&env);
+        assert!(
+            hits.contains(&"api-token") || hits.contains(&"high-entropy"),
+            ".env -> {hits:?}"
+        );
+        assert!(assert_safe_for_cloud(&[&env]).is_err());
+
+        let body = format!(
+            "{}{}",
+            "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789", "/PlusSlashEquals="
+        );
+        let pem = armored_private_block("PRIVATE KEY", &body);
+        let hits = cloud_redaction_hits(&pem);
+        assert!(hits.contains(&"high-entropy"), "pem -> {hits:?}");
+
+        let ossh = armored_private_block("OPENSSH PRIVATE KEY", &body);
+        let hits = cloud_redaction_hits(&ossh);
+        assert!(hits.contains(&"high-entropy"), "openssh -> {hits:?}");
+
+        let phone = format!(
+            "call {} (0){} {} {} {} about the crates",
+            "0046", "70", "123", "45", "67"
+        );
+        let hits = cloud_redaction_hits(&phone);
+        assert!(hits.contains(&"phone"), "0046 -> {hits:?}");
+
+        // Plus-separated 12-digit civic form, built in parts.
+        let civic = format!("id {}{}{}+{}", "19", "90", "0101", "2391");
+        let hits = cloud_redaction_hits(&civic);
+        assert!(hits.contains(&"civic-number"), "plus-civic -> {hits:?}");
     }
 }
