@@ -5,6 +5,20 @@ use ensembly_schema::{
     EventEnvelope, LedgerRow, RecordStatus, Status,
 };
 
+use std::sync::{Mutex, MutexGuard};
+
+static WRITER_ENV: Mutex<()> = Mutex::new(());
+
+fn with_writer(name: &str) -> MutexGuard<'static, ()> {
+    let guard = WRITER_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var(ensembly_schema::WRITER_ENV, name);
+    guard
+}
+
+fn setup() -> MutexGuard<'static, ()> {
+    with_writer("laptop-1")
+}
+
 const AT: &str = "2026-11-01T12:00:00+01:00";
 
 fn row(status: Status, link: &str, time: Option<&str>, unknown: bool) -> LedgerRow {
@@ -28,6 +42,7 @@ fn status_json(status: Status, link: &str, time: Option<&str>, unknown: bool) ->
 
 #[test]
 fn every_ledger_status_maps_and_confirmed_does_not() {
+    let _writer = setup();
     let cases = [
         (Status::Prepared, "prepared", "intended", None),
         (Status::Submitted, "submitted", "submitted", None),
@@ -62,6 +77,7 @@ fn every_ledger_status_maps_and_confirmed_does_not() {
 
 #[test]
 fn unknown_status_names_the_value_and_the_known_set() {
+    let _writer = setup();
     let err = map_ledger_status_name("offered").unwrap_err();
     assert!(err.contains("unknown"), "{err}");
     assert!(err.contains("offered"), "{err}");
@@ -79,6 +95,7 @@ fn unknown_status_names_the_value_and_the_known_set() {
 
 #[test]
 fn mapped_events_carry_the_stage_and_legacy_unknown_evidence() {
+    let _writer = setup();
     let link = "https://jobs.example.test/birch/2";
     let submitted = status_json(
         Status::Submitted,
@@ -144,6 +161,7 @@ fn mapped_events_carry_the_stage_and_legacy_unknown_evidence() {
 
 #[test]
 fn second_plan_is_empty_and_a_different_payload_conflicts() {
+    let _writer = setup();
     let link = "https://jobs.example.test/birch/2/application";
     let canonical = "https://jobs.example.test/birch/2";
     let older = row(Status::Prepared, link, None, false);
@@ -169,6 +187,7 @@ fn second_plan_is_empty_and_a_different_payload_conflicts() {
 
 #[test]
 fn writer_uses_the_shared_public_host_aliases() {
+    let _writer = setup();
     let rows = [row(
         Status::Prepared,
         "https://jobs.example.test/amber/1",
@@ -176,14 +195,19 @@ fn writer_uses_the_shared_public_host_aliases() {
         false,
     )];
     let err = import_plan(&[], &rows, "not-a-host", AT).unwrap_err();
-    assert!(err.contains("public host alias"), "{err}");
+    assert!(err.contains("configured identity"), "{err}");
+    let events = import_plan(&[], &rows, "laptop-1", AT).unwrap();
+    assert_eq!(events[0].payload.writer, "laptop-1");
+    assert_eq!(events[0].source, ensembly_schema::Source::Document);
+    drop(_writer);
+    let _writer = with_writer("laptop-2");
     let events = import_plan(&[], &rows, "laptop-2", AT).unwrap();
     assert_eq!(events[0].payload.writer, "laptop-2");
-    assert_eq!(events[0].source, ensembly_schema::Source::Document);
 }
 
 #[test]
 fn compare_lists_matches_and_an_injected_mismatch() {
+    let _writer = setup();
     let link = "https://jobs.example.test/birch/2";
     let rows = [row(
         Status::Submitted,
@@ -208,6 +232,7 @@ fn compare_lists_matches_and_an_injected_mismatch() {
 
 #[test]
 fn reimport_ignores_writer_and_a_new_clock() {
+    let _writer = setup();
     let rows = [
         row(
             Status::Rejected,
@@ -226,12 +251,15 @@ fn reimport_ignores_writer_and_a_new_clock() {
     assert_eq!(first.len(), 2);
     let second = import_plan(&first, &rows, "laptop-1", "2026-11-02T09:30:00+01:00").unwrap();
     assert!(second.is_empty(), "{second:?}");
+    drop(_writer);
+    let _writer = with_writer("mac-mini");
     let other = import_plan(&first, &rows, "mac-mini", "2026-12-01T08:00:00+01:00").unwrap();
     assert!(other.is_empty(), "{other:?}");
 }
 
 #[test]
 fn return_to_an_earlier_stage_names_the_link() {
+    let _writer = setup();
     let link = "https://jobs.example.test/birch/2";
     let submitted = row(
         Status::Submitted,
@@ -257,6 +285,7 @@ fn return_to_an_earlier_stage_names_the_link() {
 
 #[test]
 fn compare_rejects_a_different_submit_time() {
+    let _writer = setup();
     let link = "https://jobs.example.test/birch/2";
     let known = "2026-10-26T18:59:00+01:00";
     let rows = [row(Status::Submitted, link, Some(known), false)];
@@ -276,6 +305,7 @@ fn compare_rejects_a_different_submit_time() {
 
 #[test]
 fn compare_rejects_a_different_silent_since() {
+    let _writer = setup();
     let link = "https://jobs.example.test/fern/6";
     let known = "2026-10-28T15:00:00+01:00";
     let rows = [row(Status::SilentClosed, link, Some(known), false)];
@@ -294,6 +324,7 @@ fn compare_rejects_a_different_silent_since() {
 
 #[test]
 fn submit_time_correction_says_the_log_is_not_rewritten() {
+    let _writer = setup();
     let link = "https://jobs.example.test/birch/2";
     let first_row = row(
         Status::Submitted,
@@ -316,6 +347,7 @@ fn submit_time_correction_says_the_log_is_not_rewritten() {
 
 #[test]
 fn unknown_submit_time_is_marked_synthetic() {
+    let _writer = setup();
     let unknown = import_plan(
         &[],
         &[row(
@@ -351,6 +383,7 @@ fn unknown_submit_time_is_marked_synthetic() {
 
 #[test]
 fn open_status_is_refused_instead_of_intended() {
+    let _writer = setup();
     let err = ensembly_schema::closed_stage(Status::Prepared).unwrap_err();
     assert!(err.contains("open ledger status"), "{err}");
     assert!(err.contains("intended"), "{err}");

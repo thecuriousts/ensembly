@@ -183,7 +183,7 @@ pub(crate) fn open_jsonl_append(path: &Path) -> anyhow::Result<std::fs::File> {
 /// Append one validated row. A row equal to an existing one (ignoring surrounding
 /// whitespace and a trailing slash or `/application` on the link) is refused with an
 /// error (CLI exit 1), never written twice. No file lock: one writer at a time.
-pub fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
+pub(crate) fn append_row(path: &Path, r: &Row) -> anyhow::Result<()> {
     use std::io::Write;
     validate_row(r)?;
     if link_key(&r.link) != r.link.trim_end_matches('/') {
