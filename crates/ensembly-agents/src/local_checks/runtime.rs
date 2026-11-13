@@ -17,6 +17,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+use serde::ser::SerializeStruct;
+use serde::Serialize;
+
 use crate::local_checks::schema::{
     classify_system_prompt, classify_user_prompt, conflict_json_schema, conflict_system_prompt,
     conflict_user_prompt, fact_json_schema, parse_conflict_class, parse_fact_class, ConflictClass,
@@ -33,7 +36,7 @@ const DEFAULT_MAX_TOKENS: u32 = 256;
 /// Bound on child stdout (and stderr) before `run_cmd` fails safe.
 pub const MAX_STDOUT_BYTES: usize = 64 * 1024;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum RuntimeKind {
     LlamaCpp,
     Mlx,
@@ -74,7 +77,7 @@ impl CheckKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub enum FallbackReason {
     RuntimeMissing,
     ModelMissing,
@@ -101,27 +104,73 @@ impl FallbackReason {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CheckSource {
     pub runtime: RuntimeKind,
     pub model: String,
     pub fallback: Option<FallbackReason>,
 }
 
+/// Successful local or cloud check.
+///
+/// Model `raw` is crate-private and is omitted from [`Serialize`]. Use
+/// [`Self::raw_for_debug`] only when the caller has explicitly opted into
+/// debug output.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CheckSuccess<T> {
     pub value: T,
     pub source: CheckSource,
     pub latency: Duration,
-    pub raw: String,
+    pub(crate) raw: String,
 }
 
+impl<T> CheckSuccess<T> {
+    /// Model stdout, for explicit debug output only. Not included when
+    /// this type is serialized.
+    pub fn raw_for_debug(&self) -> &str {
+        &self.raw
+    }
+}
+
+impl<T: Serialize> Serialize for CheckSuccess<T> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut st = serializer.serialize_struct("CheckSuccess", 3)?;
+        st.serialize_field("value", &self.value)?;
+        st.serialize_field("source", &self.source)?;
+        st.serialize_field("latency_ms", &self.latency.as_millis())?;
+        st.end()
+    }
+}
+
+/// Failed local or cloud check.
+///
+/// Model `raw` is crate-private and is omitted from [`Serialize`]. Use
+/// [`Self::raw_for_debug`] only when the caller has explicitly opted into
+/// debug output.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CheckFailure {
     pub reason: FallbackReason,
     pub detail: String,
     pub latency: Duration,
-    pub raw: Option<String>,
+    pub(crate) raw: Option<String>,
+}
+
+impl CheckFailure {
+    /// Model stdout, for explicit debug output only. Not included when
+    /// this type is serialized.
+    pub fn raw_for_debug(&self) -> Option<&str> {
+        self.raw.as_deref()
+    }
+}
+
+impl Serialize for CheckFailure {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut st = serializer.serialize_struct("CheckFailure", 3)?;
+        st.serialize_field("reason", &self.reason)?;
+        st.serialize_field("detail", &self.detail)?;
+        st.serialize_field("latency_ms", &self.latency.as_millis())?;
+        st.end()
+    }
 }
 
 pub type CheckResult<T> = Result<CheckSuccess<T>, CheckFailure>;
@@ -601,7 +650,7 @@ impl<M: MemoryView> LocalChecker<M> {
                         FallbackReason::NotEnoughMemory,
                         started,
                         "could not measure free memory".into(),
-                    ))
+                    ));
                 }
             }
             if i + 1 < attempts {
@@ -925,6 +974,34 @@ mod tests {
     use crate::local_checks::support::MEMORY_HEADROOM_BYTES;
     use std::fs::File;
     use std::io::Write;
+
+    #[test]
+    fn check_result_serialize_omits_raw() {
+        let ok = CheckSuccess {
+            value: "label",
+            source: CheckSource {
+                runtime: RuntimeKind::Replay,
+                model: "fixture".into(),
+                fallback: None,
+            },
+            latency: Duration::from_millis(3),
+            raw: "SECRET-MODEL-RAW".into(),
+        };
+        let value = serde_json::to_value(&ok).unwrap();
+        assert!(value.get("raw").is_none(), "{value}");
+        assert_eq!(value["value"], "label");
+        assert_eq!(ok.raw_for_debug(), "SECRET-MODEL-RAW");
+
+        let err = CheckFailure {
+            reason: FallbackReason::InvalidJson,
+            detail: "nope".into(),
+            latency: Duration::from_millis(1),
+            raw: Some("SECRET-ERR-RAW".into()),
+        };
+        let value = serde_json::to_value(&err).unwrap();
+        assert!(value.get("raw").is_none(), "{value}");
+        assert_eq!(err.raw_for_debug(), Some("SECRET-ERR-RAW"));
+    }
 
     struct FixedMemory(u64);
     impl MemoryView for FixedMemory {

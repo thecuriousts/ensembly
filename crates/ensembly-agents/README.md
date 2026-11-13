@@ -8,8 +8,8 @@ Official Grok (xAI) docs:
 
 | Module | Role |
 |--------|------|
-| `inference` | `InferenceProvider` trait; `ENSEMBLY_INFERENCE` (alias `PERAM_INFERENCE`) `=deterministic\|grok-mcp\|local` (`ollama`, `llama.cpp`, `mlx` alias `local`) |
-| `delegation` | `DelegationBackend`; `ENSEMBLY_DELEGATE` (alias `PERAM_DELEGATE`) `=none\|grok-acp\|…` |
+| `inference` | `InferenceProvider` trait; `ENSEMBLY_INFERENCE` `=deterministic\|grok-mcp\|local` (`ollama`, `llama.cpp`, `mlx` alias `local`) |
+| `delegation` | `DelegationBackend`; `ENSEMBLY_DELEGATE` `=none\|grok-acp\|…` |
 | `mcp_server` / `ensembly-mcp` | Memory tools plus record commit and view (sync NDJSON stdio) |
 | `local_checks` | Fact classify (4B) and conflict check (9B) via llama.cpp (MLX is experimental). Cloud fallback is off unless both `ENSEMBLY_CLOUD_CHECKS=1` and `ENSEMBLY_CLOUD_CHECK_CMD` are set, behind a fail-closed redaction gate. See [LOCAL-CHECKS.md](../../docs/LOCAL-CHECKS.md) |
 | `grok` | Official CLI argv helpers + project MCP TOML snippet |

@@ -273,7 +273,7 @@ fn serialize_ok<T: serde::Serialize>(ok: CheckSuccess<T>, debug: bool) -> Value 
         "latency_ms": ok.latency.as_millis(),
     });
     if debug {
-        value["raw"] = json!(ok.raw);
+        value["raw"] = json!(ok.raw_for_debug());
     }
     value
 }
@@ -286,7 +286,7 @@ fn serialize_err(err: CheckFailure, debug: bool) -> Value {
         "latency_ms": err.latency.as_millis(),
     });
     if debug {
-        value["raw"] = json!(err.raw);
+        value["raw"] = json!(err.raw_for_debug());
     }
     value
 }

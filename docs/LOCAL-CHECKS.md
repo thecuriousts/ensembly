@@ -35,10 +35,15 @@ model file.
   number, phone, email, home path, IP, MAC, hostname, or a name-like field.
   Views are the raw text; NFKC with zero-width/format characters stripped
   and confusables folded to ASCII; up to three rounds of percent and
-  HTML-entity decoding; whitespace collapsed around `@./:-` (and removed
-  entirely for token-prefix matching); and valid UTF-8 from base64 or
-  base64url runs of 16 or more characters. Tests use synthetic fixtures
-  only.
+  HTML-entity decoding; quoted-printable and MIME encoded-word decoding;
+  JSON and slash-escape unescaping (`\u`, `\x`, `\n`); `at`/`dot` word
+  and bracket forms (`[at]`, `(at)`, `[dot]`, `(dot)`); whitespace
+  collapsed around `@./:-` (and removed entirely for token-prefix
+  matching, including spaced `sk` prefixes); valid UTF-8 from base64 or
+  base64url runs of 8 or more characters, kept only when the decoded
+  bytes then hit a detector; and a reversed-text view used only for
+  email and token detection. International and Swedish phone numbers
+  accept `.` and `/` separators. Tests use synthetic fixtures only.
 
 ## Models and licences
 
@@ -126,4 +131,6 @@ non-empty command are set), `cloud_cmd_set` (a command template is set),
 command is not mistaken for an active fallback.
 
 CLI JSON does not include model `raw` output (which can echo user content)
-unless you pass `--debug`.
+unless you pass `--debug`. In the library, `CheckSuccess` and
+`CheckFailure` omit `raw` from serialization; use `raw_for_debug()` when
+you have explicitly opted into debug output.

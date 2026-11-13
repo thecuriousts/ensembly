@@ -4,8 +4,12 @@
 //! redacted and then sent. Detectors run on several views of the input: the
 //! raw text; a Unicode-folded form (NFKC, format/zero-width characters
 //! stripped, confusables mapped to ASCII); repeated percent and HTML-entity
-//! decoding; whitespace collapsed around `@./:-` (and removed entirely when
-//! matching token prefixes); and UTF-8 payloads of base64 / base64url runs.
+//! decoding; quoted-printable and MIME encoded-word decoding; JSON and
+//! slash-escape unescaping (`\\u`, `\\x`, `\\n`); `at`/`dot` word and
+//! bracket forms; whitespace collapsed around `@./:-` (and removed entirely
+//! when matching token prefixes); UTF-8 payloads of base64 / base64url runs
+//! of 8 or more characters, kept only when the decoded bytes hit a detector;
+//! and a reversed-text view used only for email and token detection.
 //! A hit on any view refuses the call.
 //!
 //! Tests build adversarial samples at runtime so this file does not embed
@@ -33,11 +37,34 @@ pub fn cloud_redaction_hits(text: &str) -> Vec<&'static str> {
     let (general, token_only) = expand_views(text);
     for view in &general {
         merge_hits(&mut hits, hits_in(view));
+        // Reversed text is only scored for email and tokens, never for
+        // high-entropy or hostname detectors.
+        let reversed: String = view.chars().rev().collect();
+        merge_hits(&mut hits, email_and_token_hits(&reversed));
     }
     // The all-whitespace-stripped form is only used for token prefixes, so a
     // hyphenated sentence is not treated as one high-entropy secret.
     for view in &token_only {
         merge_hits(&mut hits, token_prefix_hits(view));
+        let reversed: String = view.chars().rev().collect();
+        merge_hits(&mut hits, token_prefix_hits(&reversed));
+    }
+    hits
+}
+
+fn email_and_token_hits(text: &str) -> Vec<&'static str> {
+    let mut hits = Vec::new();
+    if looks_like_api_token(text) {
+        hits.push("api-token");
+    }
+    if looks_like_bearer(text) {
+        hits.push("bearer-token");
+    }
+    if looks_like_jwt(text) {
+        hits.push("jwt");
+    }
+    if looks_like_email(text) {
+        hits.push("email");
     }
     hits
 }
@@ -142,6 +169,16 @@ fn expand_views(text: &str) -> (Vec<String>, Vec<String>) {
         }
     }
 
+    // Quoted-printable, MIME encoded-words, slash/JSON escapes, and at/dot
+    // forms, plus one composition round of those transforms.
+    let current = views.clone();
+    for v in &current {
+        for form in obfuscation_forms(v) {
+            push(form.clone(), &mut views);
+            push(fold_unicode(&form), &mut views);
+        }
+    }
+
     // Base64 runs are taken from views that still have natural spacing, not
     // from the all-whitespace-stripped form, so glued English is not decoded.
     let encoded_sources = views.clone();
@@ -154,6 +191,7 @@ fn expand_views(text: &str) -> (Vec<String>, Vec<String>) {
     let mut token_only: Vec<String> = Vec::new();
     for v in &views {
         push(strip_all_ws(v), &mut token_only);
+        push(join_spaced_token_prefixes(v), &mut token_only);
     }
 
     let mut decoded_n = 0usize;
@@ -161,6 +199,10 @@ fn expand_views(text: &str) -> (Vec<String>, Vec<String>) {
         for decoded in decode_base64_runs(v) {
             if decoded_n >= MAX_B64_RUNS {
                 break;
+            }
+            // Short runs are only kept when the decoded bytes hit a detector.
+            if !decoded_hits_a_detector(&decoded) {
+                continue;
             }
             decoded_n += 1;
             push(decoded.clone(), &mut views);
@@ -183,6 +225,7 @@ fn expand_views(text: &str) -> (Vec<String>, Vec<String>) {
     }
     for v in &views {
         push(strip_all_ws(v), &mut token_only);
+        push(join_spaced_token_prefixes(v), &mut token_only);
     }
     (views, token_only)
 }
@@ -406,6 +449,573 @@ fn strip_all_ws(s: &str) -> String {
     s.chars().filter(|c| !c.is_whitespace()).collect()
 }
 
+fn obfuscation_forms(v: &str) -> Vec<String> {
+    let mut forms = Vec::new();
+    let add = |s: String, forms: &mut Vec<String>| {
+        if s.is_empty() || forms.iter().any(|x| x == &s) {
+            return;
+        }
+        forms.push(s);
+    };
+    add(quoted_printable_decode(v), &mut forms);
+    add(decode_mime_encoded_words(v), &mut forms);
+    add(unescape_slash_sequences(v), &mut forms);
+    add(deobfuscate_at_dot(v), &mut forms);
+    if let Some(json) = json_extracted_strings(v) {
+        add(json, &mut forms);
+    }
+    let first = forms.clone();
+    for f in &first {
+        add(quoted_printable_decode(f), &mut forms);
+        add(decode_mime_encoded_words(f), &mut forms);
+        add(unescape_slash_sequences(f), &mut forms);
+        add(deobfuscate_at_dot(f), &mut forms);
+        if let Some(json) = json_extracted_strings(f) {
+            add(json, &mut forms);
+        }
+    }
+    forms
+}
+
+fn decoded_hits_a_detector(text: &str) -> bool {
+    let mut probes = obfuscation_forms(text);
+    if !probes.iter().any(|p| p == text) {
+        probes.push(text.to_string());
+    }
+    for probe in probes {
+        if !hits_in(&probe).is_empty()
+            || !hits_in(&fold_unicode(&probe)).is_empty()
+            || !hits_in(&strip_ws_around_punct(&probe)).is_empty()
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn quoted_printable_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'=' {
+            if i + 1 < bytes.len() && (bytes[i + 1] == b'\r' || bytes[i + 1] == b'\n') {
+                i += 1;
+                if i < bytes.len() && bytes[i] == b'\r' {
+                    i += 1;
+                }
+                if i < bytes.len() && bytes[i] == b'\n' {
+                    i += 1;
+                }
+                continue;
+            }
+            if i + 2 < bytes.len() {
+                if let (Some(h), Some(l)) = (hex_val(bytes[i + 1]), hex_val(bytes[i + 2])) {
+                    out.push((h << 4) | l);
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn decode_mime_encoded_words(text: &str) -> String {
+    let mut out = String::new();
+    let mut rest = text;
+    loop {
+        let Some(start) = rest.find("=?") else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..start]);
+        rest = &rest[start..];
+        match parse_one_encoded_word(rest) {
+            Some((decoded, after)) => {
+                out.push_str(&decoded);
+                rest = after;
+                // RFC 2047: linear whitespace between adjacent encoded-words
+                // is not part of the decoded value.
+                let trimmed = rest.trim_start_matches([' ', '\t', '\r', '\n']);
+                if trimmed.starts_with("=?") && parse_one_encoded_word(trimmed).is_some() {
+                    rest = trimmed;
+                }
+            }
+            None => {
+                out.push_str("=?");
+                rest = &rest[2..];
+            }
+        }
+    }
+    out
+}
+
+fn parse_one_encoded_word(s: &str) -> Option<(String, &str)> {
+    let inner = s.strip_prefix("=?")?;
+    let charset_end = inner.find('?')?;
+    let charset = &inner[..charset_end];
+    let after_cs = &inner[charset_end + 1..];
+    let enc_end = after_cs.find('?')?;
+    let enc = &after_cs[..enc_end];
+    let after_enc = &after_cs[enc_end + 1..];
+    let payload_end = after_enc.find("?=")?;
+    let payload = &after_enc[..payload_end];
+    let after = &after_enc[payload_end + 2..];
+    let bytes = match enc {
+        "Q" | "q" => decode_q_encoding(payload),
+        "B" | "b" => decode_b64(payload, false).or_else(|| decode_b64(payload, true))?,
+        _ => return None,
+    };
+    Some((decode_charset(charset, &bytes), after))
+}
+
+fn decode_q_encoding(payload: &str) -> Vec<u8> {
+    let b = payload.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'_' {
+            out.push(b' ');
+            i += 1;
+        } else if b[i] == b'=' && i + 2 < b.len() {
+            if let (Some(h), Some(l)) = (hex_val(b[i + 1]), hex_val(b[i + 2])) {
+                out.push((h << 4) | l);
+                i += 3;
+            } else {
+                out.push(b[i]);
+                i += 1;
+            }
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+fn decode_charset(charset: &str, bytes: &[u8]) -> String {
+    let cs = charset.trim().to_ascii_lowercase();
+    if cs == "iso-8859-1" || cs == "latin1" || cs == "latin-1" {
+        return bytes.iter().map(|&b| char::from(b)).collect();
+    }
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+fn unescape_slash_sequences(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '\\' && i + 1 < chars.len() {
+            match chars[i + 1] {
+                'n' => {
+                    out.push('\n');
+                    i += 2;
+                    continue;
+                }
+                'r' => {
+                    out.push('\r');
+                    i += 2;
+                    continue;
+                }
+                't' => {
+                    out.push('\t');
+                    i += 2;
+                    continue;
+                }
+                '\\' => {
+                    out.push('\\');
+                    i += 2;
+                    continue;
+                }
+                '"' => {
+                    out.push('"');
+                    i += 2;
+                    continue;
+                }
+                '\'' => {
+                    out.push('\'');
+                    i += 2;
+                    continue;
+                }
+                '/' => {
+                    out.push('/');
+                    i += 2;
+                    continue;
+                }
+                'x' if i + 3 < chars.len() => {
+                    let hex: String = chars[i + 2..i + 4].iter().collect();
+                    if hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                        if let Ok(v) = u8::from_str_radix(&hex, 16) {
+                            out.push(char::from(v));
+                            i += 4;
+                            continue;
+                        }
+                    }
+                }
+                'u' if i + 5 < chars.len() => {
+                    let hex: String = chars[i + 2..i + 6].iter().collect();
+                    if hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                        if let Ok(v) = u32::from_str_radix(&hex, 16) {
+                            if let Some(ch) = char::from_u32(v) {
+                                out.push(ch);
+                                i += 6;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                'U' if i + 9 < chars.len() => {
+                    let hex: String = chars[i + 2..i + 10].iter().collect();
+                    if hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                        if let Ok(v) = u32::from_str_radix(&hex, 16) {
+                            if let Some(ch) = char::from_u32(v) {
+                                out.push(ch);
+                                i += 10;
+                                continue;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+fn json_extracted_strings(text: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(text.trim()).ok()?;
+    let mut parts = Vec::new();
+    collect_json_strings(&value, &mut parts);
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n"))
+    }
+}
+
+fn collect_json_strings(value: &serde_json::Value, parts: &mut Vec<String>) {
+    match value {
+        serde_json::Value::String(s) => parts.push(s.clone()),
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_json_strings(item, parts);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (k, v) in map {
+                parts.push(k.clone());
+                collect_json_strings(v, parts);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn deobfuscate_at_dot(text: &str) -> String {
+    let after_brackets = replace_bracket_at_dot(text);
+    replace_word_at_dot(&after_brackets)
+}
+
+fn replace_bracket_at_dot(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if let Some((ch, n)) = match_bracket_word(&chars, i) {
+            out.push(ch);
+            i += n;
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+fn match_bracket_word(chars: &[char], i: usize) -> Option<(char, usize)> {
+    let close = match chars[i] {
+        '[' => ']',
+        '(' => ')',
+        '{' => '}',
+        _ => return None,
+    };
+    let mut j = i + 1;
+    while j < chars.len() && chars[j].is_whitespace() {
+        j += 1;
+    }
+    let start = j;
+    while j < chars.len() && chars[j].is_ascii_alphabetic() {
+        j += 1;
+    }
+    if start == j {
+        return None;
+    }
+    let word: String = chars[start..j]
+        .iter()
+        .collect::<String>()
+        .to_ascii_lowercase();
+    while j < chars.len() && chars[j].is_whitespace() {
+        j += 1;
+    }
+    if j >= chars.len() || chars[j] != close {
+        return None;
+    }
+    let ch = match word.as_str() {
+        "at" => '@',
+        "dot" => '.',
+        _ => return None,
+    };
+    Some((ch, j + 1 - i))
+}
+
+enum Piece<'a> {
+    Word(&'a str),
+    Sep(&'a str),
+}
+
+fn split_keep_ws(text: &str) -> Vec<Piece<'_>> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        let first = rest.chars().next().unwrap();
+        if first.is_whitespace() {
+            let n: usize = rest
+                .chars()
+                .take_while(|c| c.is_whitespace())
+                .map(|c| c.len_utf8())
+                .sum();
+            out.push(Piece::Sep(&rest[..n]));
+            rest = &rest[n..];
+        } else {
+            let n: usize = rest
+                .chars()
+                .take_while(|c| !c.is_whitespace())
+                .map(|c| c.len_utf8())
+                .sum();
+            out.push(Piece::Word(&rest[..n]));
+            rest = &rest[n..];
+        }
+    }
+    out
+}
+
+fn is_email_local_word(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+'))
+}
+
+fn is_domain_label(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        && s.chars().any(|c| c.is_ascii_alphabetic())
+}
+
+fn replace_word_at_dot(text: &str) -> String {
+    let pieces = split_keep_ws(text);
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < pieces.len() {
+        if let Some((email, consumed)) = match_word_email(&pieces, i) {
+            out.push_str(&email);
+            i += consumed;
+            continue;
+        }
+        match pieces[i] {
+            Piece::Word(w) | Piece::Sep(w) => out.push_str(w),
+        }
+        i += 1;
+    }
+    out
+}
+
+fn match_word_email(pieces: &[Piece<'_>], i: usize) -> Option<(String, usize)> {
+    let Piece::Word(local) = pieces[i] else {
+        return None;
+    };
+    if !is_email_local_word(local) {
+        return None;
+    }
+    let mut k = i + 1;
+    if k < pieces.len() && matches!(pieces[k], Piece::Sep(_)) {
+        k += 1;
+    } else {
+        return None;
+    }
+    let Piece::Word(atw) = pieces.get(k)? else {
+        return None;
+    };
+    if !atw.eq_ignore_ascii_case("at") {
+        return None;
+    }
+    k += 1;
+    if k < pieces.len() && matches!(pieces[k], Piece::Sep(_)) {
+        k += 1;
+    } else {
+        return None;
+    }
+    let Piece::Word(host) = pieces.get(k)? else {
+        return None;
+    };
+    if !is_domain_label(host) {
+        return None;
+    }
+    k += 1;
+    if host.contains('.') {
+        let email = format!("{local}@{host}");
+        if is_email_shape(&email) {
+            return Some((email, k - i));
+        }
+    }
+    let mut domain = host.to_string();
+    let mut consumed = k;
+    let mut found_dot = false;
+    loop {
+        let mut t = consumed;
+        if t < pieces.len() && matches!(pieces[t], Piece::Sep(_)) {
+            t += 1;
+        } else {
+            break;
+        }
+        let Some(Piece::Word(dotw)) = pieces.get(t) else {
+            break;
+        };
+        if !dotw.eq_ignore_ascii_case("dot") {
+            break;
+        }
+        t += 1;
+        if t < pieces.len() && matches!(pieces[t], Piece::Sep(_)) {
+            t += 1;
+        } else {
+            break;
+        }
+        let Some(Piece::Word(label)) = pieces.get(t) else {
+            break;
+        };
+        if !is_domain_label(label) {
+            break;
+        }
+        domain.push('.');
+        domain.push_str(label);
+        found_dot = true;
+        consumed = t + 1;
+    }
+    if found_dot {
+        let email = format!("{local}@{domain}");
+        if is_email_shape(&email) {
+            return Some((email, consumed - i));
+        }
+    }
+    None
+}
+
+fn join_spaced_token_prefixes(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while !rest.is_empty() {
+        if rest.starts_with(|c: char| c.is_whitespace()) {
+            let n: usize = rest
+                .chars()
+                .take_while(|c| c.is_whitespace())
+                .map(|c| c.len_utf8())
+                .sum();
+            out.push_str(&rest[..n]);
+            rest = &rest[n..];
+            continue;
+        }
+        let word_len: usize = rest
+            .chars()
+            .take_while(|c| !c.is_whitespace())
+            .map(|c| c.len_utf8())
+            .sum();
+        let word = &rest[..word_len];
+        let after = &rest[word_len..];
+        let ws_len: usize = after
+            .chars()
+            .take_while(|c| c.is_whitespace())
+            .map(|c| c.len_utf8())
+            .sum();
+        let next_start = &after[ws_len..];
+        let next_len: usize = next_start
+            .chars()
+            .take_while(|c| !c.is_whitespace())
+            .map(|c| c.len_utf8())
+            .sum();
+        let next = &next_start[..next_len];
+        if is_spaced_prefix_head(word) && is_spaced_prefix_tail(next) {
+            out.push_str(&join_token_head_tail(word, next));
+            rest = &next_start[next_len..];
+            continue;
+        }
+        out.push_str(word);
+        rest = after;
+    }
+    out
+}
+
+fn is_spaced_prefix_head(word: &str) -> bool {
+    matches!(
+        word,
+        "sk" | "ghp"
+            | "gho"
+            | "ghu"
+            | "ghs"
+            | "ghr"
+            | "hf"
+            | "xai"
+            | "xoxb"
+            | "xoxp"
+            | "xoxa"
+            | "xoxr"
+            | "xoxs"
+            | "gsk"
+            | "AKIA"
+            | "ASIA"
+            | "AIza"
+            | "npm"
+            | "pypi"
+            | "shpat"
+            | "glpat"
+            | "ya29"
+    )
+}
+
+fn is_spaced_prefix_tail(next: &str) -> bool {
+    if next.is_empty() {
+        return false;
+    }
+    let body = next.trim_start_matches(['-', '_', '.']);
+    body.len() >= 8
+        && body
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+}
+
+fn join_token_head_tail(head: &str, tail: &str) -> String {
+    if head.ends_with('-')
+        || head.ends_with('_')
+        || head.ends_with('.')
+        || matches!(head, "AKIA" | "ASIA" | "AIza")
+    {
+        format!("{head}{}", tail.trim_start_matches(['-', '_']))
+    } else if matches!(
+        head,
+        "ghp" | "gho" | "ghu" | "ghs" | "ghr" | "hf" | "gsk" | "npm" | "shpat"
+    ) {
+        format!("{head}_{}", tail.trim_start_matches(['-', '_']))
+    } else {
+        format!("{head}-{}", tail.trim_start_matches('-'))
+    }
+}
+
 fn decode_base64_runs(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let bytes = s.as_bytes();
@@ -444,7 +1054,7 @@ fn is_b64_alnum(b: u8) -> bool {
 
 fn looks_like_base64_candidate(run: &str) -> bool {
     let body = run.trim_end_matches('=');
-    if body.len() < 16 || !body.len().is_multiple_of(4) {
+    if run.len() < 8 || !run.len().is_multiple_of(4) {
         return false;
     }
     if !body
@@ -811,14 +1421,17 @@ fn looks_like_phone(text: &str) -> bool {
         let after = lower.split("tel:").nth(1).unwrap_or("");
         let digits: String = after
             .chars()
-            .take_while(|c| c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')'))
+            .take_while(|c| {
+                c.is_ascii_digit() || matches!(c, '+' | ' ' | '-' | '(' | ')' | '.' | '/')
+            })
             .filter(|c| c.is_ascii_digit())
             .collect();
         if digits.len() >= 8 {
             return true;
         }
     }
-    // +country or 00-country forms, allowing spaces, dashes, and parentheses.
+    // +country or 00-country forms, allowing spaces, dashes, parentheses,
+    // dots, and slashes (international and Swedish groupings).
     if scan_international_phone(&lower) {
         return true;
     }
@@ -845,7 +1458,7 @@ fn scan_international_phone(lower: &str) -> bool {
                 if c.is_ascii_digit() {
                     digits += 1;
                     j += 1;
-                } else if matches!(c, ' ' | '-' | '(' | ')') {
+                } else if matches!(c, ' ' | '-' | '(' | ')' | '.' | '/') {
                     j += 1;
                 } else {
                     break;
@@ -878,7 +1491,7 @@ fn scan_national_phone(lower: &str) -> bool {
                     if c.is_ascii_digit() {
                         digits += 1;
                         j += 1;
-                    } else if matches!(c, ' ' | '-' | '(' | ')') {
+                    } else if matches!(c, ' ' | '-' | '(' | ')' | '.' | '/') {
                         seps += 1;
                         j += 1;
                     } else {
@@ -904,7 +1517,7 @@ fn scan_national_phone(lower: &str) -> bool {
             if area.chars().all(|c| c.is_ascii_digit()) {
                 let rest: String = chars[i + 5..]
                     .iter()
-                    .take_while(|c| c.is_ascii_digit() || matches!(c, ' ' | '-'))
+                    .take_while(|c| c.is_ascii_digit() || matches!(c, ' ' | '-' | '.' | '/'))
                     .filter(|c| c.is_ascii_digit())
                     .collect();
                 if rest.len() == 7 {
@@ -1246,11 +1859,7 @@ fn json_has_name_field(value: &serde_json::Value) -> bool {
 
 fn tokens(text: &str) -> impl Iterator<Item = &str> {
     text.split(|c: char| {
-        c.is_whitespace()
-            || matches!(
-                c,
-                ',' | ';' | '(' | ')' | '[' | ']' | '{' | '}' | '"' | '\'' | '<' | '>'
-            )
+        c.is_whitespace() || matches!(c, ',' | ';' | '{' | '}' | '"' | '\'' | '<' | '>')
     })
     .filter(|t| !t.is_empty())
 }
@@ -1506,5 +2115,449 @@ mod tests {
         let hits = cloud_redaction_hits(&text);
         assert!(hits.contains(&"home-path"), "{hits:?}");
         assert!(assert_safe_for_cloud(&[&text]).is_err());
+    }
+
+    #[test]
+    fn bypass_at_dot_words_and_brackets_are_refused() {
+        let word = format!("{} at {} dot {}", "ada", "example", "com");
+        assert_email_refused(&word);
+        let dotted_host = format!("{} at {}{}", "ada", "example", ".com");
+        assert_email_refused(&dotted_host);
+        let brackets = format!("{}[at]{}[dot]{}", "ada", "example", "com");
+        assert_email_refused(&brackets);
+        let parens = format!("{}(at){}(dot){}", "ada", "example", "com");
+        assert_email_refused(&parens);
+        let spaced_brackets = format!("{} [at] {} [dot] {}", "ada", "example", "com");
+        assert_email_refused(&spaced_brackets);
+    }
+
+    #[test]
+    fn at_paren_form_is_email_not_hostname() {
+        let text = format!("{}(at){}.{}", "ada", "example", "com");
+        let hits = cloud_redaction_hits(&text);
+        assert!(hits.contains(&"email"), "{hits:?}");
+        assert!(
+            !hits.contains(&"hostname"),
+            "paren at-form should not be a hostname: {hits:?}"
+        );
+        assert!(assert_safe_for_cloud(&[&text]).is_err());
+    }
+
+    #[test]
+    fn bypass_quoted_printable_at_is_refused() {
+        let text = format!("{}=40{}.{}", "ada", "example", "com");
+        assert_email_refused(&text);
+    }
+
+    #[test]
+    fn bypass_mime_encoded_word_email_is_refused() {
+        let q = format!("=?utf-8?Q?{}=40{}.{}?=", "ada", "example", "com");
+        assert_email_refused(&q);
+        // Standard base64 of ada@example.com.
+        let b = format!("=?UTF-8?B?{}?=", "YWRhQGV4YW1wbGUuY29t");
+        assert_email_refused(&b);
+    }
+
+    #[test]
+    fn bypass_phones_with_dot_or_slash_separators_are_refused() {
+        let intl_dot = format!("+{}.{}.{}.{}.{}", "46", "70", "123", "45", "67");
+        let intl_slash = format!("+{}/{}/{}/{}/{}", "46", "70", "123", "45", "67");
+        let national_dot = format!("{}.{}.{}.{}", "070", "123", "45", "67");
+        let national_slash = format!("{}/{}/{} {}", "070", "123", "45", "67");
+        for sample in [intl_dot, intl_slash, national_dot, national_slash] {
+            let text = format!("call {sample} about the crates");
+            let hits = cloud_redaction_hits(&text);
+            assert!(hits.contains(&"phone"), "{sample} -> {hits:?}");
+            assert!(assert_safe_for_cloud(&[&text]).is_err());
+        }
+    }
+
+    #[test]
+    fn bypass_unicode_and_json_escapes_are_refused() {
+        let u = format!("{}\\u0040{}.{}", "ada", "example", "com");
+        assert_email_refused(&u);
+        let x = format!("{}\\x40{}.{}", "ada", "example", "com");
+        assert_email_refused(&x);
+        let json = format!(
+            "{{\"{}\":\"{}\\u0040{}.{}\"}}",
+            "note", "ada", "example", "com"
+        );
+        assert_email_refused(&json);
+        let split = format!("{}@{}\\n{}@{}.{}", "skip", "x", "ada", "example", "com");
+        assert_email_refused(&split);
+    }
+
+    #[test]
+    fn bypass_reversed_email_and_token_are_refused() {
+        let mail = format!("{}@{}", "ada", "example.com");
+        let reversed: String = mail.chars().rev().collect();
+        let text = format!("write to {reversed} please");
+        assert_email_refused(&text);
+
+        let prefix = ["sk", "live"].join("-") + "-";
+        let token = format!("{prefix}{}", "ABCDEFGHIJKLMNOPQRST");
+        let rev_token: String = token.chars().rev().collect();
+        let hits = cloud_redaction_hits(&format!("use key {rev_token} when counting crates"));
+        assert!(hits.contains(&"api-token"), "{hits:?}");
+    }
+
+    #[test]
+    fn bypass_short_base64_email_is_refused_when_it_hits() {
+        // 8-char standard base64 of a 6-byte mailbox (local + host).
+        let encoded = "YUBiLmNv";
+        let text = format!("payload {encoded}");
+        assert_email_refused(&text);
+        // Benign 8-char mixed-case English must not become a hit by itself.
+        let clean = format!("{} {}", clean_business(), "TheNorth");
+        assert!(
+            cloud_redaction_hits(&clean).is_empty(),
+            "{:?}",
+            cloud_redaction_hits(&clean)
+        );
+    }
+
+    #[test]
+    fn bypass_spaced_sk_token_is_refused() {
+        let text = format!("{} {}-{}", "sk", "live", "ABCDEFGHIJKLMNOPQRSTUVW");
+        let hits = cloud_redaction_hits(&text);
+        assert!(hits.contains(&"api-token"), "{hits:?}");
+        assert!(assert_safe_for_cloud(&[&text]).is_err());
+    }
+
+    #[test]
+    fn redaction_of_one_mib_benign_text_stays_within_bound() {
+        let unit = clean_business();
+        let mut text = String::new();
+        while text.len() < 1024 * 1024 {
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            text.push_str(unit);
+        }
+        let start = std::time::Instant::now();
+        let hits = cloud_redaction_hits(&text);
+        let elapsed = start.elapsed();
+        assert!(hits.is_empty(), "{hits:?}");
+        assert!(
+            elapsed.as_secs() < 15,
+            "1 MiB redaction took {elapsed:?}, bound is 15s"
+        );
+    }
+
+    #[test]
+    fn adversarial_matrix_from_all_reviews() {
+        // Every probe from the three same-family reviews, plus the SHOULDs.
+        // Texts are built at runtime so this file does not embed phones,
+        // civic numbers, tokens, or home paths.
+        let mut cases: Vec<(&str, String, &'static str)> = Vec::new();
+
+        cases.push((
+            "r1-api-token",
+            format!(
+                "use key {}{} when counting crates",
+                ["sk", "live"].join("-") + "-",
+                "ABCDEFGHIJKLMNOPQRST"
+            ),
+            "api-token",
+        ));
+        let bearer_tok = format!("{}{}", "ghp_", "aaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        cases.push((
+            "r1-bearer",
+            format!("{} {bearer_tok}", "Bearer"),
+            "bearer-token",
+        ));
+        cases.push((
+            "r1-jwt",
+            format!(
+                "token {}.{}.{}",
+                "eyJhbGciOiJub25lIn0", "eyJzdWIiOiJyaXZlci1jbyJ9", "c2ln"
+            ),
+            "jwt",
+        ));
+        cases.push((
+            "r1-high-entropy",
+            format!("secret {}", "A9b8C7d6E5f4G3h2I1j0K9l8M7n6O5p4"),
+            "high-entropy",
+        ));
+        cases.push((
+            "r1-civic",
+            format!("id {}{}{}-{}", "19", "90", "0101", "2391"),
+            "civic-number",
+        ));
+        cases.push((
+            "r1-coordination",
+            format!("id {}{}{}-{}", "19", "90", "0161", "2391"),
+            "coordination-number",
+        ));
+        cases.push((
+            "r1-phone-intl",
+            format!(
+                "call +{} {} {} {} {} about the crates",
+                "46", "70", "123", "45", "67"
+            ),
+            "phone",
+        ));
+        cases.push((
+            "r1-phone-national",
+            format!(
+                "call {}-{} {} {} about the crates",
+                "070", "123", "45", "67"
+            ),
+            "phone",
+        ));
+        cases.push((
+            "r1-phone-bare",
+            format!("call {}{} about the crates", "070", "1234567"),
+            "phone",
+        ));
+        cases.push((
+            "r1-email",
+            format!("write to <{}@{}> please", "ada", "example.com"),
+            "email",
+        ));
+        cases.push((
+            "r1-home-unix",
+            format!("see /{}/{}/notes", "Users", "someone"),
+            "home-path",
+        ));
+        cases.push((
+            "r1-home-linux",
+            format!("see /{}/{}/notes", "home", "someone"),
+            "home-path",
+        ));
+        cases.push((
+            "r1-home-win",
+            format!("see {}\\{}\\notes", "C:\\Users", "someone"),
+            "home-path",
+        ));
+        cases.push((
+            "r1-home-tilde",
+            format!("see {}{}", "~", "/notes"),
+            "home-path",
+        ));
+        cases.push((
+            "r1-home-private-var",
+            format!("see /{}/{}/{}", "private", "var", "folders"),
+            "home-path",
+        ));
+        cases.push((
+            "r1-ip",
+            format!("host {}.{}.{}.{}", "192", "0", "2", "1"),
+            "ip-address",
+        ));
+        cases.push((
+            "r1-mac",
+            format!("nic {}:{}:{}:{}:{}:{}", "00", "1A", "2B", "3C", "4D", "5E"),
+            "mac-address",
+        ));
+        cases.push((
+            "r1-hostname",
+            format!("checked on {}{}", "depot", ".local"),
+            "hostname",
+        ));
+        cases.push((
+            "r1-name-field",
+            format!("{{\"{}\":\"{}\"}}", "full_name", "Ada Example"),
+            "name-field",
+        ));
+
+        cases.push((
+            "r2-percent-at",
+            format!("{}%40{}.{}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r2-base64-email",
+            format!("payload {}", "YWRhQGV4YW1wbGUuY29t"),
+            "email",
+        ));
+        cases.push((
+            "r2-fullwidth-at",
+            format!(
+                "{}{}{}.{}",
+                "ada",
+                char::from_u32(0xFF20).unwrap(),
+                "example",
+                "com"
+            ),
+            "email",
+        ));
+        cases.push((
+            "r2-split-token",
+            format!("{} {} {}{}", "sk-", "live-", "ABCDEFGHIJKLMNOPQRST", "UVW"),
+            "api-token",
+        ));
+        cases.push((
+            "r2-percent-home",
+            format!("see %2F{}%2F{}%2Fnotes", "home", "someone"),
+            "home-path",
+        ));
+        cases.push((
+            "r2-homoglyph-sk",
+            format!(
+                "use key {}{}-live-{} when counting crates",
+                char::from_u32(0x0455).unwrap(),
+                char::from_u32(0x043A).unwrap(),
+                "ABCDEFGHIJKLMNOPQRST"
+            ),
+            "api-token",
+        ));
+        cases.push((
+            "r2-spaced-email",
+            format!("{} . @ {} . {}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r2-html-hash",
+            format!("{}&#64;{}.{}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r2-html-named",
+            format!("{}&commat;{}.{}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r2-zwsp-email",
+            format!(
+                "{}{}@{}.{}",
+                "ada",
+                char::from_u32(0x200B).unwrap(),
+                "example",
+                "com"
+            ),
+            "email",
+        ));
+        cases.push((
+            "r2-double-percent-home",
+            format!("see %252F{}%252F{}%252Fnotes", "home", "someone"),
+            "home-path",
+        ));
+
+        cases.push((
+            "r3-at-dot-words",
+            format!("{} at {} dot {}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r3-at-brackets",
+            format!("{}[at]{}[dot]{}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r3-at-parens",
+            format!("{}(at){}.{}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r3-quoted-printable",
+            format!("{}=40{}.{}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r3-mime-q",
+            format!("=?utf-8?Q?{}=40{}.{}?=", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r3-mime-b",
+            format!("=?UTF-8?B?{}?=", "YWRhQGV4YW1wbGUuY29t"),
+            "email",
+        ));
+        cases.push((
+            "r3-phone-dot",
+            format!(
+                "call +{}.{}.{}.{}.{} about the crates",
+                "46", "70", "123", "45", "67"
+            ),
+            "phone",
+        ));
+        cases.push((
+            "r3-phone-slash",
+            format!(
+                "call +{}/{}/{} {} {} about the crates",
+                "46", "70", "123", "45", "67"
+            ),
+            "phone",
+        ));
+        cases.push((
+            "r3-phone-national-dot",
+            format!(
+                "call {}.{}.{}.{} about the crates",
+                "070", "123", "45", "67"
+            ),
+            "phone",
+        ));
+        cases.push((
+            "r3-unicode-u",
+            format!("{}\\u0040{}.{}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r3-unicode-x",
+            format!("{}\\x40{}.{}", "ada", "example", "com"),
+            "email",
+        ));
+        cases.push((
+            "r3-json-unicode",
+            format!(
+                "{{\"{}\":\"{}\\u0040{}.{}\"}}",
+                "note", "ada", "example", "com"
+            ),
+            "email",
+        ));
+        let mail = format!("{}@{}", "ada", "example.com");
+        cases.push((
+            "r3-reversed-email",
+            format!("write to {} please", mail.chars().rev().collect::<String>()),
+            "email",
+        ));
+        let token = format!(
+            "{}{}",
+            ["sk", "live"].join("-") + "-",
+            "ABCDEFGHIJKLMNOPQRST"
+        );
+        cases.push((
+            "r3-reversed-token",
+            format!(
+                "use key {} when counting crates",
+                token.chars().rev().collect::<String>()
+            ),
+            "api-token",
+        ));
+        cases.push((
+            "r3-short-base64",
+            format!("payload {}", "YUBiLmNv"),
+            "email",
+        ));
+        cases.push((
+            "r3-spaced-sk",
+            format!("{} {}-{}", "sk", "live", "ABCDEFGHIJKLMNOPQRSTUVW"),
+            "api-token",
+        ));
+
+        for (name, text, expect) in &cases {
+            let hits = cloud_redaction_hits(text);
+            assert!(
+                hits.contains(expect),
+                "{name}: expected {expect} in {hits:?} for {text:?}"
+            );
+            assert!(
+                assert_safe_for_cloud(&[text]).is_err(),
+                "{name} should refuse the cloud call"
+            );
+        }
+
+        let paren = format!("{}(at){}.{}", "ada", "example", "com");
+        let hits = cloud_redaction_hits(&paren);
+        assert!(hits.contains(&"email"), "r3-at-parens email: {hits:?}");
+        assert!(
+            !hits.contains(&"hostname"),
+            "r3-at-parens must not be a hostname: {hits:?}"
+        );
+
+        assert!(cloud_redaction_hits(clean_business()).is_empty());
+        assert!(cloud_redaction_hits("checked on mac-mini and laptop-1 and laptop-2").is_empty());
+        assert!(assert_safe_for_cloud(&[clean_business()]).is_ok());
     }
 }
