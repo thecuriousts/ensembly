@@ -1,11 +1,13 @@
 //! Adversarial regression matrix for the E3 scam-gate.
 //!
 //! Single source of truth for scam-gate adversarial probes: reviews of
-//! 7672d81, 6d90827, 1e85825, a30eab9 and 11b68e4, plus userinfo, IDN dots,
-//! leet, HTML cues, spaced brackets, Unicode dashes, named HTML entities
-//! (including ndash/mdash/minus/hyphen/nbsp, with and without a
-//! semicolon) and negative cases. ZWJ (U+200D) and ZWNJ (U+200C) are
-//! format characters and are documented in the matrix below.
+//! 7672d81, 6d90827, 1e85825, a30eab9, 11b68e4 and 9ae7e04, plus userinfo,
+//! IDN dots, leet, HTML cues, spaced brackets, Unicode dashes, named HTML
+//! entities (including ndash/mdash/minus/hyphen/nbsp, with and without a
+//! semicolon, ZWSP-split names, and double-encoded forms) and negative
+//! cases. ZWJ (U+200D) and ZWNJ (U+200C) are format characters and are
+//! documented in the matrix below. `&NDASH;` is case-sensitive and is
+//! an intended pass.
 //! Fixtures are synthetic (`*.example.test` only).
 
 use ensembly_kernel::decision::{audit, FlagList, GATE_REASON};
@@ -322,6 +324,57 @@ fn matrix() -> Vec<Case> {
             body: "see phish&ndashexample.test",
             want: fail,
         },
+        // ZWSP-split names: a format character inside a named entity must
+        // be stripped before decode, otherwise `&n` + ZWSP + `dash;` is
+        // not a name and the cue would pass.
+        Case {
+            name: "ZWSP inside ndash entity name",
+            url: u,
+            body: "wire&n\u{200b}dash;money today",
+            want: fail,
+        },
+        Case {
+            name: "ZWSP between ampersand and ndash name",
+            url: u,
+            body: "wire&\u{200b}ndash;money today",
+            want: fail,
+        },
+        Case {
+            name: "numeric en-dash entity without semicolon between cue words",
+            url: u,
+            body: "wire&#8211money today",
+            want: fail,
+        },
+        Case {
+            name: "percent-encoded ndash entity between cue words",
+            url: u,
+            body: "wire%26ndash%3Bmoney today",
+            want: fail,
+        },
+        Case {
+            name: "percent-encoded ZWSP inside ndash entity name",
+            url: u,
+            body: "wire&n%E2%80%8Bdash;money today",
+            want: fail,
+        },
+        Case {
+            name: "double-encoded ndash entity between cue words",
+            url: u,
+            body: "wire&amp;ndash;money today",
+            want: fail,
+        },
+        Case {
+            name: "double-percent-encoded ndash entity between cue words",
+            url: u,
+            body: "wire%2526ndash%253Bmoney today",
+            want: fail,
+        },
+        Case {
+            name: "double-encoded period entity as a flag-host dot",
+            url: u,
+            body: "see phish&amp;period;example.test",
+            want: fail,
+        },
         Case {
             name: "combining acute on cue letter",
             url: u,
@@ -505,6 +558,38 @@ fn matrix() -> Vec<Case> {
             body: "see also jobs-board.example.test",
             want: pass,
         },
+        // &NDASH; is not a WHATWG name (names are case-sensitive). This
+        // pass is intended: the gate must not fold the name to &ndash;.
+        Case {
+            name: "uppercase NDASH entity is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire&NDASH;money today",
+            want: pass,
+        },
+        Case {
+            name: "R&D is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "R&D engineer in Stockholm",
+            want: pass,
+        },
+        Case {
+            name: "AT&T is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "experience with AT&T systems",
+            want: pass,
+        },
+        Case {
+            name: "Q&A is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "Q&A session after the interview",
+            want: pass,
+        },
+        Case {
+            name: "copyright entity is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "role starts in 2026 &copy; the company",
+            want: pass,
+        },
     ]
 }
 
@@ -553,5 +638,33 @@ fn one_megabyte_input_finishes_fast() {
     assert!(
         elapsed < Duration::from_secs(3),
         "1 MB cue audit took {elapsed:?}, expected linear-time"
+    );
+
+    // Pathological nested encoding: percent-encoded ZWSP inside a named
+    // entity, repeated to 1 MB, with a nested-encoded cue at the end.
+    let unit = "%26n%E2%80%8Bdash%3B";
+    let mut nested = unit.repeat(1_000_000 / unit.len() + 1);
+    nested.truncate(1_000_000);
+    assert_eq!(nested.len(), 1_000_000);
+    let start = Instant::now();
+    let g = audit(clean_url(), &nested, &flags());
+    let elapsed = start.elapsed();
+    assert_eq!(g.verdict, GateVerdict::Pass);
+    assert!(
+        elapsed < Duration::from_secs(3),
+        "1 MB nested-encoding audit took {elapsed:?}, expected linear-time"
+    );
+
+    let cue = " wire%26n%E2%80%8Bdash%3Bmoney today";
+    nested.truncate(1_000_000 - cue.len());
+    nested.push_str(cue);
+    assert!(nested.len() >= 1_000_000);
+    let start = Instant::now();
+    let g = audit(clean_url(), &nested, &flags());
+    let elapsed = start.elapsed();
+    assert_eq!(g.verdict, GateVerdict::Fail);
+    assert!(
+        elapsed < Duration::from_secs(3),
+        "1 MB nested-encoding cue audit took {elapsed:?}, expected linear-time"
     );
 }

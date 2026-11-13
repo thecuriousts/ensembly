@@ -1,4 +1,9 @@
+// SPDX-License-Identifier: BSD-3-Clause
 //! Vendored WHATWG HTML5 named character references.
+//!
+//! Copyright © WHATWG (Apple, Google, Mozilla, Microsoft).
+//! The WHATWG HTML Standard is CC-BY-4.0; portions incorporated into
+//! source code (this table) are licensed under the BSD 3-Clause License.
 //!
 //! Source: https://html.spec.whatwg.org/entities.json
 //! Retrieved: 2026-11-13

@@ -308,4 +308,92 @@ mod tests {
             "expected many folded-class named entities, got {n}"
         );
     }
+
+    #[test]
+    fn format_chars_inside_named_entities_still_fail() {
+        use super::super::normalize::format_class_codepoints;
+        let entity = "&ndash;";
+        let entity_chars: Vec<char> = entity.chars().collect();
+        let host_entity = "&period;";
+        let host_chars: Vec<char> = host_entity.chars().collect();
+        for c in format_class_codepoints() {
+            for i in 0..=entity_chars.len() {
+                let mut body = String::from("wire");
+                body.extend(entity_chars[..i].iter().copied());
+                body.push(c);
+                body.extend(entity_chars[i..].iter().copied());
+                body.push_str("money today");
+                let g = audit(clean_url(), &body, &flags());
+                assert_eq!(
+                    g.verdict,
+                    GateVerdict::Fail,
+                    "cue still fails when U+{:04X} is inserted at index {i} of &ndash;",
+                    c as u32
+                );
+            }
+            for i in 0..=host_chars.len() {
+                let mut mid = String::new();
+                mid.extend(host_chars[..i].iter().copied());
+                mid.push(c);
+                mid.extend(host_chars[i..].iter().copied());
+                let body = format!("contact phish{mid}example.test");
+                let g = audit(clean_url(), &body, &flags());
+                assert_eq!(
+                    g.verdict,
+                    GateVerdict::Fail,
+                    "flagged host in the body still fails when U+{:04X} is inserted at index {i} of &period;",
+                    c as u32
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn encoding_order_combinations_still_fail() {
+        // format-in-entity, entity-in-percent, percent-in-entity, double-encoded
+        let cues = [
+            ("format-in-entity", "wire&n\u{200b}dash;money today"),
+            ("format-before-name", "wire&\u{200b}ndash;money today"),
+            ("entity-in-percent", "wire%26ndash%3Bmoney today"),
+            ("percent-in-entity", "wire&n%E2%80%8Bdash;money today"),
+            ("double-encoded-entity", "wire&amp;ndash;money today"),
+            ("double-encoded-percent", "wire%2526ndash%253Bmoney today"),
+            ("numeric-no-semicolon", "wire&#8211money today"),
+            ("hex-numeric-no-semicolon", "wire&#x2013money today"),
+        ];
+        for (name, body) in cues {
+            let g = audit(clean_url(), body, &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Fail,
+                "cue combination {name} should fail, body={body:?}"
+            );
+        }
+        let hosts = [
+            (
+                "format-in-entity-host",
+                "see phish&per\u{200b}iod;example.test",
+            ),
+            (
+                "entity-in-percent-host",
+                "see phish%26period%3Bexample.test",
+            ),
+            (
+                "percent-in-entity-host",
+                "see phish&per%E2%80%8Biod;example.test",
+            ),
+            (
+                "double-encoded-entity-host",
+                "see phish&amp;period;example.test",
+            ),
+        ];
+        for (name, body) in hosts {
+            let g = audit(clean_url(), body, &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Fail,
+                "host combination {name} should fail, body={body:?}"
+            );
+        }
+    }
 }

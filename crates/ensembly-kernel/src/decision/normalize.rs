@@ -11,9 +11,11 @@ use std::sync::OnceLock;
 use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
 
-/// Maximum percent-decode / HTML-entity rounds (view d).
+/// Maximum percent-decode / HTML-entity rounds for the standalone
+/// decode helper (view d). The fixed-point loop uses [`CANON_PASSES`].
 const DECODE_ROUNDS: usize = 3;
-const MAX_ENTITY_LEN: usize = 32;
+/// Hard cap on fixed-point canonicalisation passes.
+const CANON_PASSES: usize = 4;
 
 /// Format / zero-width / format characters (Cf and friends).
 /// On rustc 1.99, U+200B is neither `is_control()` nor `is_whitespace()`.
@@ -102,46 +104,55 @@ fn percent_decode_round(s: &str) -> String {
 
 /// Parse an HTML character reference at `at` (which must be `&`).
 ///
-/// Numeric references still require a terminating `;`. Named references use
-/// the full vendored WHATWG HTML5 table (case-sensitive). In text, a known
-/// name is accepted with or without a trailing semicolon: that is a
-/// fail-closed extension of the official 106 legacy no-semicolon names, so
-/// a cue hidden as `wire&ndashmoney today` cannot slip through. Longest
-/// prefix wins.
+/// Named references use the full vendored WHATWG HTML5 table
+/// (case-sensitive). In text, a known name is accepted with or without a
+/// trailing semicolon: that is a fail-closed extension of the official
+/// 106 legacy no-semicolon names, so a cue hidden as
+/// `wire&ndashmoney today` cannot slip through. Longest prefix wins.
+/// Numeric references (`&#8211;` / `&#x2013;`) are accepted without a
+/// semicolon when the next character is a non-digit (or the input ends),
+/// so `wire&#8211money` is fail-closed too.
 fn parse_entity_into(s: &str, at: usize, out: &mut String) -> Option<usize> {
     let rest = &s[at..];
     let bytes = rest.as_bytes();
     if bytes.first() != Some(&b'&') {
         return None;
     }
-    // Numeric references: &#123; or &#x1A; — semicolon required.
+    // Numeric references: &#123; / &#x1A;, semicolon optional when the
+    // next character is not a digit (end of input counts as non-digit).
     if bytes.len() > 2 && bytes[1] == b'#' {
-        let close = rest[1..]
-            .char_indices()
-            .take(MAX_ENTITY_LEN)
-            .find(|(_, c)| *c == ';')
-            .map(|(i, _)| i + 1)?;
-        let body = &rest[1..close];
-        let consumed = close + 1;
-        if let Some(hex) = body.strip_prefix("#x").or_else(|| body.strip_prefix("#X")) {
-            if hex.is_empty() || hex.len() > 8 || !hex.bytes().all(|b| from_hex(b).is_some()) {
-                return None;
-            }
-            let n = u32::from_str_radix(hex, 16).ok()?;
-            let ch = char::from_u32(n)?;
-            out.push(ch);
-            return Some(consumed);
+        let hex = bytes[2] == b'x' || bytes[2] == b'X';
+        let digits_at = if hex { 3 } else { 2 };
+        if digits_at >= bytes.len() {
+            return None;
         }
-        if let Some(dec) = body.strip_prefix('#') {
-            if dec.is_empty() || dec.len() > 8 || !dec.bytes().all(|b| b.is_ascii_digit()) {
-                return None;
+        let mut nlen = 0usize;
+        while digits_at + nlen < bytes.len() && nlen < 8 {
+            let b = bytes[digits_at + nlen];
+            let ok = if hex {
+                from_hex(b).is_some()
+            } else {
+                b.is_ascii_digit()
+            };
+            if !ok {
+                break;
             }
-            let n = dec.parse::<u32>().ok()?;
-            let ch = char::from_u32(n)?;
-            out.push(ch);
-            return Some(consumed);
+            nlen += 1;
         }
-        return None;
+        if nlen == 0 {
+            return None;
+        }
+        let after = digits_at + nlen;
+        let has_semi = after < bytes.len() && bytes[after] == b';';
+        let digits = &rest[digits_at..after];
+        let n = if hex {
+            u32::from_str_radix(digits, 16).ok()?
+        } else {
+            digits.parse().ok()?
+        };
+        let ch = char::from_u32(n)?;
+        out.push(ch);
+        return Some(after + usize::from(has_semi));
     }
 
     // Named references: `&` + alphanumeric name, optional `;`.
@@ -193,6 +204,71 @@ pub fn percent_and_html_decode(text: &str) -> String {
         cur = next;
     }
     cur
+}
+
+fn canon_size_bound(input_len: usize) -> usize {
+    input_len.saturating_mul(2).saturating_add(64)
+}
+
+fn strip_format_chars(text: &str) -> String {
+    text.chars()
+        .filter(|c| !is_format_or_zero_width(*c))
+        .collect()
+}
+
+/// One decode step: strip format/zero-width characters, decode HTML
+/// named and numeric references, percent-decode, then unicode-fold.
+fn canonicalize_decode_pass(text: &str) -> String {
+    nfkc_strip_marks_fold(&percent_decode_round(&html_decode_round(
+        &strip_format_chars(text),
+    )))
+}
+
+struct CanonForms {
+    /// Strip + HTML-decode + percent-decode + unicode fold. Non-ASCII
+    /// dashes are kept so a decoded en-dash can still stand in for a
+    /// host label separator.
+    decoded: String,
+    /// `decoded` after separator class folds (Pd and extra dashes to
+    /// `-`, Zs to space, slash and period lookalikes to ASCII).
+    folded: String,
+}
+
+/// Fixed-point canonicalisation for the scam-gate.
+///
+/// A single left-to-right pass cannot cover every interleaving of hiding
+/// tricks: a format character can split a named entity (`&n` + ZWSP +
+/// `dash;`), a percent-encoded octet can hide a `&` or a format
+/// character, and an entity can hide a `%` or another entity. Each pass
+/// therefore strips format and zero-width characters, decodes HTML
+/// named and numeric character references, percent-decodes, and applies
+/// the unicode and separator class folds. The loop repeats until a pass
+/// makes no change, or until [`CANON_PASSES`], and it stops if a pass
+/// would exceed a size bound, so a pathological input cannot expand
+/// without limit or run forever. Views are derived from this fixed
+/// point and from the raw text, so a cheap reordering cannot skip a fold.
+fn canonicalize_forms(text: &str) -> CanonForms {
+    let bound = canon_size_bound(text.len());
+    let mut cur = text.to_string();
+    let mut decoded = cur.clone();
+    let mut folded = fold_separators(&decoded);
+    for _ in 0..CANON_PASSES {
+        let next = canonicalize_decode_pass(&cur);
+        if next.len() > bound {
+            break;
+        }
+        let next_folded = fold_separators(&next);
+        if next_folded.len() > bound {
+            break;
+        }
+        decoded = next;
+        folded = next_folded;
+        if decoded == cur {
+            break;
+        }
+        cur = decoded.clone();
+    }
+    CanonForms { decoded, folded }
 }
 
 fn eq_ignore_ascii(chars: &[char], at: usize, pat: &str) -> bool {
@@ -487,6 +563,43 @@ pub fn html5_named_entities() -> &'static [(&'static str, &'static str)] {
     super::html5_entities::HTML5_NAMED_ENTITIES
 }
 
+/// Every format / zero-width code point the gate strips: the named
+/// ranges in [`is_format_or_zero_width`], plus C0/C1 controls that are
+/// not whitespace. Used by the ZWSP-split entity property test.
+#[cfg(test)]
+pub fn format_class_codepoints() -> Vec<char> {
+    let mut out = Vec::new();
+    let mut push_range = |lo: u32, hi: u32| {
+        for o in lo..=hi {
+            if let Some(c) = char::from_u32(o) {
+                if is_format_or_zero_width(c) {
+                    out.push(c);
+                }
+            }
+        }
+    };
+    for o in [
+        0x00AD, 0x034F, 0x061C, 0x180E, 0xFEFF, 0x110BD, 0x110CD, 0xE0001,
+    ] {
+        push_range(o, o);
+    }
+    push_range(0x200B, 0x200F);
+    push_range(0x202A, 0x202E);
+    push_range(0x2060, 0x2064);
+    push_range(0x2066, 0x206F);
+    push_range(0xFFF9, 0xFFFB);
+    push_range(0x1BCA0, 0x1BCA3);
+    push_range(0x1D173, 0x1D17A);
+    push_range(0xE0020, 0xE007F);
+    push_range(0xE0100, 0xE01EF);
+    // C0 / DEL / C1 controls that are not whitespace
+    push_range(0x0000, 0x001F);
+    push_range(0x007F, 0x009F);
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 /// Cue-view separator fold: Pd + extra dashes → '-', Zs → ' ', slash/period lookalikes → ASCII.
 pub fn fold_separators(text: &str) -> String {
     text.chars()
@@ -686,10 +799,31 @@ pub fn cue_views(text: &str) -> Vec<String> {
 
 /// Every composed view of `text`. A later check treats a hit on any view as a hit.
 ///
-/// Combinations of (d) decode, (e) de-obfuscation, (c) unicode fold, and
-/// (a)/(b) format handling. Transforms that cannot change this input are
-/// skipped, and identical views are dropped. Linear in `text`.
+/// Views are built from the raw text (as before) and from the
+/// fixed-point canonicalisation of that text, so a format character
+/// inside a name, a percent-encoded `&`, or a nested entity still
+/// reaches the class folds. Combinations of (d) decode, (e)
+/// de-obfuscation, (c) unicode fold, and (a)/(b) format handling.
+/// Transforms that cannot change this input are skipped, and identical
+/// views are dropped. Linear in `text`.
 pub fn views(text: &str) -> Vec<String> {
+    let mut out = compose_views(text);
+    let mut seen: std::collections::HashSet<String> = out.iter().cloned().collect();
+    let forms = canonicalize_forms(text);
+    for src in [&forms.decoded, &forms.folded] {
+        if src.as_str() == text {
+            continue;
+        }
+        for v in compose_views(src) {
+            if seen.insert(v.clone()) {
+                out.push(v);
+            }
+        }
+    }
+    out
+}
+
+fn compose_views(text: &str) -> Vec<String> {
     let feat = input_features(text);
     let mut out = Vec::with_capacity(16);
     let mut seen = std::collections::HashSet::with_capacity(16);
@@ -841,7 +975,7 @@ pub fn canonicalize_host_views(raw: &str) -> Vec<String> {
 }
 
 fn host_prepare(raw: &str) -> String {
-    let decoded = percent_and_html_decode(raw);
+    let decoded = canonicalize_forms(raw).decoded;
     fold_idn_dots(&decoded)
 }
 
@@ -1004,6 +1138,44 @@ mod tests {
         assert_eq!(percent_and_html_decode("keep&zzzzz;it"), "keep&zzzzz;it");
         // Longest official match: notin, not the shorter legacy not.
         assert_eq!(percent_and_html_decode("&notin;"), "\u{2209}");
+        // Numeric without a semicolon, when followed by a non-digit.
+        assert_eq!(
+            percent_and_html_decode("wire&#8211money"),
+            "wire\u{2013}money"
+        );
+        assert_eq!(
+            percent_and_html_decode("wire&#x2013money"),
+            "wire\u{2013}money"
+        );
+        // Case-sensitive: &NDASH; is not a WHATWG name.
+        assert_eq!(
+            percent_and_html_decode("wire&NDASH;money"),
+            "wire&NDASH;money"
+        );
+    }
+
+    #[test]
+    fn canonicalize_reunites_format_split_and_nested_encodings() {
+        let forms = canonicalize_forms("wire&n\u{200b}dash;money today");
+        assert_eq!(forms.folded, "wire-money today");
+        let forms = canonicalize_forms("wire&\u{200b}ndash;money today");
+        assert_eq!(forms.folded, "wire-money today");
+        let forms = canonicalize_forms("wire%26ndash%3Bmoney today");
+        assert_eq!(forms.folded, "wire-money today");
+        let forms = canonicalize_forms("wire&n%E2%80%8Bdash;money today");
+        assert_eq!(forms.folded, "wire-money today");
+        let forms = canonicalize_forms("wire&amp;ndash;money today");
+        assert_eq!(forms.folded, "wire-money today");
+        let forms = canonicalize_forms("wire&#8211money today");
+        assert_eq!(forms.folded, "wire-money today");
+        // Uppercase is not a name; the fixed point must not lower it.
+        let forms = canonicalize_forms("wire&NDASH;money today");
+        assert!(
+            forms.folded.contains("&NDASH;") || forms.decoded.contains("&NDASH;"),
+            "case-sensitive: &NDASH; must not become an en-dash, got folded={:?} decoded={:?}",
+            forms.folded,
+            forms.decoded
+        );
     }
 
     #[test]
