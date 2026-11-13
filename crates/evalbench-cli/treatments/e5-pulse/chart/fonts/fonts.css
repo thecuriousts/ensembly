@@ -1,0 +1,43 @@
+/* Bundled SIL Open Font License fonts. The page does not load Google Fonts or any other network font. */
+@font-face {
+  font-family: "Young Serif";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("YoungSerif-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Gaegu";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("Gaegu-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Gaegu";
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+  src: url("Gaegu-Bold.woff2") format("woff2");
+}
+@font-face {
+  font-family: "DM Sans";
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url("DMSans-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "DM Sans";
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url("DMSans-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "DM Sans";
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url("DMSans-SemiBold.woff2") format("woff2");
+}

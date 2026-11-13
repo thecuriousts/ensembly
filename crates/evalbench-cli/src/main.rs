@@ -11,7 +11,7 @@ use clap::{ArgGroup, Parser, Subcommand};
 use evalbench_cli::{load_task_set, CommandClient};
 use evalbench_core::check::{gaps, parse_pack, parse_posting};
 use evalbench_core::runner::{
-    run_set, trace_for, ClientError, ModelClient, ModelReply, ReplayClient,
+    run_set_with, trace_for, ClientError, ModelClient, ModelReply, PulseContext, ReplayClient,
 };
 use evalbench_core::score::{score, select_run};
 use evalbench_core::trace::{parse_traces, valid_run_id, TraceRow};
@@ -116,6 +116,10 @@ enum Cmd {
         /// Where to write the wrapper's replies (JSONL), for later replay.
         #[arg(long, requires = "exec")]
         replies_out: Option<PathBuf>,
+        /// E5 treatment arm: append this pulse pack (canonical pulse-pack-v1 bytes) to
+        /// every prompt. Traces get prompt id `gaps-v1+pulse`.
+        #[arg(long)]
+        pulse_pack: Option<PathBuf>,
     },
 }
 
@@ -292,6 +296,7 @@ fn dispatch(cmd: Cmd) -> Result<Option<Finding>> {
             args,
             timeout_secs,
             replies_out,
+            pulse_pack,
         } => {
             if !valid_run_id(&run_id) {
                 bail!("bad run id: {run_id:?}");
@@ -302,9 +307,13 @@ fn dispatch(cmd: Cmd) -> Result<Option<Finding>> {
                 }
             }
             let set = load_task_set(&tasks).map_err(|e| anyhow!("{e}"))?;
+            let pulse = pulse_pack
+                .map(|p| read_text(&p).map(|text| PulseContext { text }))
+                .transpose()?;
+            let pulse = pulse.as_ref();
             let (rows, replies) = if let Some(file) = replay {
                 let mut client = ReplayClient::from_jsonl(&read_text(&file)?)?;
-                (run_set(&mut client, &set, &run_id)?, Vec::new())
+                (run_set_with(&mut client, &set, &run_id, pulse)?, Vec::new())
             } else {
                 let program = exec.expect("clap requires --replay or --exec");
                 let mut client = Recording {
@@ -315,7 +324,7 @@ fn dispatch(cmd: Cmd) -> Result<Option<Finding>> {
                     },
                     replies: Vec::new(),
                 };
-                let rows = run_set(&mut client, &set, &run_id)?;
+                let rows = run_set_with(&mut client, &set, &run_id, pulse)?;
                 (rows, client.replies)
             };
             let body: String = rows.iter().map(TraceRow::to_line).collect();

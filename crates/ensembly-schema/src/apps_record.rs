@@ -13,7 +13,7 @@ use crate::record::{
     StockholmTime, SubmitTime as RecordSubmitTime, TextForm, Version,
 };
 use crate::replay::replay;
-use crate::surface::require_public_host_alias;
+use crate::surface::{require_configured_writer, validate_writer_identity};
 use crate::{link_key, LedgerRow, SCHEMA_VERSION};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -37,7 +37,7 @@ pub struct AppEventPayload {
 
 impl crate::Checked for AppEventPayload {
     fn check(&self) -> Result<(), String> {
-        require_public_host_alias(&self.writer)?;
+        validate_writer_identity(&self.writer)?;
         if self.company.trim().is_empty() || self.role.trim().is_empty() {
             return Err("company and role must not be blank".into());
         }
@@ -118,7 +118,7 @@ pub fn import_plan(
     writer: &str,
     observed_at: &str,
 ) -> Result<Vec<EventEnvelope<AppEventPayload>>, String> {
-    require_public_host_alias(writer)?;
+    require_configured_writer(writer)?;
     let at = StockholmTime::new(observed_at)?;
     let mut planned = Vec::new();
     let mut staged = existing.to_vec();

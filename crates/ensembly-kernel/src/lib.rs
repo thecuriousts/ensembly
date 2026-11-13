@@ -34,6 +34,8 @@ pub mod trigger;
 pub mod turn;
 pub mod uncertainty_dive;
 pub mod vault;
+mod write_guard;
+pub mod writer;
 
 pub use application_ledger::{LedgerRow, Status};
 pub use approvals::{
@@ -87,6 +89,7 @@ pub use turn::{
 };
 pub use uncertainty_dive::{plan_dive, DiveReport, DEFAULT_PROBE_BUDGET, DIVE_IR_VERSION};
 pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
+pub use writer::{idempotency_key, KernelWriter, LedgerWriteReceipt, WriterError};
 
 /// Kernel banner for CLI / hosts.
 pub fn kernel_version() -> &'static str {
