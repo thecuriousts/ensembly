@@ -1,0 +1,63 @@
+#!/bin/sh
+# Regenerate the evalbench E1 replay baseline from recorded replies and check it
+# against the committed files. Offline: no network, no API keys, synthetic tasks only.
+#
+#   scripts/evalbench-baseline           regenerate into a temp dir, compare, print numbers
+#   scripts/evalbench-baseline --write   also overwrite the committed traces.jsonl and score.json
+#
+# Exit 0 same numbers, 1 drift, 2 usage or build error.
+set -eu
+
+RUN_ID=replay-001
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+TASKS=crates/evalbench-core/fixtures/tasks
+BASE=crates/evalbench-cli/baselines/$RUN_ID
+
+write=0
+case "${1:-}" in
+  "") ;;
+  --write) write=1 ;;
+  *) echo "usage: $0 [--write]" >&2; exit 2 ;;
+esac
+
+cd "$ROOT"
+cargo build --locked -q -p evalbench-cli || exit 2
+EB=target/debug/evalbench
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+"$EB" hash "$TASKS" --verify crates/evalbench-core/fixtures/tasks.sha256 >"$tmp/hash" || exit 2
+"$EB" run --tasks "$TASKS" --run-id "$RUN_ID" --out "$tmp/traces.jsonl" --replay "$BASE/replies.jsonl" || exit 2
+"$EB" score --tasks "$TASKS" "$tmp/traces.jsonl" >"$tmp/score.json" || exit 2
+# Score twice: the numbers must not move.
+"$EB" score --tasks "$TASKS" "$tmp/traces.jsonl" >"$tmp/score2.json" || exit 2
+cmp -s "$tmp/score.json" "$tmp/score2.json" || { echo "drift: two scorings differ" >&2; exit 1; }
+
+if [ "$write" = 1 ]; then
+  cp "$tmp/traces.jsonl" "$BASE/traces.jsonl"
+  cp "$tmp/score.json" "$BASE/score.json"
+fi
+
+status=0
+for f in traces.jsonl score.json; do
+  if ! cmp -s "$tmp/$f" "$BASE/$f"; then
+    echo "drift: $BASE/$f differs from a fresh run" >&2
+    status=1
+  fi
+done
+
+python3 - "$tmp/score.json" "$(cat "$tmp/hash")" "$(git rev-parse HEAD 2>/dev/null || echo unknown)" <<'PY'
+import json, sys
+s = json.load(open(sys.argv[1]))
+print(f"run_id       {s['run_id']}")
+print(f"model_ids    {','.join(s['model_ids'])} (recorded synthetic replies, not a live model)")
+print(f"n (tasks)    {s['tasks']}")
+print(f"first_pass   {s['first_pass']}")
+print(f"score        {s['score']}  (floor(100*first_pass/tasks))")
+print(f"median_tok   {s['median_tokens_passing']}  (lower median, passing first attempts)")
+print(f"missing      {s['missing']}")
+print(f"dataset hash {sys.argv[2]}")
+print(f"commit       {sys.argv[3]}")
+PY
+exit $status

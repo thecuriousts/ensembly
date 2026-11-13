@@ -1,0 +1,41 @@
+name: kani
+
+# evalbench P1/P2 proofs under Kani. Runs the ignored kani_gate test, which checks that
+# the real harnesses verify and the broken variants fail. No secrets; read-only token.
+on:
+  pull_request:
+    paths:
+      - "crates/evalbench-core/**"
+      - ".github/workflows/kani.yml"
+  push:
+    branches: [master]
+    paths:
+      - "crates/evalbench-core/**"
+      - ".github/workflows/kani.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kani-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  KANI_VERSION: 0.68.0
+
+jobs:
+  proofs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Kani installs from crates.io and fetches its own pinned toolchain; no keys needed.
+      - name: install kani
+        run: |
+          cargo install --locked kani-verifier --version "$KANI_VERSION"
+          cargo kani setup
+      - name: kani gate (P1/P2 verify, broken variants fail)
+        run: cargo test --locked -p evalbench-core --test kani_gate -- --ignored --nocapture
