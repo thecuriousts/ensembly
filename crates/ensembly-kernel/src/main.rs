@@ -211,6 +211,13 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// Write the default config to $XDG_CONFIG_HOME/ensembly/config.toml and print its path.
+    /// Exit 7: config exists, refused without --force. Local only; no network.
+    Init {
+        /// Replace an existing config file
+        #[arg(long)]
+        force: bool,
+    },
     /// Build FocusPlan (next body + next auth) from fixture actions + durable snapshot
     Turn {
         /// JSON fixture path with extra_candidates (state-sample shape)
@@ -1178,6 +1185,7 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
     match cmd {
         Commands::Version => cmd_version(),
         Commands::Doctor { offline, json } => cmd_doctor(&ctx.db_path, offline, json),
+        Commands::Init { force } => cmd_init(force),
         Commands::MigrateLocalPaths {
             dry_run,
             root,
@@ -1303,6 +1311,68 @@ fn cmd_version() -> Result<()> {
     println!("{}", kernel_version());
     println!("private_paths: {:?}", private_path_patterns());
     println!("law: Node src/* legacy; ensembly-kernel is control SoT");
+    Ok(())
+}
+
+/// Exit code when `init` finds a config and `--force` is not set.
+const INIT_EXISTS_EXIT: i32 = 7;
+
+/// XDG base dir: an absolute `$var`, else `$HOME/<fallback>`. Relative values are ignored (XDG spec).
+fn xdg_dir(var: &str, fallback: &str) -> Result<PathBuf> {
+    let set = std::env::var_os(var).map(PathBuf::from);
+    if let Some(p) = set.filter(|p| p.is_absolute()) {
+        return Ok(p);
+    }
+    match std::env::var_os("HOME").filter(|h| !h.is_empty()) {
+        Some(home) => Ok(PathBuf::from(home).join(fallback)),
+        None => bail!("init: {var} and HOME are both unset"),
+    }
+}
+
+/// TOML basic string. Refuses control characters rather than guessing an escape.
+fn toml_str(p: &Path) -> Result<String> {
+    let Some(s) = p.to_str() else {
+        bail!("init: path is not UTF-8: {}", p.display());
+    };
+    if s.chars().any(char::is_control) {
+        bail!("init: path has control characters: {}", p.display());
+    }
+    Ok(format!(
+        "\"{}\"",
+        s.replace('\\', "\\\\").replace('"', "\\\"")
+    ))
+}
+
+fn default_config(data_dir: &Path) -> Result<String> {
+    Ok(format!(
+        "# ensembly config. Every key: docs/CONFIG.md. Local only: no telemetry, no network.\n\
+         schema = 1\n\
+         \n\
+         [paths]\n\
+         # Kernel data: ops SQLite and episodic memory.\n\
+         data_dir = {}\n\
+         \n\
+         [packs]\n\
+         # Optional job-search pack. Off unless you turn it on.\n\
+         opportunity_finder = false\n",
+        toml_str(data_dir)?
+    ))
+}
+
+fn cmd_init(force: bool) -> Result<()> {
+    let path = xdg_dir("XDG_CONFIG_HOME", ".config")?.join("ensembly/config.toml");
+    let data_dir = xdg_dir("XDG_DATA_HOME", ".local/share")?.join("ensembly");
+    if path.exists() && !force {
+        eprintln!("init: {} exists; refused without --force", path.display());
+        std::process::exit(INIT_EXISTS_EXIT);
+    }
+    let body = default_config(&data_dir)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::create_dir_all(&data_dir)?;
+    std::fs::write(&path, body)?;
+    println!("{}", path.display());
     Ok(())
 }
 
