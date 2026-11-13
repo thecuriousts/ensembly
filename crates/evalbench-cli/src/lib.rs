@@ -1,5 +1,7 @@
 //! File and process side of evalbench. Core stays pure.
 
+pub mod export;
+
 use evalbench_core::runner::{ClientError, ModelClient, ModelReply};
 use evalbench_core::taskset::{FixtureFile, TaskSet, TaskSetError};
 use std::fmt;
