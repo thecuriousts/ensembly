@@ -368,3 +368,4 @@ Essay: [Archive is not memory](https://captain.kingsparrow.space/articles/memory
 | Readers open `mode=ro` + `query_only`; tests prove every write fails | A read path that can create or migrate the store |
 | `pulse admit` pins `verify_hash` to the snippet | A `tool-verified` row with no evidence pin |
 | A small TLA+ model (`docs/spec/tla/`) checked with TLC; rules mapped to tests | Rules that live only in prose |
+| `pulse check` warns on an unpinned tool-verified row (`db.evidence`) and a half-finished supersession (`db.supersession`) | A check that says ok while the model says the store is not |

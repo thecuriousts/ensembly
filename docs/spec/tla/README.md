@@ -20,9 +20,9 @@ below check the same rules on the code.
 
 | Config | Constants | Result |
 | --- | --- | --- |
-| `PulseTrace.cfg` | `BuggyAdmit = FALSE`, `BuggyCheck = FALSE`, `MaxWrites = 7` | No error. 9737 states generated, 1408 distinct, depth 8. |
+| `PulseTrace.cfg` (the current code) | `BuggyAdmit = FALSE`, `BuggyCheck = FALSE`, `MaxWrites = 7` | No error, `CheckIsHonest` included. 9737 states generated, 1408 distinct, depth 8. |
 | `PulseTraceBeforeE2.cfg` | `BuggyAdmit = TRUE` | `ConfirmedNeedsEvidence` violated at depth 2 (admit left `verify_hash` NULL). Fixed in E2. |
-| `PulseTraceCheckGap.cfg` | `BuggyCheck = TRUE` | `CheckIsHonest` violated at depth 5 (`pulse check` says ok on an unpinned tool-verified row or a half-applied supersession). Open. |
+| `PulseTraceCheckBeforeFix.cfg` | `BuggyCheck = TRUE` | `CheckIsHonest` violated at depth 4 (the old `pulse check` said ok on an unpinned tool-verified row or a half-applied supersession). Fixed: `db.evidence` and `db.supersession` warn findings. |
 
 ## Rules and the tests that check them
 
@@ -30,7 +30,7 @@ below check the same rules on the code.
 | --- | --- | --- |
 | `TypeOK` | invariant | model only |
 | `ConfirmedNeedsEvidence` | invariant | `admit_writes_the_content_hash_python_expects` |
-| `CheckIsHonest` | invariant | pending: `pulse check` has no `db.evidence` / `db.supersession` finding yet |
+| `CheckIsHonest` | invariant | `check_warns_on_tool_verified_without_evidence`, `check_warns_on_half_finished_supersession`, `db_check_findings_match_goldens_in_rust_and_python` |
 | `HalfStateResumable` | invariant | `intent_then_retry_reaches_verified` |
 | `PointerOnlyAfterApply` | invariant | `bad_writer_is_refused_before_any_pointer_change` |
 | `ReadOnlyNeverWrites` | property | `rust_open_ro_refuses_every_write`, `python_open_ro_refuses_every_write`, `rust_from_db_reproduces_goldens_and_leaves_db_untouched` |

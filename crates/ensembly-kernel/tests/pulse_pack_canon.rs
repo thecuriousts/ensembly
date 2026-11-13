@@ -32,7 +32,15 @@ fn pack_vectors() -> Vec<PathBuf> {
 fn db_vectors() -> Vec<PathBuf> {
     vectors()
         .into_iter()
-        .filter(|d| d.join("fixture.sql").is_file())
+        .filter(|d| d.join("args.json").is_file())
+        .collect()
+}
+
+/// Stores with the golden `pulse check` evidence and supersession findings.
+fn db_check_vectors() -> Vec<PathBuf> {
+    vectors()
+        .into_iter()
+        .filter(|d| d.join("db-check.json").is_file())
         .collect()
 }
 
@@ -677,5 +685,89 @@ fn tla_rules_map_to_tests() {
                 "{rule}: no test fn {name}"
             );
         }
+    }
+}
+
+// ---------------------------------------------------------------- honest pulse check
+
+/// Same store, same findings: Rust `pulse check` lists and Python `db-check` both
+/// reproduce the golden, and neither writes.
+#[test]
+fn db_check_findings_match_goldens_in_rust_and_python() {
+    let dirs = db_check_vectors();
+    assert_eq!(dirs.len(), 2);
+    for d in dirs {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = tmp.path().join("pulse.sqlite");
+        Connection::open(&db)
+            .unwrap()
+            .execute_batch(&fs::read_to_string(d.join("fixture.sql")).unwrap())
+            .unwrap();
+        let before = snapshot(&db);
+        let want = fs::read(d.join("db-check.json")).unwrap();
+
+        let conn = pc::open_ro(&db).unwrap();
+        let evidence = pc::unpinned_verified(&conn).unwrap();
+        let supersession = pc::half_supersessions(&conn).unwrap();
+        drop(conn);
+        let warn = !(evidence.is_empty() && supersession.is_empty());
+        let got = serde_json::json!({
+            "evidence": evidence,
+            "exit": if warn { 1 } else { 0 },
+            "supersession": supersession,
+            "verdict": if warn { "warn" } else { "ok" },
+        });
+        assert_eq!(
+            canon::canonical_bytes(&got).unwrap(),
+            want,
+            "{}",
+            d.display()
+        );
+
+        let py = python(&[os("db-check"), db.as_os_str()]);
+        assert_eq!(py.stdout, want, "{}", d.display());
+        assert_eq!(py.status.code(), Some(if warn { 1 } else { 0 }));
+        assert_untouched(&db, &before);
+    }
+}
+
+/// The two inputs that used to differ now give one code each, on both sides.
+#[test]
+fn number_edge_codes_agree() {
+    for (raw, code, path) in [
+        (
+            &b"18446744073709551616"[..],
+            "E_RANGE",
+            "/traces/0/seen_count",
+        ),
+        (b"-18446744073709551616", "E_RANGE", "/traces/0/seen_count"),
+        (b"9223372036854775808", "E_RANGE", "/traces/0/seen_count"),
+        (b"-9223372036854775809", "E_RANGE", "/traces/0/seen_count"),
+        (b"1E400", "E_JSON", ""),
+        (b"-1e400", "E_JSON", ""),
+        (b"1e-400", "E_FLOAT", "/traces/0/seen_count"),
+        (b"1e20", "E_FLOAT", "/traces/0/seen_count"),
+    ] {
+        let base = fs::read(golden().join("vectors/32-unsafe-int/input.json")).unwrap();
+        let text = String::from_utf8(base)
+            .unwrap()
+            .replace("9007199254740992", std::str::from_utf8(raw).unwrap());
+        let (_, v) = canon::check_bytes(text.as_bytes());
+        let want = vec![(path.to_string(), code.to_string())];
+        let got: Vec<_> = v
+            .errors
+            .iter()
+            .map(|i| (i.path.clone(), i.code.clone()))
+            .collect();
+        assert_eq!(got, want, "rust {}", String::from_utf8_lossy(raw));
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        fs::write(tmp.path(), &text).unwrap();
+        let py = python(&[os("check"), tmp.path().as_os_str()]);
+        assert_eq!(
+            py.stdout,
+            canon::verdict_bytes(&v),
+            "python {}",
+            String::from_utf8_lossy(raw)
+        );
     }
 }

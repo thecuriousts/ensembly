@@ -16,6 +16,7 @@ Invalid input: nothing on stdout, verdict bytes on stderr, exit 2.
 import argparse
 import hashlib
 import json
+import math
 import os
 import sqlite3
 import sys
@@ -67,7 +68,20 @@ def _const(name):
 
 
 def _int(text):
-    return Float(text) if text == "-0" else int(text)
+    if text == "-0":
+        return Float(text)
+    v = int(text)
+    try:
+        float(v)
+    except OverflowError:
+        raise StrictJsonError("integer overflows binary64")
+    return v
+
+
+def _float(text):
+    if math.isinf(float(text)):
+        raise StrictJsonError("number overflows binary64")
+    return Float(text)
 
 
 def _check_strings(v):
@@ -83,13 +97,14 @@ def _check_strings(v):
 
 
 def parse_strict(raw):
-    """bytes -> value. Raises StrictJsonError on bad UTF-8, BOM, NaN, dup keys, surrogates."""
+    """bytes -> value. Raises StrictJsonError on bad UTF-8, BOM, NaN, dup keys, surrogates,
+    or a number that overflows binary64 (1E400)."""
     if raw.startswith(b"\xef\xbb\xbf"):
         raise StrictJsonError("BOM")
     try:
         text = raw.decode("utf-8")
         v = json.loads(text, object_pairs_hook=_pairs, parse_constant=_const,
-                       parse_float=Float, parse_int=_int)
+                       parse_float=_float, parse_int=_int)
         _check_strings(v)
     except StrictJsonError:
         raise
@@ -611,6 +626,34 @@ def from_db(path, exported_at, host):
             "traces": traces, "archive": archive}
 
 
+def db_findings(path):
+    """The pulse check's evidence and supersession findings for a store (read-only).
+
+    evidence: keys of tool-verified rows whose verify_hash is missing or does not pin
+    the snippet. supersession: "old -> new (phase)" for supersessions stopped at intent
+    or applied. Either non-empty is a warn (exit 1).
+    """
+    conn = open_ro(path)
+    try:
+        evidence = [k for k, snip, h in conn.execute(
+            "SELECT nat_key, snippet, verify_hash FROM memory_traces "
+            "WHERE status = 'tool-verified' ORDER BY nat_key")
+            if h != content_hash(snip)]
+        has = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
+            "AND name = 'supersession_events'").fetchone()[0]
+        half = []
+        if has:
+            half = ["%s -> %s (%s)" % r for r in conn.execute(
+                "SELECT old_key, new_key, phase FROM supersession_events "
+                "WHERE phase IN ('intent', 'applied') ORDER BY old_key, new_key")]
+    finally:
+        conn.close()
+    warn = bool(evidence or half)
+    return {"evidence": evidence, "exit": 1 if warn else 0, "supersession": half,
+            "verdict": "warn" if warn else "ok"}
+
+
 # ------------------------------------------------------------------ CLI
 
 def _out(b):
@@ -628,6 +671,8 @@ def main(argv=None):
     c.add_argument("--host")
     k = sub.add_parser("check")
     k.add_argument("pack")
+    d = sub.add_parser("db-check")
+    d.add_argument("db")
     r = sub.add_parser("ro-uri")
     r.add_argument("path")
     a = ap.parse_args(argv)
@@ -635,6 +680,14 @@ def main(argv=None):
     if a.cmd == "ro-uri":
         _out((ro_uri(a.path) + "\n").encode("utf-8"))
         return 0
+    if a.cmd == "db-check":
+        try:
+            v = db_findings(a.db)
+        except sqlite3.Error as e:
+            sys.stderr.write("pulse store: %s\n" % e)
+            return 2
+        _out(canonical_bytes(v))
+        return v["exit"]
     if a.cmd == "check":
         _, verdict = check(open(a.pack, "rb").read())
         _out(canonical_bytes(verdict))

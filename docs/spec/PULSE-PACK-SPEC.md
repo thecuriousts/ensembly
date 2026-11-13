@@ -64,7 +64,12 @@ Python reaches the same bytes with
 ## Strict parse
 
 `E_JSON` (path `""`) for: a UTF-8 BOM, invalid UTF-8, `NaN` / `Infinity`, a duplicate
-object key, a lone surrogate escape, trailing data, or any other syntax error.
+object key, a lone surrogate escape, trailing data, a number whose magnitude overflows
+binary64 (`1E400`, or an integer literal past about 1.8e308), or any other syntax error.
+
+Numbers that parse: an integer literal beyond ±(2^53 − 1), including one beyond u64, is
+`E_RANGE` at its path; a fraction or exponent literal (`1e20`, `1e-400`) or `-0` is
+`E_FLOAT`.
 
 ## Timestamps
 
@@ -117,6 +122,7 @@ ensembly pulse pack-check PACK [--json]         # exit 0 / 1 / 2
 python3 -I scripts/pulse/pulse_pack_check.py canon PACK
 python3 -I scripts/pulse/pulse_pack_check.py canon --db DB --exported-at T --host H
 python3 -I scripts/pulse/pulse_pack_check.py check PACK
+python3 -I scripts/pulse/pulse_pack_check.py db-check DB   # evidence + supersession findings
 ```
 
 Invalid input to `canon`: the verdict goes to stderr, exit 2, nothing on stdout.
@@ -130,6 +136,18 @@ uppercase hex) with the URI flag, then `PRAGMA query_only = ON`. Rust:
 Every write (INSERT, UPDATE, DELETE, CREATE, PRAGMA user_version) fails, including after
 `query_only` is switched off. On a WAL store SQLite may create `-shm` and an empty `-wal`;
 the main file bytes do not change.
+
+## Honest pulse check
+
+`ensembly pulse check` (and `pulse_pack_check.py db-check`) warn, exit 1, on:
+
+- `db.evidence`: a `tool-verified` row whose `verify_hash` is NULL, empty, or not
+  `sha256:<hex>` of its snippet. Listed by key, sorted by key bytes.
+- `db.supersession`: a `supersession_events` row stopped at `intent` or `applied`, listed
+  as `old -> new (phase)`. Rerunning the same supersede finishes it and clears the warn.
+
+`DbStats` carries them as `unpinned_verified` and `half_supersessions`. Golden vectors
+`11-db-findings` and `12-db-findings-none` hold the expected lists for both sides.
 
 ## Decisions
 
@@ -146,10 +164,16 @@ the main file bytes do not change.
   so kernel-admitted `tool-verified` rows pass canon.
 - **D-E2-8** Warnings only when there are no errors, so a failing verdict has one cause list.
 - **D-E2-9** Pulse-state rules live in `docs/spec/tla/PulseTrace.tla`; see its README.
+- **D-E2-10** `pulse check` is honest (TLA+ `CheckIsHonest`): an unpinned tool-verified
+  row or a half-finished supersession is a warn, never ok. Warn, not fail: the store is
+  readable and the fix is a rerun or a re-pin, not a stop.
+- **D-E2-11** One code per odd number on both sides: an integer past u64 is `E_RANGE`
+  (Rust tracks integer tokens, since serde_json hands them over as f64); a binary64
+  overflow such as `1E400` is `E_JSON` (serde_json cannot read it, and RFC 8259 §6 leaves
+  it outside interoperable JSON).
 
-## Known divergences (outside the goldens)
+## Former divergences
 
-- An integer larger than u64: Rust's JSON reader sees a float (`E_FLOAT`); Python reports `E_RANGE`.
-- A number that overflows f64 such as `1E400`: Rust gives `E_JSON`; Python gives `E_FLOAT`.
-
-Both are failing verdicts either way; only the code differs.
+Before D-E2-11, an integer past u64 was `E_FLOAT` in Rust and `E_RANGE` in Python, and
+`1E400` was `E_JSON` in Rust and `E_FLOAT` in Python. Golden vectors `33-int-over-u64` and
+`34-float-overflow` now pin one code each.

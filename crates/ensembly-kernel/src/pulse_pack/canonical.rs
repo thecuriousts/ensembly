@@ -76,6 +76,54 @@ pub struct Verdict {
 
 struct Strict(Value);
 
+thread_local! {
+    /// For each number token in the input, in document order: is it an integer
+    /// literal other than `-0`? serde_json hands integers beyond i64/u64 to
+    /// `visit_f64`; this tells them apart from fraction or exponent literals.
+    static INT_TOKENS: std::cell::RefCell<(Vec<bool>, usize)> =
+        const { std::cell::RefCell::new((Vec::new(), 0)) };
+}
+
+/// Number tokens outside strings, in order. Only consulted after serde_json accepted
+/// the input, so it can assume valid JSON.
+fn int_tokens(input: &[u8]) -> Vec<bool> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < input.len() {
+        match input[i] {
+            b'"' => {
+                i += 1;
+                while i < input.len() && input[i] != b'"' {
+                    i += if input[i] == b'\\' { 2 } else { 1 };
+                }
+                i += 1;
+            }
+            b'-' | b'0'..=b'9' => {
+                let start = i;
+                while i < input.len()
+                    && matches!(input[i], b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9')
+                {
+                    i += 1;
+                }
+                let tok = &input[start..i];
+                out.push(tok != b"-0" && !tok.iter().any(|c| matches!(c, b'.' | b'e' | b'E')));
+            }
+            _ => i += 1,
+        }
+    }
+    out
+}
+
+/// Advance to the next number token; true when it is an integer literal.
+fn next_is_int() -> bool {
+    INT_TOKENS.with(|t| {
+        let mut t = t.borrow_mut();
+        let i = t.1;
+        t.1 += 1;
+        t.0.get(i).copied().unwrap_or(false)
+    })
+}
+
 impl<'de> de::Deserialize<'de> for Strict {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         d.deserialize_any(StrictVisitor).map(Strict)
@@ -93,12 +141,18 @@ impl<'de> Visitor<'de> for StrictVisitor {
         Ok(Value::Bool(v))
     }
     fn visit_i64<E>(self, v: i64) -> Result<Value, E> {
+        next_is_int();
         Ok(Value::Number(v.into()))
     }
     fn visit_u64<E>(self, v: u64) -> Result<Value, E> {
+        next_is_int();
         Ok(Value::Number(v.into()))
     }
     fn visit_f64<E: de::Error>(self, v: f64) -> Result<Value, E> {
+        if next_is_int() {
+            // An integer literal beyond u64. Any value past MAX_SAFE_INT reads as E_RANGE.
+            return Ok(Value::Number(u64::MAX.into()));
+        }
         Number::from_f64(v)
             .map(Value::Number)
             .ok_or_else(|| E::custom("non-finite number"))
@@ -134,12 +188,14 @@ impl<'de> Visitor<'de> for StrictVisitor {
     }
 }
 
-/// Bytes to a value. Bad UTF-8, a BOM, NaN, a lone surrogate or a duplicate key give
-/// `E_JSON` at path `""`.
+/// Bytes to a value. Bad UTF-8, a BOM, NaN, a lone surrogate, a duplicate key or a
+/// number that overflows binary64 (`1E400`) give `E_JSON` at path `""`. An integer
+/// literal beyond u64 parses and is later reported as `E_RANGE`.
 pub fn parse_strict(input: &[u8]) -> Result<Value, Issue> {
     if input.starts_with(b"\xef\xbb\xbf") {
         return Err(Issue::new("", "E_JSON"));
     }
+    INT_TOKENS.with(|t| *t.borrow_mut() = (int_tokens(input), 0));
     let mut de = serde_json::Deserializer::from_slice(input);
     let v = de::Deserialize::deserialize(&mut de)
         .map(|Strict(v)| v)

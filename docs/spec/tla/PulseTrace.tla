@@ -5,8 +5,8 @@
 (* read-only check. Synthetic; abstracts away text, time and hosts.        *)
 (*                                                                         *)
 (* BuggyAdmit = TRUE  models admit before E2 (verify_hash left NULL).      *)
-(* BuggyCheck = TRUE  models `pulse check` today: its verdict ignores the  *)
-(*                    evidence pin and half-applied supersessions.         *)
+(* BuggyCheck = TRUE  models `pulse check` before E2: its verdict ignored *)
+(*                    the evidence pin and half-applied supersessions.     *)
 (***************************************************************************)
 EXTENDS Naturals
 
