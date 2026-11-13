@@ -1,9 +1,9 @@
 //! Adversarial regression matrix for the E3 scam-gate.
 //!
 //! Single source of truth for scam-gate adversarial probes: reviews of
-//! 7672d81, 6d90827 and 1e85825, plus userinfo, IDN dots, leet, HTML
-//! cues, spaced brackets and negative cases. Fixtures are synthetic
-//! (`*.example.test` only).
+//! 7672d81, 6d90827, 1e85825 and a30eab9, plus userinfo, IDN dots, leet,
+//! HTML cues, spaced brackets, Unicode dashes and negative cases.
+//! Fixtures are synthetic (`*.example.test` only).
 
 use ensembly_kernel::decision::{audit, FlagList, GATE_REASON};
 use ensembly_schema::GateVerdict;
@@ -326,6 +326,73 @@ fn matrix() -> Vec<Case> {
             name: "re-wire a board today is not wire money today",
             url: "https://jobs.example.test/posting/1",
             body: "re-wire a board today",
+            want: pass,
+        },
+        // --- fourth review (a30eab9): unicode dashes and tech negatives ---
+        Case {
+            name: "non-breaking hyphen between cue words",
+            url: u,
+            body: "wire\u{2011}money today",
+            want: fail,
+        },
+        Case {
+            name: "en-dash between cue words",
+            url: u,
+            body: "wire\u{2013}money today",
+            want: fail,
+        },
+        Case {
+            name: "minus sign between cue words",
+            url: u,
+            body: "wire\u{2212}money today",
+            want: fail,
+        },
+        Case {
+            name: "non-breaking hyphen as a flag-host dot in the body",
+            url: u,
+            body: "contact phish\u{2011}example.test",
+            want: fail,
+        },
+        Case {
+            name: "en-dash as a flag-host dot in the URL",
+            url: "https://phish\u{2013}example.test/x",
+            body: "a role",
+            want: fail,
+        },
+        Case {
+            name: "C3.ai is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "we use C3.ai in production",
+            want: pass,
+        },
+        Case {
+            name: "v1.0 release is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "v1.0 release next week",
+            want: pass,
+        },
+        Case {
+            name: "S3 buckets is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "experience with S3 buckets",
+            want: pass,
+        },
+        Case {
+            name: "k8s is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "k8s and rust experience",
+            want: pass,
+        },
+        Case {
+            name: "pay a fee for lunch is not pay a fee to apply",
+            url: "https://jobs.example.test/posting/1",
+            body: "pay a fee for lunch",
+            want: pass,
+        },
+        Case {
+            name: "ASCII hyphenated unflagged domain stays distinct",
+            url: "https://phish-example.test/job",
+            body: "see also jobs-board.example.test",
             want: pass,
         },
     ]

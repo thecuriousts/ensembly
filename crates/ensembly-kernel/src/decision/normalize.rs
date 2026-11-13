@@ -325,14 +325,203 @@ pub fn format_as_space(text: &str) -> String {
     collapse_and_lower(&mapped)
 }
 
-/// Map IDN / fullwidth / halfwidth stops to ASCII '.' (U+3002, U+FF61, U+FF0E).
+/// Map IDN / fullwidth / halfwidth stops and period lookalikes to ASCII '.'.
 pub fn fold_idn_dots(text: &str) -> String {
+    text.chars().map(fold_dot_char).collect()
+}
+
+fn fold_dot_char(c: char) -> char {
+    if is_period_lookalike(c) {
+        '.'
+    } else {
+        c
+    }
+}
+
+/// Unicode 15.1 Dash_Punctuation (Pd). ASCII hyphen-minus is included.
+pub fn is_dash_punctuation(c: char) -> bool {
+    matches!(
+        c,
+        '\u{002D}' | '\u{058A}' | '\u{05BE}' | '\u{1400}' | '\u{1806}' | '\u{2010}'
+            ..='\u{2015}'
+                | '\u{2E17}'
+                | '\u{2E1A}'
+                | '\u{2E3A}'
+                | '\u{2E3B}'
+                | '\u{2E40}'
+                | '\u{2E5D}'
+                | '\u{301C}'
+                | '\u{3030}'
+                | '\u{30A0}'
+                | '\u{FE31}'
+                | '\u{FE32}'
+                | '\u{FE58}'
+                | '\u{FE63}'
+                | '\u{FF0D}'
+                | '\u{10EAD}'
+    )
+}
+
+/// Minus, hyphen bullet, and the small/fullwidth hyphens (the latter two are also Pd).
+pub fn is_extra_dash(c: char) -> bool {
+    matches!(c, '\u{2212}' | '\u{2043}' | '\u{FE63}' | '\u{FF0D}')
+}
+
+pub fn is_dash_lookalike(c: char) -> bool {
+    is_dash_punctuation(c) || is_extra_dash(c)
+}
+
+pub fn is_non_ascii_dash(c: char) -> bool {
+    c != '-' && is_dash_lookalike(c)
+}
+
+/// Unicode 15.1 Space_Separator (Zs).
+pub fn is_space_separator(c: char) -> bool {
+    matches!(
+        c,
+        '\u{0020}' | '\u{00A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}' | '\u{202F}' | '\u{205F}' | '\u{3000}'
+    )
+}
+
+pub fn is_slash_lookalike(c: char) -> bool {
+    matches!(c, '\u{2044}' | '\u{2215}' | '\u{FF0F}')
+}
+
+pub fn is_period_lookalike(c: char) -> bool {
+    matches!(
+        c,
+        '\u{2024}' | '\u{FE52}' | '\u{3002}' | '\u{FF61}' | '\u{FF0E}'
+    )
+}
+
+/// Every code point in the separator classes the gate folds (unique, stable order).
+#[cfg(test)]
+pub fn separator_class_codepoints() -> &'static [char] {
+    const CPS: &[char] = &[
+        // Pd
+        '\u{002D}',
+        '\u{058A}',
+        '\u{05BE}',
+        '\u{1400}',
+        '\u{1806}',
+        '\u{2010}',
+        '\u{2011}',
+        '\u{2012}',
+        '\u{2013}',
+        '\u{2014}',
+        '\u{2015}',
+        '\u{2E17}',
+        '\u{2E1A}',
+        '\u{2E3A}',
+        '\u{2E3B}',
+        '\u{2E40}',
+        '\u{2E5D}',
+        '\u{301C}',
+        '\u{3030}',
+        '\u{30A0}',
+        '\u{FE31}',
+        '\u{FE32}',
+        '\u{FE58}',
+        '\u{FE63}',
+        '\u{FF0D}',
+        '\u{10EAD}',
+        // extra dashes
+        '\u{2212}',
+        '\u{2043}',
+        // Zs
+        '\u{0020}',
+        '\u{00A0}',
+        '\u{1680}',
+        '\u{2000}',
+        '\u{2001}',
+        '\u{2002}',
+        '\u{2003}',
+        '\u{2004}',
+        '\u{2005}',
+        '\u{2006}',
+        '\u{2007}',
+        '\u{2008}',
+        '\u{2009}',
+        '\u{200A}',
+        '\u{202F}',
+        '\u{205F}',
+        '\u{3000}',
+        // slash lookalikes
+        '\u{2044}',
+        '\u{2215}',
+        '\u{FF0F}',
+        // period lookalikes (including IDN dots)
+        '\u{2024}',
+        '\u{FE52}',
+        '\u{3002}',
+        '\u{FF61}',
+        '\u{FF0E}',
+    ];
+    CPS
+}
+
+/// Cue-view separator fold: Pd + extra dashes → '-', Zs → ' ', slash/period lookalikes → ASCII.
+pub fn fold_separators(text: &str) -> String {
     text.chars()
-        .map(|c| match c {
-            '\u{3002}' | '\u{FF61}' | '\u{FF0E}' => '.',
-            _ => c,
+        .map(|c| {
+            // ASCII '-' is Dash_Punctuation and stays '-'.
+            if is_dash_lookalike(c) {
+                '-'
+            } else if is_space_separator(c) {
+                ' '
+            } else if is_slash_lookalike(c) {
+                '/'
+            } else if is_period_lookalike(c) {
+                '.'
+            } else {
+                c
+            }
         })
         .collect()
+}
+
+fn is_host_label_char(c: char) -> bool {
+    c.is_alphanumeric()
+}
+
+/// NON-ASCII dashes between labels become '.'. ASCII '-' is never changed.
+pub fn fold_non_ascii_dashes_between_labels_to_dots(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if is_non_ascii_dash(chars[i]) {
+            let start = i;
+            while i < chars.len() && is_non_ascii_dash(chars[i]) {
+                i += 1;
+            }
+            let prev_label = start > 0 && is_host_label_char(chars[start - 1]);
+            let next_label = i < chars.len() && is_host_label_char(chars[i]);
+            if prev_label && next_label {
+                out.push('.');
+            } else {
+                for _ in start..i {
+                    out.push('-');
+                }
+            }
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+fn fold_non_ascii_dashes_to_hyphen(text: &str) -> String {
+    text.chars()
+        .map(|c| if is_non_ascii_dash(c) { '-' } else { c })
+        .collect()
+}
+
+fn has_non_ascii_dash_or_dot(text: &str) -> bool {
+    text.chars()
+        .any(|c| is_non_ascii_dash(c) || is_period_lookalike(c))
 }
 
 /// Strip simple `<...>` tags, replacing each tag with a space (linear, bounded look-ahead).
@@ -363,6 +552,7 @@ fn is_join_punct(c: char) -> bool {
 /// Turn `-` `.` `/` `_` next to letters into a space, then join single-letter runs
 /// (`w.i.r.e` becomes `wire`, `wire-money` becomes `wire money`).
 pub fn punct_and_join(text: &str) -> String {
+    let text = fold_separators(text);
     let chars: Vec<char> = text.chars().collect();
     let mut spaced = String::with_capacity(text.len());
     for (i, &c) in chars.iter().enumerate() {
@@ -593,27 +783,46 @@ fn input_features(s: &str) -> InputFeatures {
     feat
 }
 
-/// Canonical host: decode, IDN dots to ASCII, punycode, unicode-fold, lowercase,
-/// no brackets, no trailing dots, no port.
+/// Canonical host (hyphen-preserving view): decode, IDN/period lookalikes to
+/// ASCII '.', non-ASCII dashes to ASCII '-', punycode, unicode-fold, lowercase,
+/// no brackets, no trailing dots, no port. ASCII '-' is never turned into '.'.
 pub fn canonicalize_host(raw: &str) -> String {
+    finish_host(&fold_non_ascii_dashes_to_hyphen(&host_prepare(raw)))
+}
+
+/// Host views used against the flag list. The hyphen view always exists.
+/// If the host contains a non-ASCII dash or dot, a second view treats
+/// non-ASCII dashes between labels as '.'. ASCII '-' is never turned into '.'.
+pub fn canonicalize_host_views(raw: &str) -> Vec<String> {
+    let prepared = host_prepare(raw);
+    let hyphen = canonicalize_host(raw);
+    let mut out = Vec::with_capacity(2);
+    if !hyphen.is_empty() {
+        out.push(hyphen);
+    }
+    if has_non_ascii_dash_or_dot(&prepared) {
+        let dotted = finish_host(&fold_non_ascii_dashes_between_labels_to_dots(&prepared));
+        if !dotted.is_empty() && !out.iter().any(|h| h == &dotted) {
+            out.push(dotted);
+        }
+    }
+    out
+}
+
+fn host_prepare(raw: &str) -> String {
     let decoded = percent_and_html_decode(raw);
-    let dotted = fold_idn_dots(&decoded);
-    let puny = super::punycode::decode_host(&dotted);
+    fold_idn_dots(&decoded)
+}
+
+fn finish_host(prepared: &str) -> String {
+    let puny = super::punycode::decode_host(prepared);
     let folded = nfkc_strip_marks_fold(&puny);
     let mut h = folded
         .trim()
         .trim_start_matches('[')
         .trim_end_matches(']')
         .to_ascii_lowercase();
-    // lookalikes may already be folded; also fold IDN dots after lowercase
-    h = h
-        .chars()
-        .map(map_lookalike)
-        .map(|c| match c {
-            '\u{3002}' | '\u{FF61}' | '\u{FF0E}' => '.',
-            _ => c,
-        })
-        .collect();
+    h = h.chars().map(map_lookalike).map(fold_dot_char).collect();
     while h.ends_with('.') {
         h.pop();
     }
@@ -625,19 +834,25 @@ pub fn canonicalize_host(raw: &str) -> String {
     h
 }
 
-pub fn host_from_url(url: &str) -> String {
+fn authority_host(url: &str) -> String {
     let decoded = percent_and_html_decode(url);
     let dotted = fold_idn_dots(&decoded);
     let rest = dotted.split("://").nth(1).unwrap_or(dotted.as_str());
     let authority = rest.split('/').next().unwrap_or("");
-    let after_user = authority.split('@').next_back().unwrap_or("");
-    canonicalize_host(after_user)
+    authority.split('@').next_back().unwrap_or("").to_string()
+}
+
+pub fn host_from_url_views(url: &str) -> Vec<String> {
+    canonicalize_host_views(&authority_host(url))
 }
 
 pub fn flag_matches(candidate: &str, flag: &str) -> bool {
-    let h = canonicalize_host(candidate);
-    let f = canonicalize_host(flag);
-    !h.is_empty() && !f.is_empty() && (h == f || h.ends_with(&format!(".{f}")))
+    let flags = canonicalize_host_views(flag);
+    canonicalize_host_views(candidate).iter().any(|h| {
+        flags
+            .iter()
+            .any(|f| !h.is_empty() && !f.is_empty() && (h == f || h.ends_with(&format!(".{f}"))))
+    })
 }
 
 fn host_extract() -> &'static Regex {
@@ -656,16 +871,30 @@ fn host_extract() -> &'static Regex {
 }
 
 /// Hosts mentioned in an already-built view: URL hosts, email hosts, bare domains.
-/// IDN stops are folded to ASCII '.' before the extractor runs.
+/// IDN / period lookalikes fold to ASCII '.' before the extractor runs. A second
+/// pass treats non-ASCII dashes between labels as '.', so a cheap dash-for-dot
+/// swap cannot hide a flagged host. Each capture is then expanded to both
+/// hyphen and dash-as-dot canonical views. ASCII '-' is never turned into '.'.
 pub fn extract_hosts(text: &str) -> Vec<String> {
     let dotted = fold_idn_dots(text);
+    let mut out = extract_hosts_from(&dotted);
+    if dotted.chars().any(is_non_ascii_dash) {
+        let as_dots = fold_non_ascii_dashes_between_labels_to_dots(&dotted);
+        out.extend(extract_hosts_from(&as_dots));
+    }
+    out
+}
+
+fn extract_hosts_from(dotted: &str) -> Vec<String> {
     host_extract()
-        .captures_iter(&dotted)
-        .filter_map(|caps| {
+        .captures_iter(dotted)
+        .flat_map(|caps| {
             caps.get(1)
                 .or_else(|| caps.get(2))
                 .or_else(|| caps.get(3))
-                .map(|m| canonicalize_host(m.as_str()))
+                .map(|m| canonicalize_host_views(m.as_str()))
+                .into_iter()
+                .flatten()
         })
         .filter(|h| !h.is_empty())
         .collect()
@@ -785,5 +1014,52 @@ mod tests {
             collapse_and_lower(&strip_html_tags("wire <b>money</b> today")),
             "wire money today"
         );
+    }
+
+    #[test]
+    fn unicode_dashes_fold_before_punct_join() {
+        assert_eq!(
+            punct_and_join("wire\u{2011}money today"),
+            "wire money today"
+        );
+        assert_eq!(
+            punct_and_join("wire\u{2013}money today"),
+            "wire money today"
+        );
+        assert_eq!(
+            punct_and_join("wire\u{2212}money today"),
+            "wire money today"
+        );
+        assert_eq!(
+            punct_and_join("wire\u{2044}money today"),
+            "wire money today"
+        );
+        assert_eq!(
+            punct_and_join("w\u{2024}i\u{2024}r\u{2024}e money today"),
+            "wire money today"
+        );
+    }
+
+    #[test]
+    fn ascii_hyphen_host_is_not_turned_into_dots() {
+        let views = canonicalize_host_views("phish-example.test");
+        assert_eq!(views, vec!["phish-example.test".to_string()]);
+        assert!(!flag_matches("phish-example.test", "phish.example.test"));
+    }
+
+    #[test]
+    fn non_ascii_dash_host_has_hyphen_and_dot_views() {
+        let views = canonicalize_host_views("phish\u{2011}example.test");
+        assert!(views.contains(&"phish-example.test".to_string()));
+        assert!(views.contains(&"phish.example.test".to_string()));
+        assert!(flag_matches(
+            "phish\u{2011}example.test",
+            "phish.example.test"
+        ));
+        // hyphenated flag still matches when written with a unicode dash
+        assert!(flag_matches(
+            "wire\u{2013}now.example.test",
+            "wire-now.example.test"
+        ));
     }
 }

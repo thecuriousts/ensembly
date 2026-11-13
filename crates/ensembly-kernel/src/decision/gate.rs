@@ -13,7 +13,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-use super::normalize::{cue_views, extract_hosts, flag_matches, host_from_url, views};
+use super::normalize::{cue_views, extract_hosts, flag_matches, host_from_url_views, views};
 
 pub const GATE_REASON: &str = "scam-gate";
 
@@ -90,11 +90,7 @@ fn fail() -> GateResult {
 pub fn audit(url: &str, posting_text: &str, flags: &FlagList) -> GateResult {
     let blob = format!("{url} {posting_text}");
     let views = views(&blob);
-    let mut hosts = Vec::new();
-    let direct = host_from_url(url);
-    if !direct.is_empty() {
-        hosts.push(direct);
-    }
+    let mut hosts = host_from_url_views(url);
     for view in &views {
         hosts.extend(extract_hosts(view));
     }
@@ -224,5 +220,41 @@ mod tests {
         let g = audit(clean_url(), "interviews are whatsapp only", &flags());
         assert_eq!(g.verdict, GateVerdict::Uncertain);
         assert_eq!(g.reason.as_deref(), Some("scam-gate-uncertain"));
+    }
+
+    #[test]
+    fn every_separator_class_codepoint_still_fails() {
+        use super::super::normalize::{
+            is_non_ascii_dash, is_period_lookalike, separator_class_codepoints,
+        };
+        for &c in separator_class_codepoints() {
+            let body = format!("wire{c}money today");
+            let g = audit(clean_url(), &body, &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Fail,
+                "cue still fails when U+{:04X} is substituted",
+                c as u32
+            );
+
+            if is_non_ascii_dash(c) || is_period_lookalike(c) {
+                let body = format!("contact phish{c}example.test");
+                let g = audit(clean_url(), &body, &flags());
+                assert_eq!(
+                    g.verdict,
+                    GateVerdict::Fail,
+                    "flagged host in the body still fails when U+{:04X} is substituted",
+                    c as u32
+                );
+                let url = format!("https://phish{c}example.test/x");
+                let g = audit(&url, "a role", &flags());
+                assert_eq!(
+                    g.verdict,
+                    GateVerdict::Fail,
+                    "flagged host in the URL still fails when U+{:04X} is substituted",
+                    c as u32
+                );
+            }
+        }
     }
 }

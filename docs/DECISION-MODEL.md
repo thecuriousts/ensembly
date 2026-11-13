@@ -31,8 +31,19 @@ operator.
   turns punctuation between letters or words (`-`, `.`, `/`, `_`)
   into a space and joins single-letter runs (`w.i.r.e` → `wire`),
   and a separate leet-fold view (`1→i`, `0→o`, `3→e`, `4→a`, `5→s`,
-  `7→t`). Soft cues (`Uncertain`) abstain: they are not a hard fail
-  and do not skip the posting; the model defers to the operator.
+  `7→t`). Before that join, every Unicode Dash_Punctuation (`Pd`)
+  code point plus minus (`U+2212`), hyphen bullet (`U+2043`) and
+  the small/fullwidth hyphens (`U+FE63`, `U+FF0D`) folds to ASCII
+  `-`; every Space_Separator (`Zs`) folds to a space; and slash
+  or period lookalikes (`U+2044`, `U+2215`, `U+FF0F`, `U+2024`,
+  `U+FE52`) fold to `/` or `.`. For hosts, a second view treats
+  non-ASCII dashes between labels as `.`, while a hyphen view
+  keeps them as ASCII `-`. ASCII `-` is never turned into `.`, so
+  a real hyphenated domain stays distinct from a dotted flag.
+  The hard-cue phrase is `wire money/funds today/now`; `wire
+  transfer` alone is deliberately not a hard cue. Soft cues
+  (`Uncertain`) abstain: they are not a hard fail and do not skip
+  the posting; the model defers to the operator.
 - A transparent feature model and an untuned keyword baseline. Weights and
   the abstain band are fit on train only.
 - Propose-and-wait through `KernelWriter`. Raw event-log writes are

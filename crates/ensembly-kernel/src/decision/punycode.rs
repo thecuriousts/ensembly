@@ -140,4 +140,43 @@ mod tests {
         assert_eq!(decode_label("xn--!!!"), "xn--!!!");
         assert_eq!(decode_label("xn--"), "xn--");
     }
+
+    #[test]
+    fn decode_random_and_oversized_labels_is_bounded_and_does_not_panic() {
+        use std::time::{Duration, Instant};
+        let start = Instant::now();
+        for n in [0usize, 1, 63, 64, 256, 1024, 8192, 65_536] {
+            let s = "a".repeat(n);
+            let _ = decode(&s);
+            let _ = decode_label(&format!("xn--{s}"));
+            let _ = decode_host(&format!("xn--{s}.example.test"));
+            let digits = "9".repeat(n);
+            let _ = decode(&digits);
+            let _ = decode_label(&format!("xn--{digits}"));
+        }
+        // Deterministic xorshift: random-length ACE payloads, including hyphens.
+        let mut rng: u64 = 0xC0FF_EE42_u64;
+        let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-";
+        for _ in 0..2_000 {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            let len = (rng % 96) as usize;
+            let mut raw = String::with_capacity(len);
+            for _ in 0..len {
+                rng ^= rng << 13;
+                rng ^= rng >> 7;
+                rng ^= rng << 17;
+                raw.push(alphabet[(rng as usize) % alphabet.len()] as char);
+            }
+            let _ = decode(&raw);
+            let _ = decode_label(&format!("xn--{raw}"));
+            let _ = decode_host(&format!("xn--{raw}.example.test"));
+        }
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "punycode fuzz took {:?}, expected a tight bound",
+            start.elapsed()
+        );
+    }
 }
