@@ -400,7 +400,7 @@ mod tests {
     use super::*;
 
     const SAMPLE: &str = include_str!("../../../fixtures/company-audits-sample.jsonl");
-    const SCHEMA: &str = include_str!("../../../schemas/company-audit-row.schema.json");
+    const SCHEMA: &str = include_str!("../schemas/company-audit-row.schema.json");
 
     fn sample() -> Vec<Audit> {
         parse_audits(SAMPLE).expect("sample valid")

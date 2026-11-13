@@ -8,12 +8,9 @@
 //! T1 SQLite store · sealed backup · T2 vault seal bridge · episodic memory sink.
 
 pub mod agent;
-pub mod application_ledger;
 pub mod approvals;
-pub mod apps_record;
 pub mod backup;
 pub mod channel_pulse;
-pub mod company_audit;
 pub mod critical_path;
 pub mod decision;
 pub mod digital_flow;
@@ -30,20 +27,19 @@ pub mod pulse_supersede;
 pub mod realm;
 pub mod runtime;
 pub mod store;
-pub mod tracker;
 pub mod trigger;
 pub mod turn;
 pub mod uncertainty_dive;
 pub mod vault;
 mod write_guard;
 pub mod writer;
+#[cfg(feature = "opportunity-finder")]
+pub mod writer_ledger;
 
-pub use application_ledger::{LedgerRow, Status};
 pub use approvals::{
     apply_decision, apply_physical_decision, derive_status, list_pending,
     upsert_pending_from_actions, upsert_physical, ApprovalStatus, Snapshot, SnapshotStatus,
 };
-pub use apps_record::{compare_files, import_ledger, ImportReceipt};
 pub use backup::{
     create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
     BackupPack, RestoreDryRunReport,
@@ -52,7 +48,6 @@ pub use channel_pulse::{
     project_wait_snapshot, read_channel_pulse, reconcile_channel_pulse, resolve_focus_plan,
     seed_live_channel_actions, write_channel_pulse, ReconcileReport, DEFAULT_CHANNEL_PULSE_PATH,
 };
-pub use company_audit::{Audit, GateStatus};
 pub use critical_path::{compute_critical_path, explain_node, CriticalPathReport};
 pub use decision::{AnsweredMetrics, Band, FittedModel, FlagList, Phase, Score};
 pub use digital_flow::{
@@ -91,9 +86,15 @@ pub use turn::{
 };
 pub use uncertainty_dive::{plan_dive, DiveReport, DEFAULT_PROBE_BUDGET, DIVE_IR_VERSION};
 pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
-pub use writer::{
-    idempotency_key, DecisionWriteReceipt, KernelWriter, LedgerWriteReceipt, WriterError,
+pub use writer::{DecisionWriteReceipt, KernelWriter, WriterError};
+
+#[cfg(feature = "opportunity-finder")]
+pub use ensembly_opportunity_finder::{
+    self, application_ledger, apps_record, company_audit, compare_files, import_ledger, tracker,
+    Audit, GateStatus, ImportReceipt, LedgerRow, Status,
 };
+#[cfg(feature = "opportunity-finder")]
+pub use writer_ledger::{idempotency_key, LedgerWriteReceipt};
 
 /// Kernel banner for CLI / hosts.
 pub fn kernel_version() -> &'static str {

@@ -566,7 +566,7 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read_to_string(&p).unwrap().lines().count(), 1);
     }
 
-    const SCHEMA: &str = include_str!("../../../schemas/application-ledger-row.schema.json");
+    const SCHEMA: &str = include_str!("../schemas/application-ledger-row.schema.json");
 
     fn str_array(v: &serde_json::Value) -> Vec<&str> {
         v.as_array()

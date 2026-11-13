@@ -621,7 +621,7 @@ fn cli_read_and_refused_write() {
 #[test]
 fn pulse_and_audit_exit_codes_do_not_clash() {
     use ensembly_kernel::audit_exit_code;
-    use ensembly_kernel::company_audit::GateStatus;
+    use ensembly_schema::GateStatus;
     let audit: Vec<i32> = [
         GateStatus::Flag,
         GateStatus::Block,

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/thecuriousts/ensembly/schemas/application-ledger-row.schema.json",
   "title": "Ensembly application ledger row (Stage 1)",
-  "description": "One JSONL line. Append-only: a later row with the same link supersedes earlier ones. Mirrors crates/ensembly-kernel/src/application_ledger.rs.",
+  "description": "One JSONL line. Append-only: a later row with the same link supersedes earlier ones. Mirrors crates/ensembly-opportunity-finder/src/application_ledger.rs.",
   "type": "object",
   "additionalProperties": false,
   "required": [

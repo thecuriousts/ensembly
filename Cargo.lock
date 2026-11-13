@@ -311,6 +311,7 @@ dependencies = [
  "clap",
  "ensembly-agents",
  "ensembly-memory",
+ "ensembly-opportunity-finder",
  "ensembly-schema",
  "hex",
  "rand 0.8.7",
@@ -330,6 +331,22 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "hex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "ensembly-opportunity-finder"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "ensembly-schema",
+ "hex",
+ "regex",
  "serde",
  "serde_json",
  "sha2",

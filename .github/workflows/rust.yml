@@ -34,3 +34,7 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: test
         run: cargo test --locked --workspace
+      - name: test opportunity-finder pack
+        run: |
+          cargo test --locked -p ensembly-opportunity-finder
+          cargo test --locked -p ensembly-kernel --features opportunity-finder

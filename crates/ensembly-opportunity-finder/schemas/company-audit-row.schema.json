@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/thecuriousts/ensembly/schemas/company-audit-row.schema.json",
   "title": "Ensembly company audit row",
-  "description": "One JSONL line. Append-only; last row per canonical domain wins. The verdict is derived from the checks (block if any block; flag if any flag or any of apply_domain/domain_age/funding_ownership is unknown; else pass) and the Rust validator refuses a disagreeing verdict, exactly-once check ids and personal data in notes, which JSON Schema cannot express. Mirrors crates/ensembly-kernel/src/company_audit.rs.",
+  "description": "One JSONL line. Append-only; last row per canonical domain wins. The verdict is derived from the checks (block if any block; flag if any flag or any of apply_domain/domain_age/funding_ownership is unknown; else pass) and the Rust validator refuses a disagreeing verdict, exactly-once check ids and personal data in notes, which JSON Schema cannot express. Mirrors crates/ensembly-opportunity-finder/src/company_audit.rs.",
   "type": "object",
   "additionalProperties": false,
   "required": ["company", "domain", "verdict", "checks", "audited_at", "audited_by"],

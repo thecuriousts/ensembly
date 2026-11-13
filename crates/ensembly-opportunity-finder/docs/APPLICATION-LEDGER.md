@@ -7,7 +7,7 @@ Trello are **views only** and never win a conflict with this ledger.
 ## Row format
 
 One JSON object per line (JSONL). Schema: [`schemas/application-ledger-row.schema.json`](../schemas/application-ledger-row.schema.json).
-Code: `crates/ensembly-kernel/src/application_ledger.rs`.
+Code: `crates/ensembly-opportunity-finder/src/application_ledger.rs` (kernel feature `opportunity-finder`).
 
 | Field | Rule |
 |---|---|
@@ -98,7 +98,7 @@ ensembly apps export --tracker [--join FILE] [--prepared FILE] [--stamp "YYYY-MM
 Writes only `DIR/TRACKER.md` (temp file + rename) and prints a JSON summary.
 It replaces the ops script `gen_tracker.py` and is byte-equal to it for the
 same inputs (golden test `tests/tracker_golden.rs`, synthetic fixtures in
-`fixtures/tracker/`). Code: `crates/ensembly-kernel/src/tracker.rs`.
+`fixtures/tracker/`). Code: `crates/ensembly-opportunity-finder/src/tracker.rs`.
 
 - Current state: last ledger row per tracker link key, ordered as in the exports.
 - `--join`: side file with Posted, Lane, Linear, Trello, Pack per row. Format by
