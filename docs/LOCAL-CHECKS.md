@@ -32,7 +32,8 @@ model file.
   its reason and argv0 only — never the prompt or statement. A fail-closed
   redaction gate refuses the call entirely (it never partly redacts and
   sends) if any view of the text looks like a token, civic or coordination
-  number, phone, email, home path, IP, MAC, hostname, or a name-like field.
+  number, phone, email, ISO 13616 account number, payment card, home path, IP, MAC, hostname,
+  or a name-like field.
   Views are the raw text; NFKC with zero-width/format characters stripped
   and confusables folded to ASCII; up to three rounds of percent and
   HTML-entity decoding; quoted-printable and MIME encoded-word decoding;
@@ -42,8 +43,14 @@ model file.
   matching, including spaced `sk` prefixes); valid UTF-8 from base64 or
   base64url runs of 8 or more characters, kept only when the decoded
   bytes then hit a detector; and a reversed-text view used only for
-  email and token detection. International and Swedish phone numbers
-  accept `.` and `/` separators. Tests use synthetic fixtures only.
+  email and token detection. The base64 / base64url minimum is 8
+  characters, not 16; a decoded run is kept only when it then hits a
+  detector. International and Swedish phone numbers accept `.` and `/`
+  separators. A dotted quad preceded by `v`, `version`, or `release` is
+  treated as a version, not an IP, unless the quad is RFC1918, loopback,
+  or link-local (`10/8`, `172.16/12`, `192.168/16`, `127/8`, `169.254/16`);
+  those stay IP hits. Other quads stay fail-closed.
+  Tests use synthetic fixtures only.
 
 ## Models and licences
 
