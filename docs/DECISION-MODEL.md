@@ -14,9 +14,14 @@ operator.
 - A scam-gate that runs first and is never learned. Fixture flags use
   `*.example.test` only. Listed domains are matched on the posting URL
   host and on hosts extracted from the posting text (case-insensitive,
-  trailing dots stripped, subdomains included). Hard cues fail and skip
-  after normalisation (NFKC, format/zero-width stripped, whitespace
-  collapsed, lowercased, common lookalikes mapped). Soft cues
+  trailing dots stripped, subdomains included). Cue matching and host
+  extraction share one normaliser and run on several views; a hit on
+  any view is a hit. Views cover (a) format/zero-width stripped, (b)
+  format/zero-width replaced by a space, (c) NFKC then combining marks
+  removed and Cyrillic/Greek confusables folded (also applied to
+  domains), (d) up to three rounds of percent and HTML-entity decoding
+  on URL authorities and the body, and (e) de-obfuscation of `[.]`,
+  `(.)`, `{.}`, ` dot `, ` [dot] `, ` at `, and `[at]`. Soft cues
   (`Uncertain`) abstain: they are not a hard fail and do not skip the
   posting; the model defers to the operator.
 - A transparent feature model and an untuned keyword baseline. Weights and
