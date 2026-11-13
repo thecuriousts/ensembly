@@ -639,3 +639,43 @@ fn admit_writes_the_content_hash_python_expects() {
     assert!(doc.is_some(), "{v:?}");
     assert_eq!(v.verdict, "ok");
 }
+
+#[test]
+fn tla_rules_map_to_tests() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let cfg = std::fs::read_to_string(root.join("docs/spec/tla/PulseTrace.cfg")).unwrap();
+    let readme = std::fs::read_to_string(root.join("docs/spec/tla/README.md")).unwrap();
+    let mut sources = String::new();
+    for entry in std::fs::read_dir(root.join("crates/ensembly-kernel/tests")).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|e| e == "rs") {
+            sources.push_str(&std::fs::read_to_string(path).unwrap());
+        }
+    }
+    let rules: Vec<&str> = cfg
+        .lines()
+        .filter_map(|l| {
+            l.strip_prefix("INVARIANT ")
+                .or_else(|| l.strip_prefix("PROPERTY "))
+        })
+        .map(str::trim)
+        .collect();
+    assert_eq!(rules.len(), 8, "{rules:?}");
+    for rule in rules {
+        let row = readme
+            .lines()
+            .find(|l| l.starts_with(&format!("| `{rule}` |")))
+            .unwrap_or_else(|| panic!("README has no row for {rule}"));
+        let cell = row.rsplit('|').nth(1).unwrap().trim();
+        if cell == "model only" || cell.starts_with("pending:") {
+            continue;
+        }
+        for name in cell.split(", ") {
+            let name = name.trim_matches('`');
+            assert!(
+                sources.contains(&format!("fn {name}()")),
+                "{rule}: no test fn {name}"
+            );
+        }
+    }
+}

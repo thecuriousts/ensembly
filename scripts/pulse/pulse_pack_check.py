@@ -457,7 +457,7 @@ def analyze(v):
     res = {"doc": None, "errors": [], "warnings": [], "traces": 0, "archive": 0,
            "source_format": None}
     if not isinstance(v, dict):
-        res["errors"] = [("", "E_FORMAT")] if False else [("/format", "E_FORMAT")]
+        res["errors"] = [("/format", "E_FORMAT")]
         return res
     fmt = v.get("format")
     res["source_format"] = fmt if isinstance(fmt, str) else None
