@@ -389,7 +389,7 @@ impl<M: MemoryView> LocalChecker<M> {
                 format!("model stat: {e}"),
             )
         })?;
-        let available = self.wait_for_memory(size, started)?;
+        self.wait_for_memory(size, started)?;
         let _lock = ModelLock::acquire(&self.config.lock_path)
             .map_err(|e| fail(FallbackReason::RuntimeMissing, started, e))?;
         // Retry once on invalid JSON, then fall through to cloud.
