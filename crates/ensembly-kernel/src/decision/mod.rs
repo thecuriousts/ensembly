@@ -12,6 +12,7 @@
 
 pub mod eval;
 pub mod gate;
+mod html5_entities;
 pub mod metrics;
 pub mod model;
 mod normalize;

@@ -257,4 +257,55 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn every_folded_class_named_entity_still_fails() {
+        use super::super::normalize::{
+            html5_named_entities, is_folded_class_char, is_non_ascii_dash, is_period_lookalike,
+        };
+        let mut n = 0;
+        for &(name, repl) in html5_named_entities() {
+            if !repl.chars().any(is_folded_class_char) {
+                continue;
+            }
+            n += 1;
+            for entity in [format!("&{name};"), format!("&{name}")] {
+                let body = format!("wire{entity}money today");
+                let g = audit(clean_url(), &body, &flags());
+                assert_eq!(
+                    g.verdict,
+                    GateVerdict::Fail,
+                    "cue still fails when {entity} (U+{}) is substituted",
+                    repl.chars()
+                        .map(|c| format!("{:04X}", c as u32))
+                        .collect::<Vec<_>>()
+                        .join("+")
+                );
+
+                if repl
+                    .chars()
+                    .any(|c| is_non_ascii_dash(c) || is_period_lookalike(c) || c == '.')
+                {
+                    let body = format!("contact phish{entity}example.test");
+                    let g = audit(clean_url(), &body, &flags());
+                    assert_eq!(
+                        g.verdict,
+                        GateVerdict::Fail,
+                        "flagged host in the body still fails when {entity} is substituted"
+                    );
+                    let url = format!("https://phish{entity}example.test/x");
+                    let g = audit(&url, "a role", &flags());
+                    assert_eq!(
+                        g.verdict,
+                        GateVerdict::Fail,
+                        "flagged host in the URL still fails when {entity} is substituted"
+                    );
+                }
+            }
+        }
+        assert!(
+            n >= 20,
+            "expected many folded-class named entities, got {n}"
+        );
+    }
 }

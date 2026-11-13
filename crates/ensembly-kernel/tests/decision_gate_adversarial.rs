@@ -1,8 +1,11 @@
 //! Adversarial regression matrix for the E3 scam-gate.
 //!
 //! Single source of truth for scam-gate adversarial probes: reviews of
-//! 7672d81, 6d90827, 1e85825 and a30eab9, plus userinfo, IDN dots, leet,
-//! HTML cues, spaced brackets, Unicode dashes and negative cases.
+//! 7672d81, 6d90827, 1e85825, a30eab9 and 11b68e4, plus userinfo, IDN dots,
+//! leet, HTML cues, spaced brackets, Unicode dashes, named HTML entities
+//! (including ndash/mdash/minus/hyphen/nbsp, with and without a
+//! semicolon) and negative cases. ZWJ (U+200D) and ZWNJ (U+200C) are
+//! format characters and are documented in the matrix below.
 //! Fixtures are synthetic (`*.example.test` only).
 
 use ensembly_kernel::decision::{audit, FlagList, GATE_REASON};
@@ -127,6 +130,22 @@ fn matrix() -> Vec<Case> {
             body: "wire\u{200F}money today",
             want: fail,
         },
+        // ZWJ (U+200D) and ZWNJ (U+200C) are format characters: one view
+        // strips them, the other replaces them with a space, so a hard
+        // cue split by either still fails. Named-entity forms (&zwj;,
+        // &zwnj;) are covered by the folded-class entity property test.
+        Case {
+            name: "ZWJ between cue words",
+            url: u,
+            body: "wire\u{200D}money today",
+            want: fail,
+        },
+        Case {
+            name: "ZWNJ between cue words",
+            url: u,
+            body: "wire\u{200C}money today",
+            want: fail,
+        },
         Case {
             name: "ZWSP between fee and to",
             url: u,
@@ -210,6 +229,97 @@ fn matrix() -> Vec<Case> {
             name: "HTML named period entity in host",
             url: u,
             body: "see phish&period;example.test",
+            want: fail,
+        },
+        Case {
+            name: "HTML named ndash entity between cue words",
+            url: u,
+            body: "wire&ndash;money today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named mdash entity between cue words",
+            url: u,
+            body: "wire&mdash;money today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named minus entity between cue words",
+            url: u,
+            body: "wire&minus;money today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named hyphen entity between cue words",
+            url: u,
+            body: "wire&hyphen;money today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named nbsp entity between cue words",
+            url: u,
+            body: "wire&nbsp;money today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named ndash entity as a flag-host dot in the body",
+            url: u,
+            body: "see phish&ndash;example.test",
+            want: fail,
+        },
+        Case {
+            name: "HTML named mdash entity as a flag-host dot in the body",
+            url: u,
+            body: "see phish&mdash;example.test",
+            want: fail,
+        },
+        Case {
+            name: "HTML named minus entity as a flag-host dot in the body",
+            url: u,
+            body: "see phish&minus;example.test",
+            want: fail,
+        },
+        Case {
+            name: "HTML named hyphen entity as a flag-host dot in the body",
+            url: u,
+            body: "see phish&hyphen;example.test",
+            want: fail,
+        },
+        // Fail-closed: known names are accepted without a trailing semicolon.
+        Case {
+            name: "HTML named ndash entity without semicolon between cue words",
+            url: u,
+            body: "wire&ndashmoney today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named mdash entity without semicolon between cue words",
+            url: u,
+            body: "wire&mdashmoney today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named minus entity without semicolon between cue words",
+            url: u,
+            body: "wire&minusmoney today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named hyphen entity without semicolon between cue words",
+            url: u,
+            body: "wire&hyphenmoney today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named nbsp entity without semicolon between cue words",
+            url: u,
+            body: "wire&nbspmoney today",
+            want: fail,
+        },
+        Case {
+            name: "HTML named ndash entity without semicolon as a flag-host dot",
+            url: u,
+            body: "see phish&ndashexample.test",
             want: fail,
         },
         Case {

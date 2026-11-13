@@ -5,6 +5,7 @@
 //! regex in this module, and the host extractor uses the `regex` crate's
 //! guaranteed-linear engine.
 
+use super::html5_entities::{lookup_named_entity, MAX_NAMED_ENTITY};
 use regex::Regex;
 use std::sync::OnceLock;
 use unicode_normalization::char::is_combining_mark;
@@ -99,63 +100,69 @@ fn percent_decode_round(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn named_entity(name: &str) -> Option<char> {
-    match name.to_ascii_lowercase().as_str() {
-        "amp" => Some('&'),
-        "lt" => Some('<'),
-        "gt" => Some('>'),
-        "quot" => Some('"'),
-        "apos" => Some('\''),
-        "nbsp" => Some('\u{00a0}'),
-        "tab" => Some('\t'),
-        "period" => Some('.'),
-        "colon" => Some(':'),
-        "comma" => Some(','),
-        "sol" => Some('/'),
-        "commat" => Some('@'),
-        "lpar" => Some('('),
-        "rpar" => Some(')'),
-        "lsqb" => Some('['),
-        "rsqb" => Some(']'),
-        "lcub" => Some('{'),
-        "rcub" => Some('}'),
-        _ => None,
-    }
-}
-
-fn parse_entity(s: &str, at: usize) -> Option<(char, usize)> {
+/// Parse an HTML character reference at `at` (which must be `&`).
+///
+/// Numeric references still require a terminating `;`. Named references use
+/// the full vendored WHATWG HTML5 table (case-sensitive). In text, a known
+/// name is accepted with or without a trailing semicolon: that is a
+/// fail-closed extension of the official 106 legacy no-semicolon names, so
+/// a cue hidden as `wire&ndashmoney today` cannot slip through. Longest
+/// prefix wins.
+fn parse_entity_into(s: &str, at: usize, out: &mut String) -> Option<usize> {
     let rest = &s[at..];
     let bytes = rest.as_bytes();
     if bytes.first() != Some(&b'&') {
         return None;
     }
-    let close = rest[1..]
-        .char_indices()
-        .take(MAX_ENTITY_LEN)
-        .find(|(_, c)| *c == ';')
-        .map(|(i, _)| i + 1)?;
-    let body = &rest[1..close];
-    let consumed = close + 1; // include '&' and ';'
-    if let Some(hex) = body.strip_prefix("#x").or_else(|| body.strip_prefix("#X")) {
-        if hex.is_empty() || hex.len() > 8 || !hex.bytes().all(|b| from_hex(b).is_some()) {
-            return None;
+    // Numeric references: &#123; or &#x1A; — semicolon required.
+    if bytes.len() > 2 && bytes[1] == b'#' {
+        let close = rest[1..]
+            .char_indices()
+            .take(MAX_ENTITY_LEN)
+            .find(|(_, c)| *c == ';')
+            .map(|(i, _)| i + 1)?;
+        let body = &rest[1..close];
+        let consumed = close + 1;
+        if let Some(hex) = body.strip_prefix("#x").or_else(|| body.strip_prefix("#X")) {
+            if hex.is_empty() || hex.len() > 8 || !hex.bytes().all(|b| from_hex(b).is_some()) {
+                return None;
+            }
+            let n = u32::from_str_radix(hex, 16).ok()?;
+            let ch = char::from_u32(n)?;
+            out.push(ch);
+            return Some(consumed);
         }
-        let n = u32::from_str_radix(hex, 16).ok()?;
-        let ch = char::from_u32(n)?;
-        return Some((ch, consumed));
-    }
-    if let Some(dec) = body.strip_prefix('#') {
-        if dec.is_empty() || dec.len() > 8 || !dec.bytes().all(|b| b.is_ascii_digit()) {
-            return None;
+        if let Some(dec) = body.strip_prefix('#') {
+            if dec.is_empty() || dec.len() > 8 || !dec.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            let n = dec.parse::<u32>().ok()?;
+            let ch = char::from_u32(n)?;
+            out.push(ch);
+            return Some(consumed);
         }
-        let n = dec.parse::<u32>().ok()?;
-        let ch = char::from_u32(n)?;
-        return Some((ch, consumed));
-    }
-    if body.is_empty() || !body.bytes().all(|b| b.is_ascii_alphabetic()) {
         return None;
     }
-    named_entity(body).map(|ch| (ch, consumed))
+
+    // Named references: `&` + alphanumeric name, optional `;`.
+    let mut name_len = 0usize;
+    let limit = MAX_NAMED_ENTITY.min(bytes.len().saturating_sub(1));
+    while name_len < limit && bytes[1 + name_len].is_ascii_alphanumeric() {
+        name_len += 1;
+    }
+    if name_len == 0 {
+        return None;
+    }
+    let name_bytes = &rest[1..1 + name_len];
+    let has_semi = 1 + name_len < bytes.len() && bytes[1 + name_len] == b';';
+    for n in (1..=name_len).rev() {
+        if let Some(repl) = lookup_named_entity(&name_bytes[..n]) {
+            out.push_str(repl);
+            let consume_semi = has_semi && n == name_len;
+            return Some(1 + n + usize::from(consume_semi));
+        }
+    }
+    None
 }
 
 fn html_decode_round(s: &str) -> String {
@@ -163,8 +170,7 @@ fn html_decode_round(s: &str) -> String {
     let mut i = 0;
     while i < s.len() {
         if s.as_bytes()[i] == b'&' {
-            if let Some((ch, n)) = parse_entity(s, i) {
-                out.push(ch);
+            if let Some(n) = parse_entity_into(s, i, &mut out) {
                 i += n;
                 continue;
             }
@@ -362,9 +368,10 @@ pub fn is_dash_punctuation(c: char) -> bool {
     )
 }
 
-/// Minus, hyphen bullet, and the small/fullwidth hyphens (the latter two are also Pd).
+/// Minus and hyphen bullet. Small and fullwidth hyphens (U+FE63, U+FF0D)
+/// are Dash_Punctuation and are already matched by [`is_dash_punctuation`].
 pub fn is_extra_dash(c: char) -> bool {
-    matches!(c, '\u{2212}' | '\u{2043}' | '\u{FE63}' | '\u{FF0D}')
+    matches!(c, '\u{2212}' | '\u{2043}')
 }
 
 pub fn is_dash_lookalike(c: char) -> bool {
@@ -459,6 +466,25 @@ pub fn separator_class_codepoints() -> &'static [char] {
         '\u{FF0E}',
     ];
     CPS
+}
+
+/// Characters the gate folds in cue or host views: Pd and extra dashes,
+/// Zs spaces, slash and period lookalikes, format / zero-width characters,
+/// and the ASCII `.` and `/` that punct_and_join treats as join punctuation.
+/// ASCII `:` and `@` are decoded as named entities but are not separator folds.
+#[cfg(test)]
+pub fn is_folded_class_char(c: char) -> bool {
+    is_dash_lookalike(c)
+        || is_space_separator(c)
+        || is_slash_lookalike(c)
+        || is_period_lookalike(c)
+        || is_format_or_zero_width(c)
+        || matches!(c, '.' | '/')
+}
+
+#[cfg(test)]
+pub fn html5_named_entities() -> &'static [(&'static str, &'static str)] {
+    super::html5_entities::HTML5_NAMED_ENTITIES
 }
 
 /// Cue-view separator fold: Pd + extra dashes → '-', Zs → ' ', slash/period lookalikes → ASCII.
@@ -673,33 +699,38 @@ pub fn views(text: &str) -> Vec<String> {
         &[false]
     };
     let deobf_opts: &[bool] = if feat.deobf { &[false, true] } else { &[false] };
-    let unicode_opts: &[bool] = if feat.unicode {
-        &[false, true]
-    } else {
-        &[false]
-    };
-    let format_opts: &[bool] = if feat.format {
-        &[false, true]
-    } else {
-        &[false]
-    };
     for &do_decode in decode_opts {
         let decoded = if do_decode {
             percent_and_html_decode(text)
         } else {
             text.to_string()
         };
+        // Decode can introduce format characters and non-ASCII (named
+        // entities are ASCII in the source). Re-check after each
+        // transform so the decoded text still goes through folding.
         for &do_deobf in deobf_opts {
             let deobf = if do_deobf {
                 deobfuscate(&decoded)
             } else {
                 decoded.clone()
             };
+            let need_unicode = feat.unicode || !deobf.is_ascii();
+            let unicode_opts: &[bool] = if need_unicode {
+                &[false, true]
+            } else {
+                &[false]
+            };
             for &do_unicode in unicode_opts {
                 let folded = if do_unicode {
                     nfkc_strip_marks_fold(&deobf)
                 } else {
                     deobf.clone()
+                };
+                let need_format = feat.format || folded.chars().any(is_format_or_zero_width);
+                let format_opts: &[bool] = if need_format {
+                    &[false, true]
+                } else {
+                    &[false]
                 };
                 for &as_space in format_opts {
                     let view = if as_space {
@@ -931,6 +962,89 @@ mod tests {
             percent_and_html_decode("user&commat;phish.example.test"),
             "user@phish.example.test"
         );
+    }
+
+    #[test]
+    fn decode_whatwg_named_entities_in_folded_classes() {
+        assert_eq!(
+            percent_and_html_decode("wire&ndash;money"),
+            "wire\u{2013}money"
+        );
+        assert_eq!(
+            percent_and_html_decode("wire&mdash;money"),
+            "wire\u{2014}money"
+        );
+        assert_eq!(
+            percent_and_html_decode("wire&minus;money"),
+            "wire\u{2212}money"
+        );
+        assert_eq!(
+            percent_and_html_decode("wire&hyphen;money"),
+            "wire\u{2010}money"
+        );
+        assert_eq!(
+            percent_and_html_decode("wire&nbsp;money"),
+            "wire\u{00a0}money"
+        );
+        // Fail-closed: known names are accepted without a trailing semicolon.
+        assert_eq!(
+            percent_and_html_decode("wire&ndashmoney"),
+            "wire\u{2013}money"
+        );
+        assert_eq!(
+            percent_and_html_decode("wire&nbspmoney"),
+            "wire\u{00a0}money"
+        );
+        assert_eq!(percent_and_html_decode("a&colon;b"), "a:b");
+        assert_eq!(percent_and_html_decode("a&sol;b"), "a/b");
+        assert_eq!(percent_and_html_decode("a&zwj;b"), "a\u{200d}b");
+        assert_eq!(percent_and_html_decode("a&zwnj;b"), "a\u{200c}b");
+        assert_eq!(percent_and_html_decode("a&shy;b"), "a\u{00ad}b");
+        // Unknown names are left intact.
+        assert_eq!(percent_and_html_decode("keep&zzzzz;it"), "keep&zzzzz;it");
+        // Longest official match: notin, not the shorter legacy not.
+        assert_eq!(percent_and_html_decode("&notin;"), "\u{2209}");
+    }
+
+    #[test]
+    fn html5_named_entity_table_is_sorted_and_covers_folded_names() {
+        let table = html5_named_entities();
+        for pair in table.windows(2) {
+            assert!(
+                pair[0].0 < pair[1].0,
+                "table must stay sorted for binary search"
+            );
+        }
+        for name in [
+            "ndash", "mdash", "minus", "hyphen", "dash", "horbar", "hybull", "nbsp", "ensp",
+            "emsp", "thinsp", "hairsp", "period", "sol", "frasl", "colon", "commat", "zwj", "zwnj",
+            "shy", "Tab",
+        ] {
+            assert!(
+                lookup_named_entity(name).is_some(),
+                "expected {name} in the WHATWG table"
+            );
+        }
+        // Names are case-sensitive, as in the standard.
+        assert!(lookup_named_entity("nbsp").is_some());
+        assert!(lookup_named_entity("NBSP").is_none());
+    }
+
+    #[test]
+    fn extra_dash_does_not_repeat_pd_codepoints() {
+        for c in ['\u{FE63}', '\u{FF0D}'] {
+            assert!(is_dash_punctuation(c), "U+{:04X} is Pd", c as u32);
+            assert!(
+                !is_extra_dash(c),
+                "U+{:04X} must not be duplicated in is_extra_dash",
+                c as u32
+            );
+            assert!(is_dash_lookalike(c));
+        }
+        assert!(is_extra_dash('\u{2212}'));
+        assert!(is_extra_dash('\u{2043}'));
+        assert!(!is_dash_punctuation('\u{2212}'));
+        assert!(!is_dash_punctuation('\u{2043}'));
     }
 
     #[test]
