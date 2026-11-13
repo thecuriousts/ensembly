@@ -771,3 +771,44 @@ fn number_edge_codes_agree() {
         );
     }
 }
+
+/// A store reached through a symlink opens read-only like any other: writes fail and
+/// the target's bytes do not change. A dangling link is an error and creates nothing.
+#[test]
+fn open_ro_through_a_symlink_refuses_writes_and_creates_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let target = tmp.path().join("real.sqlite");
+    Connection::open(&target)
+        .unwrap()
+        .execute_batch("CREATE TABLE t (x INTEGER); INSERT INTO t VALUES (1);")
+        .unwrap();
+    let link = tmp.path().join("link.sqlite");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+    let before = sha(&fs::read(&target).unwrap());
+
+    let conn = pc::open_ro(&link).unwrap();
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM t", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(n, 1);
+    for sql in [
+        "INSERT INTO t VALUES (2)",
+        "DELETE FROM t",
+        "CREATE TABLE u (y INTEGER)",
+        "PRAGMA user_version = 9",
+    ] {
+        assert!(conn.execute_batch(sql).is_err(), "{sql} must fail");
+    }
+    drop(conn);
+    assert_eq!(sha(&fs::read(&target).unwrap()), before);
+    assert!(fs::symlink_metadata(&link)
+        .unwrap()
+        .file_type()
+        .is_symlink());
+
+    let dangling = tmp.path().join("dangling.sqlite");
+    let missing = tmp.path().join("missing.sqlite");
+    std::os::unix::fs::symlink(&missing, &dangling).unwrap();
+    assert!(pc::open_ro(&dangling).is_err());
+    assert!(!missing.exists(), "open_ro created the link target");
+}
