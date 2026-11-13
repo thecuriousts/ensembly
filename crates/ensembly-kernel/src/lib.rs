@@ -16,6 +16,7 @@ pub mod channel_pulse;
 pub mod company_audit;
 pub mod critical_path;
 pub mod digital_flow;
+pub mod doctor;
 pub mod graph;
 pub mod life_state;
 pub mod memory_sink;
@@ -89,5 +90,9 @@ pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
 
 /// Kernel banner for CLI / hosts.
 pub fn kernel_version() -> &'static str {
-    "ensembly-kernel 0.5.1 rust-life-control s+g+cp dive msgbus hitl-hootl t1-sqlite t2-seal episodic-memory"
+    concat!(
+        "ensembly-kernel ",
+        env!("CARGO_PKG_VERSION"),
+        " rust-life-control s+g+cp dive msgbus hitl-hootl t1-sqlite t2-seal episodic-memory"
+    )
 }
