@@ -1,0 +1,20 @@
+[package]
+name = "evalbench-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "evalbench E1 CLI: hash, check, score, record, run"
+publish = false
+
+[[bin]]
+name = "evalbench"
+path = "src/main.rs"
+
+[dependencies]
+evalbench-core = { path = "../evalbench-core" }
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+
+[dev-dependencies]
+tempfile = "3"

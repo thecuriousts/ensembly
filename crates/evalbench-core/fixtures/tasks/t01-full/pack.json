@@ -1,0 +1,4 @@
+{"id":"syn-pack-full","candidate":"Synthetic Candidate A","evidence":[
+ {"claim":"Built an eval harness with a 50-case golden set","proof":"https://example.org/a/evals"},
+ {"claim":"Python service for document retrieval (RAG) with recall@k","proof":"https://example.org/a/rag"},
+ {"claim":"Added OpenTelemetry tracing to agent runs","proof":"https://example.org/a/traces"}]}

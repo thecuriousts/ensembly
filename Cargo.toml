@@ -5,6 +5,8 @@ members = [
     "crates/ensembly-memory",
     "crates/ensembly-agents",
     "crates/ensembly-schema",
+    "crates/evalbench-core",
+    "crates/evalbench-cli",
 ]
 resolver = "2"
 

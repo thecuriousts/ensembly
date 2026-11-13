@@ -1,0 +1,1 @@
+{"id": "syn-pack-data-full", "candidate": "Synthetic Candidate H", "evidence": [{"claim": "Tuned SQL queries for reporting", "proof": "https://example.org/h/sql"}, {"claim": "Ran Airflow DAGs nightly", "proof": "https://example.org/h/airflow"}, {"claim": "Deployed jobs on AWS", "proof": "https://example.org/h/aws"}]}

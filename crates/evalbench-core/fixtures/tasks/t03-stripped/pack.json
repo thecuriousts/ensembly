@@ -1,0 +1,1 @@
+{"id": "syn-pack-stripped", "candidate": "Synthetic Candidate A", "evidence": [{"claim": "Built an eval harness with a 50-case golden set"}, {"claim": "Python service for document retrieval (RAG) with recall@k"}, {"claim": "Added OpenTelemetry tracing to agent runs"}]}
