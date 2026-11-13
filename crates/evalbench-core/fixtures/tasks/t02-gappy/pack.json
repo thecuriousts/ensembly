@@ -1,0 +1,3 @@
+{"id":"syn-pack-gappy","candidate":"Synthetic Candidate B","evidence":[
+ {"claim":"Python backend developer","proof":"https://example.org/b/py"},
+ {"claim":"Ran LLM evals at previous job","proof":null}]}

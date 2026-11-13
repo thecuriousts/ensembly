@@ -58,6 +58,17 @@ Memory is **auxiliary** — kernel never delegates control decisions to it.
 | **ensembly-mcp** | `cargo build -p ensembly-agents --bin ensembly-mcp` | Memory tools plus `record_commit`, `record_view_snapshot`, `record_view_feed` |
 | **Tests** | `cargo test -p ensembly-agents` | RPC, inference stubs |
 
+### 1.4 `crates/evalbench-core` and `crates/evalbench-cli`
+
+| Capability | Entry | What you get |
+|------------|-------|--------------|
+| **Task-set hash** | `cargo run -p evalbench-cli -- hash crates/evalbench-core/fixtures/tasks --verify crates/evalbench-core/fixtures/tasks.sha256` | Hash of the 12 frozen synthetic tasks; exit 1 if it differs from the committed file, 2 on a stray or missing file |
+| **Gap check** | `evalbench check <posting.json> <pack.json>` | Gap list as JSON; exit 1 when there are gaps. Matches the Python reference on well-formed input (every frozen fixture). Rust's schema is strict and requires every field; Python reads only the fields it uses, so schema-invalid input Python tolerates exits 2 here (rule in `crates/evalbench-core/src/check.rs`, examples in `tests/python_stricter.rs`) |
+| **Score** | `evalbench score --tasks <dir> [--run-id ID] <traces.jsonl>` | First-pass score = floor(100 * tasks passing their frozen checker on attempt 1 / tasks), with the lower-median tokens per passing task beside it |
+| **Record / run** | `evalbench record ...`, `evalbench run --replay <replies> \| --exec <wrapper>` | Checker-judged trace rows (no `--pass`); live calls only through a wrapper, no keys in evalbench |
+| **Baseline** | `scripts/evalbench-baseline` | Replays `crates/evalbench-cli/baselines/replay-001` offline and checks the numbers did not move. Synthetic replies, not a model result |
+| **Tests** | `cargo test -p evalbench-core -p evalbench-cli` | Port, differential vs Python (needs `python3`), examples where Rust's strict schema rejects input Python tolerates, P1/P2 bounded proofs with broken variants |
+
 ---
 
 ## 2. Pulse sync topology
@@ -86,6 +97,7 @@ cargo run -p ensembly-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.
 | `crates/ensembly-kernel/` | Control SoT: S, G, CP, MsgBus, runtime, store, privacy, backup, pulse-pack |
 | `crates/ensembly-memory/` | Episodic CRDT, coherence engine |
 | `crates/ensembly-agents/` | MCP satellite, inference provider trait |
+| `crates/evalbench-core/`, `crates/evalbench-cli/` | evalbench E1: frozen synthetic task set, gap checker, trace schema, first-pass score |
 | **external: [participatory-mesh](https://github.com/thecuriousts/participatory-mesh)** | Multi-device CommandFabric: after ensembly authorizes/claims, dispatch allowlisted work onto another participant. Raises execution reach; not life SoT — [thinking/mesh-bridge-2026-09-08.md](thinking/mesh-bridge-2026-09-08.md) |
 
 

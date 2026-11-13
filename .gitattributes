@@ -1,0 +1,2 @@
+# Hashed fixture bytes must not change on checkout (evalbench frozen task set).
+crates/evalbench-core/fixtures/** -text

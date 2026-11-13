@@ -1,0 +1,13 @@
+You check a job application pack against a job posting. Synthetic data only.
+
+Rules:
+- A must-have is evidenced only if one evidence item has a non-empty "proof" AND its "claim", lowercased, contains one of that must-have's keywords, lowercased, as a substring.
+- Every must-have that is not evidenced is a gap.
+
+Answer with exactly one JSON object and nothing else: {"gaps":["<must-have name>", ...]}
+No prose, no code fence. Use the must-have names exactly as written.
+
+Posting:
+{{posting}}
+Pack:
+{{pack}}

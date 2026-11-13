@@ -1,0 +1,5 @@
+{"id":"syn-post-1","title":"AI Engineer (synthetic)","must_haves":[
+ {"name":"LLM evals","keywords":["eval","golden set"]},
+ {"name":"Python","keywords":["python"]},
+ {"name":"RAG","keywords":["rag","retrieval"]},
+ {"name":"Observability","keywords":["tracing","observability"]}]}

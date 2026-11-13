@@ -1,0 +1,1 @@
+{"id": "syn-post-2", "title": "Data Engineer (synthetic)", "must_haves": [{"name": "SQL", "keywords": ["sql"]}, {"name": "Pipelines", "keywords": ["airflow", "dagster", "pipeline"]}, {"name": "Cloud", "keywords": ["aws", "gcp", "azure"]}]}
