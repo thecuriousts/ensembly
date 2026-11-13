@@ -642,6 +642,42 @@ fn matrix() -> Vec<Case> {
             want: fail,
         },
         Case {
+            name: "bare ampersand before space is a token-stream hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire& money today",
+            want: fail,
+        },
+        Case {
+            name: "bare ampersand glued between cue words is a token-stream hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire&money today",
+            want: fail,
+        },
+        Case {
+            name: "bare ampersand after space is a token-stream hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire &money today",
+            want: fail,
+        },
+        Case {
+            name: "bare ampersand with spaces around it is a token-stream hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire & money today",
+            want: fail,
+        },
+        Case {
+            name: "overlong UTF-8 between flag-host labels fails",
+            url: "https://jobs.example.test/posting/1",
+            body: "see phish%c0%80example.test",
+            want: fail,
+        },
+        Case {
+            name: "percent-2e between flag-host labels fails",
+            url: "https://jobs.example.test/posting/1",
+            body: "see phish%2eexample.test",
+            want: fail,
+        },
+        Case {
             name: "R&D is not a hard cue",
             url: "https://jobs.example.test/posting/1",
             body: "R&D engineer in Stockholm",
@@ -687,6 +723,12 @@ fn matrix() -> Vec<Case> {
             name: "utm percent-20 URL is not a flagged host",
             url: "https://jobs.example.test/posting/1?utm_source=board&utm_medium=email%20list",
             body: "staff engineer, rust and systems",
+            want: pass,
+        },
+        Case {
+            name: "wire inside wireless is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wireless money today",
             want: pass,
         },
     ]

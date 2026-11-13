@@ -7,7 +7,7 @@
 
 use super::html5_entities::{lookup_named_entity, MAX_NAMED_ENTITY};
 use regex::Regex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::cell::Cell;
 use std::sync::OnceLock;
 use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
@@ -20,24 +20,27 @@ const DECODE_ROUNDS: usize = 3;
 /// [`CanonForms::depth_exceeded`].
 const CANON_PASSES: usize = 8;
 
-/// Bytes scanned in canonicalisation and view composition. Tests use this
-/// as a deterministic linear-time bound, independent of wall-clock speed.
-static BYTE_WORK: AtomicU64 = AtomicU64::new(0);
+// Bytes scanned in canonicalisation and view composition. Tests use this
+// as a deterministic linear-time bound, independent of wall-clock speed.
+// Thread-local so parallel tests do not share the counter.
+thread_local! {
+    static BYTE_WORK: Cell<u64> = const { Cell::new(0) };
+}
 
 fn account(n: usize) {
-    BYTE_WORK.fetch_add(n as u64, Ordering::Relaxed);
+    BYTE_WORK.with(|c| c.set(c.get().saturating_add(n as u64)));
 }
 
 /// Reset the byte-work counter. For tests; hidden from the public docs.
 #[doc(hidden)]
 pub fn reset_byte_work() {
-    BYTE_WORK.store(0, Ordering::Relaxed);
+    BYTE_WORK.with(|c| c.set(0));
 }
 
 /// Bytes accounted since the last reset. For tests; hidden from the public docs.
 #[doc(hidden)]
 pub fn byte_work() -> u64 {
-    BYTE_WORK.load(Ordering::Relaxed)
+    BYTE_WORK.with(|c| c.get())
 }
 
 /// Format / zero-width / format characters (Cf and friends).
@@ -1031,6 +1034,190 @@ pub(super) fn junk_spaced_forms(forms: &CanonForms, raw: &str) -> Vec<String> {
     out
 }
 
+/// Cue token-stream view: every run of characters that are not letters
+/// or digits collapses to a single space. Cues then match as whole
+/// token sequences, so `wire&money today` becomes `wire money today`
+/// while `wire` inside `wireless` does not match.
+pub fn token_stream(text: &str) -> String {
+    account(text.len());
+    let mut out = String::with_capacity(text.len());
+    let mut in_sep = false;
+    for c in text.chars() {
+        if c.is_alphabetic() || c.is_ascii_digit() {
+            for lc in c.to_lowercase() {
+                out.push(lc);
+            }
+            in_sep = false;
+        } else if !in_sep {
+            out.push(' ');
+            in_sep = true;
+        }
+    }
+    out.trim().to_string()
+}
+
+fn is_ascii_dns_label_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '-'
+}
+
+fn is_ascii_space(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\r')
+}
+
+/// Any run of characters that are not `[a-z0-9-]` becomes a single `.`.
+/// Invalid or overlong percent sequences should already be U+FFFD in
+/// decoded input; they join the same non-label run. ASCII `-` is kept,
+/// so a hyphenated domain stays distinct from a dotted flag.
+pub fn fold_non_label_runs(text: &str) -> String {
+    account(text.len());
+    let mut pieces = String::with_capacity(text.len());
+    let mut in_sep = false;
+    let mut in_space = false;
+    for c in text.chars() {
+        let lc = c.to_ascii_lowercase();
+        if is_ascii_dns_label_char(lc) {
+            pieces.push(lc);
+            in_sep = false;
+            in_space = false;
+        } else if is_ascii_space(c) {
+            if !in_space {
+                pieces.push(' ');
+                in_space = true;
+            }
+            in_sep = false;
+        } else if !in_sep {
+            pieces.push('.');
+            in_sep = true;
+            in_space = false;
+        }
+    }
+    // `phish . example.test` (spaced punctuation) becomes one host token.
+    // Remaining spaces stay as token boundaries so a lookalike prefix
+    // like `phish.example.test.evil.example` is not joined to neighbours.
+    // A hyphen with a space (`phish -example.test`) is a separator, not
+    // an internal label hyphen.
+    let dotted = collapse_space_around_dots(&pieces);
+    glue_spaced_hyphens(&dotted)
+        .trim_matches(|c: char| c == '.' || c.is_whitespace())
+        .to_string()
+}
+
+fn collapse_space_around_dots(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_whitespace() || chars[i] == '.' {
+            let mut saw_dot = false;
+            while i < chars.len() && (chars[i].is_whitespace() || chars[i] == '.') {
+                if chars[i] == '.' {
+                    saw_dot = true;
+                }
+                i += 1;
+            }
+            out.push(if saw_dot { '.' } else { ' ' });
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// `phish -example.test` uses a hyphen as a separator (it sits next to a
+/// space). A run of spaces and hyphens that contains both, between
+/// label characters, becomes `.`. `phish-example` is unchanged.
+fn glue_spaced_hyphens(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '-' || chars[i].is_whitespace() {
+            let mut saw_space = false;
+            let mut saw_hyphen = false;
+            let mut run = String::new();
+            while i < chars.len() && (chars[i] == '-' || chars[i].is_whitespace()) {
+                if chars[i] == '-' {
+                    saw_hyphen = true;
+                } else {
+                    saw_space = true;
+                }
+                run.push(chars[i]);
+                i += 1;
+            }
+            let prev_label = out.chars().next_back().is_some_and(is_ascii_dns_label_char);
+            let next_label = i < chars.len() && is_ascii_dns_label_char(chars[i]);
+            if prev_label && next_label && saw_space && saw_hyphen {
+                out.push('.');
+            } else {
+                out.push_str(&run);
+            }
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// Forms used only for flag-host matching: non-label runs (including
+/// leftover punctuation, U+FFFD from overlong or invalid percent
+/// sequences, and junk-as-separator dots) collapse to a single `.`.
+pub(super) fn host_non_label_forms(forms: &CanonForms, raw: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let push = |s: String, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>| {
+        if !s.is_empty() && seen.insert(s.clone()) {
+            out.push(s);
+        }
+    };
+    for src in junk_sources(forms, raw) {
+        push(fold_non_label_runs(src), &mut out, &mut seen);
+        let once = percent_decode_round(src);
+        if once != src {
+            push(fold_non_label_runs(&once), &mut out, &mut seen);
+        }
+    }
+    for dotted in junk_dotted_forms(forms, raw) {
+        push(fold_non_label_runs(&dotted), &mut out, &mut seen);
+    }
+    out
+}
+
+/// True when `folded` (output of [`fold_non_label_runs`]) contains the
+/// flag as a consecutive label window. Linear in the number of labels.
+pub(super) fn dotted_labels_contain(folded: &str, flag: &str) -> bool {
+    account(folded.len());
+    let flag_owned: Vec<String> = canonicalize_host(flag)
+        .split('.')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    if flag_owned.len() < 2 {
+        return false;
+    }
+    // A hyphen next to a separator (`phish- example.test` → `phish-.example.test`)
+    // is not an internal label hyphen; trim edge hyphens so it still
+    // matches. Internal hyphens in `phish-example` are kept.
+    folded.split_whitespace().any(|tok| {
+        let labels: Vec<&str> = tok
+            .split('.')
+            .map(|s| s.trim_matches('-'))
+            .filter(|s| !s.is_empty())
+            .collect();
+        if labels.len() < flag_owned.len() {
+            return false;
+        }
+        // Same rule as flag_matches: exact host or a suffix
+        // (`careers.phish.example.test`), never a prefix
+        // (`phish.example.test.evil.example`).
+        labels[labels.len() - flag_owned.len()..]
+            .iter()
+            .copied()
+            .eq(flag_owned.iter().map(|s| s.as_str()))
+    })
+}
+
 /// Cue-only views: shared host/cue views plus HTML-stripped, punctuation-join,
 /// and a separate leet view. A hit on any view is a hit.
 #[allow(dead_code)]
@@ -1093,6 +1280,20 @@ pub(super) fn extend_cue_views(
                     );
                 }
             }
+        }
+    }
+
+    // Token-stream views: collapse every run of non letter-or-digit
+    // characters (punctuation, symbols, format, leftover junk) to one
+    // space, then match cues as whole token sequences. Current views
+    // are kept; this one closes the class of separator characters
+    // without listing them. Not used for the depth-residual rule.
+    for src in junk_sources(forms, text) {
+        push(token_stream(src), &mut out, &mut seen);
+    }
+    if text.contains('<') {
+        for src in junk_sources(forms, text) {
+            push(token_stream(&strip_html_tags(src)), &mut out, &mut seen);
         }
     }
 
@@ -1326,7 +1527,17 @@ fn authority_host(url: &str) -> String {
 }
 
 pub fn host_from_url_views(url: &str) -> Vec<String> {
-    canonicalize_host_views(&authority_host(url))
+    let auth = authority_host(url);
+    let mut out = canonicalize_host_views(&auth);
+    let folded = fold_non_label_runs(&auth);
+    if folded != auth {
+        for h in canonicalize_host_views(&folded) {
+            if !out.iter().any(|e| e == &h) {
+                out.push(h);
+            }
+        }
+    }
+    out
 }
 
 pub fn flag_matches(candidate: &str, flag: &str) -> bool {
@@ -1664,6 +1875,69 @@ mod tests {
         assert!(flag_matches(
             "wire\u{2013}now.example.test",
             "wire-now.example.test"
+        ));
+    }
+
+    #[test]
+    fn token_stream_collapses_non_alnum_runs_and_keeps_whole_words() {
+        assert_eq!(token_stream("wire& money today"), "wire money today");
+        assert_eq!(token_stream("wire&money today"), "wire money today");
+        assert_eq!(token_stream("wire &money today"), "wire money today");
+        assert_eq!(token_stream("wire & money today"), "wire money today");
+        assert_eq!(token_stream("wireless money today"), "wireless money today");
+        assert_eq!(token_stream("R&D engineer"), "r d engineer");
+        assert_eq!(token_stream("50% off"), "50 off");
+    }
+
+    #[test]
+    fn fold_non_label_runs_collapses_separators_and_keeps_hyphens() {
+        assert_eq!(
+            fold_non_label_runs("phish&example.test"),
+            "phish.example.test"
+        );
+        assert_eq!(
+            fold_non_label_runs("phish\u{FFFD}example.test"),
+            "phish.example.test"
+        );
+        assert_eq!(
+            fold_non_label_runs(&percent_decode_round("phish%c0%80example.test")),
+            "phish.example.test"
+        );
+        assert_eq!(
+            fold_non_label_runs("phish-example.test"),
+            "phish-example.test"
+        );
+        assert_eq!(
+            fold_non_label_runs("phish -example.test"),
+            "phish.example.test"
+        );
+        assert_eq!(
+            fold_non_label_runs("phish- example.test"),
+            "phish.example.test"
+        );
+        assert_eq!(
+            fold_non_label_runs("phish\u{00A0}example.test"),
+            "phish.example.test"
+        );
+        assert!(dotted_labels_contain(
+            "see phish.example.test today",
+            "phish.example.test"
+        ));
+        assert!(dotted_labels_contain(
+            "see careers.phish.example.test",
+            "phish.example.test"
+        ));
+        assert!(!dotted_labels_contain(
+            "see phish.example.test.evil.example",
+            "phish.example.test"
+        ));
+        assert!(!dotted_labels_contain(
+            "see notphish.example.test",
+            "phish.example.test"
+        ));
+        assert!(!dotted_labels_contain(
+            "phish-example.test",
+            "phish.example.test"
         ));
     }
 }

@@ -62,7 +62,17 @@ operator.
   `encoding-depth-exceeded`. The decoder itself stays case-sensitive:
   `&NDASH;` is not folded to `&ndash;`, but it is an unknown name
   and so fails on the cue via the junk-as-separator view. Cues must
-  still be whole multi-word phrases after the replacement. Before the punctuation-join, every Unicode Dash_Punctuation (`Pd`)
+  still be whole multi-word phrases after the replacement. A further
+  token-stream view, also kept alongside the current views, collapses
+  every run of characters that are not letters or digits (punctuation,
+  symbols, dashes, spaces, format and zero-width characters, replacement
+  characters, leftover escape junk) into one space and matches hard
+  cues as whole token sequences, so `wire& money today` fails while
+  `wire` inside `wireless` does not match. For flag hosts, any run of
+  characters other than `[a-z0-9-]` between labels — including invalid
+  or overlong percent sequences decoded to U+FFFD — becomes a single
+  `.`, matched as a consecutive label window; ASCII `-` stays a label
+  character. Before the punctuation-join, every Unicode Dash_Punctuation (`Pd`)
   code point plus minus (`U+2212`), hyphen bullet (`U+2043`) and
   the small/fullwidth hyphens (`U+FE63`, `U+FF0D`) folds to ASCII
   `-`; every Space_Separator (`Zs`) folds to a space; and slash

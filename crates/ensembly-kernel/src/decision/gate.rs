@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 use super::normalize::{
-    extend_cue_views, extract_hosts, flag_matches, host_from_url_views, junk_dotted_forms,
-    views_with_canon,
+    dotted_labels_contain, extend_cue_views, extract_hosts, flag_matches, host_from_url_views,
+    host_non_label_forms, junk_dotted_forms, views_with_canon,
 };
 
 pub const GATE_REASON: &str = "scam-gate";
@@ -119,11 +119,17 @@ pub fn audit(url: &str, posting_text: &str, flags: &FlagList) -> GateResult {
     for src in junk_dotted_forms(&canon, &blob) {
         hosts.extend(extract_hosts(&src));
     }
-    if flags
-        .flags
-        .iter()
-        .any(|f| hosts.iter().any(|h| flag_matches(h, &f.domain)))
-    {
+    // Class-wide host view: any run of non-[a-z0-9-] characters
+    // (punctuation, leftover junk, U+FFFD from overlong or invalid
+    // percent sequences) becomes a single '.'. Matched as a consecutive
+    // label window so a folded sentence still yields the flag.
+    let host_folded = host_non_label_forms(&canon, &blob);
+    if flags.flags.iter().any(|f| {
+        hosts.iter().any(|h| flag_matches(h, &f.domain))
+            || host_folded
+                .iter()
+                .any(|t| dotted_labels_contain(t, &f.domain))
+    }) {
         return fail();
     }
     let cue_views = extend_cue_views(&blob, views, &canon);
@@ -588,6 +594,8 @@ mod tests {
             "50% off relocation bonus",
             "a && b are both required skills",
             "<p>R&amp;D engineer in Stockholm</p>",
+            "wireless money today",
+            "rewire money today",
         ] {
             let g = audit(clean_url(), body, &flags());
             assert_eq!(
@@ -610,6 +618,148 @@ mod tests {
             g.verdict,
             g.reason
         );
+    }
+
+    fn spacing_variants(left: &str, mid: &str, right: &str) -> [String; 4] {
+        [
+            format!("{left}{mid}{right}"),
+            format!("{left} {mid}{right}"),
+            format!("{left}{mid} {right}"),
+            format!("{left} {mid} {right}"),
+        ]
+    }
+
+    fn punctuation_samples() -> Vec<char> {
+        let mut chars: Vec<char> = ('\u{21}'..='\u{7e}')
+            .filter(|c| !c.is_ascii_alphanumeric())
+            .collect();
+        // Sample of Unicode punctuation, symbols, separators, format,
+        // and the replacement character.
+        chars.extend([
+            '\u{00A0}', // nbsp
+            '\u{00A7}', // section
+            '\u{00A9}', // copyright
+            '\u{00AD}', // soft hyphen
+            '\u{00BF}', // inverted question
+            '\u{2013}', // en dash
+            '\u{2014}', // em dash
+            '\u{2018}', // left quote
+            '\u{2026}', // ellipsis
+            '\u{2003}', // em space
+            '\u{200B}', // zwsp
+            '\u{2212}', // minus
+            '\u{FEFF}', // bom
+            '\u{FFFD}', // replacement
+        ]);
+        chars
+    }
+
+    #[test]
+    fn bare_ampersand_and_overlong_utf8_still_fail() {
+        // Review repros: a bare `&` used as a cue separator must Fail
+        // in every spacing variant. These used to Pass because `&`
+        // followed by a space is not an entity-shaped token.
+        for body in [
+            "wire& money today",
+            "wire&money today",
+            "wire &money today",
+            "wire & money today",
+        ] {
+            let g = audit(clean_url(), body, &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Fail,
+                "bare-ampersand cue must Fail, body={body:?} got {:?} {:?}",
+                g.verdict,
+                g.reason
+            );
+            assert_eq!(g.reason.as_deref(), Some(GATE_REASON));
+        }
+        // Overlong UTF-8 NUL (`%c0%80`) between host labels must Fail,
+        // same as a `%2e` dot encode.
+        let g = audit(clean_url(), "see phish%c0%80example.test", &flags());
+        assert_eq!(
+            g.verdict,
+            GateVerdict::Fail,
+            "overlong UTF-8 between host labels must Fail, got {:?} {:?}",
+            g.verdict,
+            g.reason
+        );
+        let g = audit(clean_url(), "see phish%2eexample.test", &flags());
+        assert_eq!(g.verdict, GateVerdict::Fail);
+        let g = audit(clean_url(), "see phish%2Eexample.test", &flags());
+        assert_eq!(g.verdict, GateVerdict::Fail);
+    }
+
+    #[test]
+    fn punctuation_as_separator_still_fails() {
+        for c in punctuation_samples() {
+            for body in spacing_variants("wire", &c.to_string(), "money today") {
+                let g = audit(clean_url(), &body, &flags());
+                assert_eq!(
+                    g.verdict,
+                    GateVerdict::Fail,
+                    "cue still fails when U+{:04X} is inserted, body={body:?} reason={:?}",
+                    c as u32,
+                    g.reason
+                );
+            }
+            // ASCII '-' is a valid host-label character and must not
+            // become '.'; the hyphenated lookalike stays distinct.
+            if c == '-' {
+                for body in spacing_variants("phish", "-", "example.test") {
+                    // "phish-example.test" (no extra spaces) is the
+                    // unflagged hyphenated domain. Spaced variants
+                    // (`phish - example.test`) are separators.
+                    if body == "phish-example.test" {
+                        let g = audit(clean_url(), &body, &flags());
+                        assert_eq!(
+                            g.verdict,
+                            GateVerdict::Pass,
+                            "ASCII hyphenated unflagged host must still Pass, body={body:?}"
+                        );
+                        continue;
+                    }
+                    let g = audit(clean_url(), &format!("see {body}"), &flags());
+                    assert_eq!(
+                        g.verdict,
+                        GateVerdict::Fail,
+                        "spaced hyphen between host labels must Fail, body={body:?} reason={:?}",
+                        g.reason
+                    );
+                }
+                continue;
+            }
+            for host in spacing_variants("phish", &c.to_string(), "example.test") {
+                let body = format!("see {host}");
+                let g = audit(clean_url(), &body, &flags());
+                assert_eq!(
+                    g.verdict,
+                    GateVerdict::Fail,
+                    "flagged host in the body still fails when U+{:04X} is inserted, body={body:?} reason={:?}",
+                    c as u32,
+                    g.reason
+                );
+                let url = format!("https://{host}/x");
+                // Spaces and URL syntax (`/ ? # @ :`) break the
+                // authority, so only the body case is required there.
+                // Other no-space insertions in the authority must Fail.
+                let url_syntax = ['/', '?', '#', '@', ':', '[', ']'];
+                if !host
+                    .chars()
+                    .any(|ch| ch.is_whitespace() || url_syntax.contains(&ch))
+                {
+                    let g = audit(&url, "a role", &flags());
+                    assert_eq!(
+                        g.verdict,
+                        GateVerdict::Fail,
+                        "flagged host in the URL still fails when U+{:04X} is inserted, url={url:?} reason={:?}",
+                        c as u32,
+                        g.reason
+                    );
+                }
+            }
+        }
     }
 
     #[test]
