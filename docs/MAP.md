@@ -63,11 +63,11 @@ Memory is **auxiliary** — kernel never delegates control decisions to it.
 | Capability | Entry | What you get |
 |------------|-------|--------------|
 | **Task-set hash** | `cargo run -p evalbench-cli -- hash crates/evalbench-core/fixtures/tasks --verify crates/evalbench-core/fixtures/tasks.sha256` | Hash of the 12 frozen synthetic tasks; exit 1 if it differs from the committed file, 2 on a stray or missing file |
-| **Gap check** | `evalbench check <posting.json> <pack.json>` | Python-parity gap list as JSON; exit 1 when there are gaps |
+| **Gap check** | `evalbench check <posting.json> <pack.json>` | Gap list as JSON; exit 1 when there are gaps. Matches the Python reference except in 3 documented cases where Rust is stricter and exits 2: an evidence item with no `claim` and no proof, zero must-haves with no `evidence` key, and a non-string truthy `proof` (see `crates/evalbench-core/src/check.rs`, pinned in `tests/python_stricter.rs`) |
 | **Score** | `evalbench score --tasks <dir> [--run-id ID] <traces.jsonl>` | First-pass score = floor(100 * tasks passing their frozen checker on attempt 1 / tasks), with the lower-median tokens per passing task beside it |
 | **Record / run** | `evalbench record ...`, `evalbench run --replay <replies> \| --exec <wrapper>` | Checker-judged trace rows (no `--pass`); live calls only through a wrapper, no keys in evalbench |
-| **Baseline** | `scripts/evalbench-baseline` | Replays `crates/evalbench-cli/baselines/replay-001` offline and checks the numbers did not move |
-| **Tests** | `cargo test -p evalbench-core -p evalbench-cli` | Port, differential vs Python (needs `python3`), P1/P2 bounded proofs with broken variants |
+| **Baseline** | `scripts/evalbench-baseline` | Replays `crates/evalbench-cli/baselines/replay-001` offline and checks the numbers did not move. Synthetic replies, not a model result |
+| **Tests** | `cargo test -p evalbench-core -p evalbench-cli` | Port, differential vs Python (needs `python3`), the 3 stricter-than-Python cases, P1/P2 bounded proofs with broken variants |
 
 ---
 

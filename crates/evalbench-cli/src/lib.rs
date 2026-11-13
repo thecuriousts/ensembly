@@ -134,6 +134,9 @@ impl ModelClient for CommandClient {
                 Err(e) => return Err(fail(format!("wait failed: {e}"))),
             }
         };
+        // Joins are unbounded: a wrapper that exits but leaves a grandchild holding
+        // stdout or stderr can stall here past the timeout. The D12 wrapper contract
+        // (one reply, then exit) rules that out; a detached child is a wrapper bug.
         let _ = writer.join();
         let stdout = stdout.join().unwrap_or_default();
         let stderr = stderr.join().unwrap_or_default();
