@@ -67,6 +67,7 @@ Memory is **auxiliary** — kernel never delegates control decisions to it.
 | **Score** | `evalbench score --tasks <dir> [--run-id ID] <traces.jsonl>` | First-pass score = floor(100 * tasks passing their frozen checker on attempt 1 / tasks), with the lower-median tokens per passing task beside it |
 | **Record / run** | `evalbench record ...`, `evalbench run --replay <replies> \| --exec <wrapper>` | Checker-judged trace rows (no `--pass`); live calls only through a wrapper, no keys in evalbench |
 | **Baseline** | `scripts/evalbench-baseline` | Replays `crates/evalbench-cli/baselines/replay-001` offline and checks the numbers did not move. Synthetic replies, not a model result |
+| **Treatment (E5)** | `scripts/evalbench-treatment [--write]` · `evalbench run --pulse-pack <pack>` | Pulse on vs off on the 12 frozen tasks: same tasks, model id and prompt, plus the canonical pulse pack in context (prompt id `gaps-v1+pulse`); 3 reruns per arm, spread, dataset hash. Synthetic replies from `scripts/e5/synthetic_replies.py`, so not a model result or CV number. Report and Minicharts chart (MIT, fonts bundled) in `crates/evalbench-cli/treatments/e5-pulse/`; `scripts/chart-license-guard.py` keeps banned chart-skill assets out |
 | **Tests** | `cargo test -p evalbench-core -p evalbench-cli` | Port, differential vs Python (needs `python3`), examples where Rust's strict schema rejects input Python tolerates, P1/P2 bounded proofs with broken variants |
 
 ---

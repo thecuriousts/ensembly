@@ -65,16 +65,27 @@ pub struct PulseCfg {
     /// HOME handed to premflow; its data lives in `<home>/.premflow`.
     pub premflow_home: PathBuf,
     pub premflow_timeout: Duration,
+    /// Harness default `/workspace/ops/ensembly-pulse/missions` (see [`PulseCfg::from_env`]).
     pub missions_dir: PathBuf,
-    /// Folder holding `pulse-YYYY-MM-DD.md` notes (optional freshness signal).
+    /// Harness default `/workspace/ops/ensembly-pulse`. Folder holding `pulse-YYYY-MM-DD.md` notes (optional freshness signal).
     pub notes_dir: Option<PathBuf>,
-    /// Roots tried, in order, to resolve relative G source paths.
+    /// Roots tried, in order, to resolve relative G source paths. Harness defaults
+    /// under `/workspace` (see [`PulseCfg::from_env`]).
     pub g_roots: Vec<PathBuf>,
     pub now: DateTime<Utc>,
     pub stale_warn_days: i64,
 }
 
 impl PulseCfg {
+    /// Config from the environment, with defaults for the agent harness.
+    ///
+    /// The `/workspace/...` defaults (G roots, missions, notes) are the harness
+    /// layout: the box the bot runs on mounts its ops tree at `/workspace`. They are
+    /// not paths on a user machine and nothing here creates them. Anywhere else, set
+    /// `ENSEMBLY_PULSE_G_ROOTS` (colon-separated), `ENSEMBLY_PULSE_MISSIONS` and
+    /// `ENSEMBLY_PULSE_NOTES` (`pulse --missions-dir` also overrides missions). The DB default
+    /// (`$XDG_DATA_HOME/pulse-memory/pulse.sqlite`) and premflow (`PATH`, then
+    /// `~/.local/bin`) follow the user's home, not the harness.
     pub fn from_env(now: DateTime<Utc>) -> Self {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
