@@ -99,7 +99,7 @@ enum PulseCoreCmd {
         time: String,
         #[arg(long)]
         reason: String,
-        /// Public host alias: laptop-1, laptop-2, mac-mini, or box.
+        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
         #[arg(long)]
         writer: String,
         #[arg(long)]
@@ -127,6 +127,7 @@ enum PulseCoreCmd {
         supersedes: Option<String>,
         #[arg(long)]
         reason: Option<String>,
+        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
         #[arg(long)]
         writer: String,
         #[arg(long)]
@@ -153,6 +154,7 @@ enum ConflictCmd {
         time: String,
         #[arg(long)]
         reason: String,
+        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
         #[arg(long)]
         writer: String,
         #[arg(long)]
@@ -348,7 +350,7 @@ enum RecordAppsCmd {
         ledger: PathBuf,
         #[arg(long)]
         log: PathBuf,
-        /// Public host alias: laptop-1, laptop-2, or mac-mini
+        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
         #[arg(long)]
         writer: String,
         /// Stockholm time stored when a row has no submit time. Marked synthetic.
@@ -1991,8 +1993,11 @@ fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
                 submit_time_unknown: submit_time_unknown.then_some(true),
                 cv_version,
             };
-            let receipt =
-                ensembly_kernel::KernelWriter::open_ledger(&ledger)?.append_ledger(&row)?;
+            let writer = ensembly_kernel::KernelWriter::open_ledger(&ledger)?;
+            if !ledger.exists() {
+                writer.init_ledger()?;
+            }
+            let receipt = writer.append_ledger(&row)?;
             if receipt.appended {
                 println!("appended: {} ({})", row.link, row.status.as_str());
             } else {

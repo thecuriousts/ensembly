@@ -1,14 +1,47 @@
-//! Single writer for ledger and pulse stores on the operator machine.
+//! The published writer for ledger and pulse stores on the operator machine.
 //!
-//! Bots route those writes through [`KernelWriter`]. The type only appends.
-//! It never rewrites an old ledger line and it exposes no delete method.
-//! The idempotency key is `link_key` plus a tab plus the record stage token.
+//! # What is enforced
+//!
+//! For other crates, [`KernelWriter`] is the only type that can append a
+//! ledger row or admit, supersede, or resolve a pulse write. Raw write
+//! functions are crate-private. The idempotency key is `link_key` plus a
+//! tab plus the record stage token. Old ledger lines are never rewritten
+//! and the type has no delete method.
+//!
+//! A new ledger must be initialised with [`KernelWriter::init_ledger`]
+//! before the first append. A missing or mismatched `.writer-hash` seal
+//! is refused; the writer will not adopt existing bytes.
+//!
+//! On Unix, a sealed ledger is marked read-only after each append so
+//! casual edits fail. That `chmod` is a no-op on non-Unix systems.
+//!
+//! Writer identity comes from the `ENSEMBLY_WRITER` environment variable,
+//! validated as non-empty and safe. There is no list of machine names in
+//! the write path. The request must match that configured value.
+//!
+//! Pulse stores get accident-guard triggers on every canonical write
+//! open. Those triggers are not a security boundary: a local process that
+//! can open the file can register the same SQL function or drop them.
+//! File permissions and ownership limit local tooling. Anything beyond
+//! that is out of scope.
+//!
+//! # Compile-fail checks
+//!
+//! Crate users cannot call the raw write functions:
+//!
+//! ```compile_fail
+//! let _ = ensembly_kernel::pulse_supersede::admit;
+//! ```
+//!
+//! ```compile_fail
+//! let _ = ensembly_kernel::application_ledger::append_row;
+//! ```
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-use ensembly_schema::{link_key, map_ledger_status, require_public_host_alias};
+use ensembly_schema::{link_key, map_ledger_status, require_configured_writer};
 use thiserror::Error;
 
 use crate::application_ledger::{self, LedgerRow};
@@ -39,7 +72,7 @@ pub enum WriterError {
     Store(String),
 }
 
-/// The only bot-facing writer for the application ledger and the pulse store.
+/// The published writer for the application ledger and the pulse store.
 pub struct KernelWriter {
     ledger: Option<PathBuf>,
     pulse_db: Option<PathBuf>,
@@ -79,12 +112,38 @@ impl KernelWriter {
         Ok(self)
     }
 
+    /// Seal an empty or missing ledger. Refuses a non-empty ledger or an
+    /// existing seal: those are not a new ledger, and the writer will not
+    /// adopt current bytes.
+    pub fn init_ledger(&self) -> Result<(), WriterError> {
+        let path = self.ledger_path()?;
+        let bytes = read_ledger_bytes(path)?;
+        if !bytes.is_empty() {
+            return Err(WriterError::Ledger(
+                "ledger already has rows; init is only for a new empty ledger".into(),
+            ));
+        }
+        if seal_path(path).exists() {
+            return Err(WriterError::Ledger("ledger is already sealed".into()));
+        }
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir)
+                .map_err(|err| WriterError::Ledger(format!("create {}: {err}", dir.display())))?;
+        }
+        if !path.exists() {
+            fs::write(path, b"")
+                .map_err(|err| WriterError::Ledger(format!("create {}: {err}", path.display())))?;
+        }
+        write_seal(path, b"")?;
+        lock_ledger(path)
+    }
+
     /// Append one ledger row, or skip a retry with the same key and payload.
     pub fn append_ledger(&self, row: &LedgerRow) -> Result<LedgerWriteReceipt, WriterError> {
         let path = self.ledger_path()?;
         let key = idempotency_key(row);
         let before = read_ledger_bytes(path)?;
-        check_or_adopt_seal(path, &before)?;
+        check_seal(path, &before)?;
         if let Some(decision) = existing_decision(&before, row, &key)? {
             return Ok(decision);
         }
@@ -178,7 +237,8 @@ pub fn idempotency_key(row: &LedgerRow) -> String {
 }
 
 fn require_writer(writer: &str) -> Result<(), WriterError> {
-    require_public_host_alias(writer).map_err(WriterError::Refused)
+    require_configured_writer(writer).map_err(WriterError::Refused)?;
+    Ok(())
 }
 
 fn existing_decision(
@@ -277,6 +337,8 @@ fn lock_ledger(path: &Path) -> Result<(), WriterError> {
     Ok(())
 }
 
+/// On Unix this sets the file mode. On other systems it is a no-op, so a
+/// writer-managed ledger is not made read-only there.
 fn set_ledger_mode(path: &Path, mode: u32) -> Result<(), WriterError> {
     #[cfg(unix)]
     {
@@ -305,16 +367,12 @@ fn sha256_hex(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-fn check_or_adopt_seal(path: &Path, bytes: &[u8]) -> Result<(), WriterError> {
+fn check_seal(path: &Path, bytes: &[u8]) -> Result<(), WriterError> {
     let seal = seal_path(path);
     match fs::read_to_string(&seal) {
-        Err(err) if err.kind() == io::ErrorKind::NotFound => {
-            if bytes.is_empty() {
-                Ok(())
-            } else {
-                write_seal(path, bytes)
-            }
-        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Err(WriterError::Ledger(
+            "ledger seal is missing; the writer will not adopt current bytes. Init only a new empty ledger".into(),
+        )),
         Ok(expected) => {
             if expected.trim() == sha256_hex(bytes) {
                 Ok(())

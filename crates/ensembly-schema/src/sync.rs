@@ -151,9 +151,7 @@ mod tests {
 
     impl Checked for ScenarioPayload {
         fn check(&self) -> Result<(), String> {
-            if !matches!(self.writer.as_str(), "laptop-1" | "laptop-2" | "mac-mini") {
-                return Err("writer must be a public host alias".into());
-            }
+            crate::validate_writer_identity(&self.writer)?;
             Ok(())
         }
     }

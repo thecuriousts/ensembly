@@ -1,13 +1,14 @@
-//! KernelWriter is the single path for ledger and pulse writes.
-//! Fixtures are synthetic. Writer aliases are public host aliases only.
+//! KernelWriter is the published path for ledger and pulse writes.
+//! Fixtures are synthetic. Writer identity is configured via ENSEMBLY_WRITER.
 
-use ensembly_kernel::application_ledger::{append_row, LedgerRow, Status};
+use ensembly_kernel::application_ledger::{LedgerRow, Status};
 use ensembly_kernel::pulse_supersede::{AdmitRequest, SupersedeFault, SupersedeRequest};
 use ensembly_kernel::writer::{idempotency_key, KernelWriter, WriterError};
 use rusqlite::Connection;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
 
 const SCHEMA: &str = "
 CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
@@ -24,6 +25,18 @@ CREATE TABLE conflicts (id INTEGER PRIMARY KEY, subject TEXT NOT NULL, left_id I
 CREATE VIRTUAL TABLE memory_fts USING fts5(nat_key, snippet, source, content='memory_traces', content_rowid='id');
 INSERT INTO schema_migrations VALUES (1, '2026-01-01T00:00:00+00:00');
 ";
+
+static WRITER_ENV: Mutex<()> = Mutex::new(());
+
+fn with_writer(name: &str) -> MutexGuard<'static, ()> {
+    let guard = WRITER_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var(ensembly_schema::WRITER_ENV, name);
+    guard
+}
+
+fn setup_writer() -> MutexGuard<'static, ()> {
+    with_writer("laptop-1")
+}
 
 fn pulse_db() -> (tempfile::TempDir, std::path::PathBuf) {
     let dir = tempfile::tempdir().unwrap();
@@ -98,6 +111,18 @@ fn admit_req(key: &str, snippet: &str, writer: &str) -> AdmitRequest {
     }
 }
 
+fn open_ledger(path: &Path) -> KernelWriter {
+    let writer = KernelWriter::open_ledger(path).unwrap();
+    writer.init_ledger().unwrap();
+    writer
+}
+
+fn seal_path(ledger: &Path) -> std::path::PathBuf {
+    let mut name = ledger.file_name().unwrap().to_os_string();
+    name.push(".writer-hash");
+    ledger.with_file_name(name)
+}
+
 #[test]
 fn idempotency_key_is_link_key_tab_stage() {
     let prepared = row(
@@ -124,7 +149,7 @@ fn idempotency_key_is_link_key_tab_stage() {
 fn ledger_append_is_idempotent_on_the_same_key_and_payload() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ledger.jsonl");
-    let writer = KernelWriter::open_ledger(&path).unwrap();
+    let writer = open_ledger(&path);
     let first = row(
         "https://jobs.example.test/demo/1",
         Status::Prepared,
@@ -142,7 +167,7 @@ fn ledger_append_is_idempotent_on_the_same_key_and_payload() {
 fn ledger_same_key_different_payload_is_a_conflict_and_writes_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ledger.jsonl");
-    let writer = KernelWriter::open_ledger(&path).unwrap();
+    let writer = open_ledger(&path);
     let first = row(
         "https://jobs.example.test/demo/2",
         Status::Prepared,
@@ -165,7 +190,7 @@ fn ledger_same_key_different_payload_is_a_conflict_and_writes_nothing() {
 fn ledger_later_stage_appends_and_leaves_the_old_line_bytes_alone() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ledger.jsonl");
-    let writer = KernelWriter::open_ledger(&path).unwrap();
+    let writer = open_ledger(&path);
     let prepared = row(
         "https://jobs.example.test/demo/3",
         Status::Prepared,
@@ -189,7 +214,7 @@ fn ledger_later_stage_appends_and_leaves_the_old_line_bytes_alone() {
 fn ledger_writer_refuses_to_append_after_an_old_line_is_rewritten() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ledger.jsonl");
-    let writer = KernelWriter::open_ledger(&path).unwrap();
+    let writer = open_ledger(&path);
     writer
         .append_ledger(&row(
             "https://jobs.example.test/demo/4",
@@ -208,18 +233,93 @@ fn ledger_writer_refuses_to_append_after_an_old_line_is_rewritten() {
             "cv-sample-1",
         ))
         .unwrap_err();
-    let message = err.to_string();
+    assert!(err.to_string().contains("rewritten"), "{err}");
+}
+
+#[test]
+fn deleted_seal_is_refused_and_is_not_adopted() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ledger.jsonl");
+    let writer = open_ledger(&path);
+    writer
+        .append_ledger(&row(
+            "https://jobs.example.test/demo/7",
+            Status::Prepared,
+            "cv-sample-1",
+        ))
+        .unwrap();
+    let seal = seal_path(&path);
+    fs::set_permissions(&seal, fs::Permissions::from_mode(0o644)).unwrap();
+    fs::remove_file(&seal).unwrap();
+    let err = writer
+        .append_ledger(&row(
+            "https://jobs.example.test/demo/7",
+            Status::Submitted,
+            "cv-sample-1",
+        ))
+        .unwrap_err();
+    assert!(err.to_string().contains("seal is missing"), "{err}");
+    assert!(!seal.exists());
+}
+
+#[test]
+fn tampering_then_reseal_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ledger.jsonl");
+    let writer = open_ledger(&path);
+    writer
+        .append_ledger(&row(
+            "https://jobs.example.test/demo/8",
+            Status::Prepared,
+            "cv-sample-1",
+        ))
+        .unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    let original = fs::read_to_string(&path).unwrap();
+    fs::write(
+        &path,
+        original.replace("Northwind Fictional AB", "Contoso Fictional Ltd"),
+    )
+    .unwrap();
+    let seal = seal_path(&path);
+    fs::set_permissions(&seal, fs::Permissions::from_mode(0o644)).unwrap();
+    fs::remove_file(&seal).unwrap();
+    let err = writer.init_ledger().unwrap_err();
     assert!(
-        message.contains("idempotency conflict") || message.contains("rewritten"),
-        "{message}"
+        err.to_string().contains("already has rows") || err.to_string().contains("will not adopt"),
+        "{err}"
     );
+    assert!(!seal.exists());
+    let err = writer
+        .append_ledger(&row(
+            "https://jobs.example.test/demo/8",
+            Status::Submitted,
+            "cv-sample-1",
+        ))
+        .unwrap_err();
+    assert!(err.to_string().contains("seal is missing"), "{err}");
+}
+
+#[test]
+fn init_refuses_a_non_empty_unsealed_ledger() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ledger.jsonl");
+    fs::write(
+        &path,
+        r#"{"company":"Northwind Fictional AB","role":"Engineer, Widgets","link":"https://jobs.example.test/demo/9","status":"prepared","submit_time":null,"cv_version":"cv-sample-1"}
+"#,
+    )
+    .unwrap();
+    let writer = KernelWriter::open_ledger(&path).unwrap();
+    let err = writer.init_ledger().unwrap_err();
+    assert!(err.to_string().contains("already has rows"), "{err}");
 }
 
 #[test]
 fn direct_ledger_write_is_refused_on_a_writer_managed_file() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ledger.jsonl");
-    let writer = KernelWriter::open_ledger(&path).unwrap();
+    let writer = open_ledger(&path);
     writer
         .append_ledger(&row(
             "https://jobs.example.test/demo/5",
@@ -228,21 +328,13 @@ fn direct_ledger_write_is_refused_on_a_writer_managed_file() {
         ))
         .unwrap();
     let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, 0o444);
-    let direct = append_row(
-        &path,
-        &row(
-            "https://jobs.example.test/demo/5",
-            Status::Submitted,
-            "cv-sample-1",
-        ),
-    );
+    assert_eq!(mode, 0o444, "chmod is Unix-only; this test runs on Unix");
+    let direct = fs::OpenOptions::new().write(true).open(&path);
     assert!(
         direct.is_err(),
-        "direct append_row must not write the locked ledger"
+        "a direct write must not open the locked ledger"
     );
     assert_eq!(fs::read_to_string(&path).unwrap().lines().count(), 1);
-    // The kernel writer can still append a later stage.
     assert!(
         writer
             .append_ledger(&row(
@@ -257,11 +349,10 @@ fn direct_ledger_write_is_refused_on_a_writer_managed_file() {
 
 #[test]
 fn writer_has_no_ledger_delete_and_never_shortens_the_file() {
-    // A compile-time reminder: KernelWriter exposes no delete or rewrite method.
     fn assert_no_delete(_: &KernelWriter) {}
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ledger.jsonl");
-    let writer = KernelWriter::open_ledger(&path).unwrap();
+    let writer = open_ledger(&path);
     assert_no_delete(&writer);
     writer
         .append_ledger(&row(
@@ -283,6 +374,7 @@ fn writer_has_no_ledger_delete_and_never_shortens_the_file() {
 
 #[test]
 fn direct_pulse_insert_and_delete_are_refused_after_the_writer_opens_the_store() {
+    let _w = setup_writer();
     let (_dir, path) = pulse_db();
     seed_trace(&path, "demo/old", "the earlier fact");
     let writer = KernelWriter::open_pulse(&path).unwrap();
@@ -305,6 +397,7 @@ fn direct_pulse_insert_and_delete_are_refused_after_the_writer_opens_the_store()
 
 #[test]
 fn pulse_admit_and_supersede_go_through_the_writer_and_keep_the_old_row() {
+    let _w = setup_writer();
     let (_dir, path) = pulse_db();
     seed_trace(&path, "demo/old", "the earlier fact");
     let writer = KernelWriter::open_pulse(&path).unwrap();
@@ -336,7 +429,8 @@ fn pulse_admit_and_supersede_go_through_the_writer_and_keep_the_old_row() {
 }
 
 #[test]
-fn pulse_writer_refuses_a_non_public_host_alias() {
+fn pulse_writer_refuses_a_writer_that_does_not_match_config() {
+    let _w = setup_writer();
     let (_dir, path) = pulse_db();
     let writer = KernelWriter::open_pulse(&path).unwrap();
     let err = writer
@@ -345,20 +439,46 @@ fn pulse_writer_refuses_a_non_public_host_alias() {
             &SupersedeFault::default(),
         )
         .unwrap_err();
-    assert!(err.to_string().contains("public host alias"), "{err}");
+    assert!(err.to_string().contains("configured identity"), "{err}");
     assert_eq!(trace_count(&path), 0);
 }
 
 #[test]
-fn mac_mini_and_laptop_two_are_accepted_writers() {
+fn pulse_writer_refuses_an_unsafe_identity() {
+    let _w = setup_writer();
     let (_dir, path) = pulse_db();
     let writer = KernelWriter::open_pulse(&path).unwrap();
-    writer
+    let err = writer
         .admit(
-            &admit_req("demo/a", "fact a", "mac-mini"),
+            &admit_req("demo/x", "a fact", "not/safe"),
             &SupersedeFault::default(),
         )
-        .unwrap();
+        .unwrap_err();
+    assert!(err.to_string().contains("not a safe identity"), "{err}");
+}
+
+#[test]
+fn configured_writer_is_accepted_and_another_name_is_not() {
+    let (_dir, path) = pulse_db();
+    {
+        let _w = with_writer("mac-mini");
+        let writer = KernelWriter::open_pulse(&path).unwrap();
+        writer
+            .admit(
+                &admit_req("demo/a", "fact a", "mac-mini"),
+                &SupersedeFault::default(),
+            )
+            .unwrap();
+        let err = writer
+            .admit(
+                &admit_req("demo/b", "fact b", "laptop-2"),
+                &SupersedeFault::default(),
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("configured identity"), "{err}");
+    }
+    let _w = with_writer("laptop-2");
+    let writer = KernelWriter::open_pulse(&path).unwrap();
     writer
         .admit(
             &admit_req("demo/b", "fact b", "laptop-2"),

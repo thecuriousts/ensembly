@@ -33,13 +33,31 @@ needs them.
 ## Append-only
 
 Never edit a line. A status change is a new line with the same `link`; the
-last line per link is the current state. Bots and the CLI route appends
-through `KernelWriter` (`ensembly apps append`). A retry with the same
-idempotency key (`link_key` plus the record stage token) and the same
-payload writes nothing and exits 0. The same key with a different payload
-is refused and writes nothing. The writer marks the file read-only after
-each append so a direct edit is refused; it also refuses to append if an
-old line was rewritten.
+last line per link is the current state. Other crates and the CLI route
+appends through `KernelWriter` (`ensembly apps append`). A new ledger must
+be initialised first (`KernelWriter::init_ledger`; the CLI does this when
+the file does not exist). A retry with the same idempotency key
+(`link_key` plus the record stage token) and the same payload writes
+nothing and exits 0. The same key with a different payload is refused and
+writes nothing. A missing or mismatched `.writer-hash` seal is refused;
+the writer will not adopt current bytes.
+
+### What the writer enforces
+
+- For crate users, `KernelWriter` is the only published write API. Raw
+  ledger and pulse write functions are crate-private.
+- Writer identity is the `ENSEMBLY_WRITER` environment variable, checked
+  as non-empty and safe. There is no list of machine names in the write
+  path. A pulse or record write must name that configured value.
+- On Unix, a sealed ledger is marked read-only after each append. That
+  change of mode does nothing on non-Unix systems.
+- Pulse accident-guard triggers are installed on every canonical write
+  open. They catch a forgotten raw INSERT. They are not a security
+  boundary: a local process that can open the file can register the same
+  SQL function or drop the trigger. File permissions and ownership limit
+  local tooling. Anything beyond that is out of scope.
+- Pulse pack import and export write a different store and are not gated
+  by this writer.
 
 ### Correcting a row
 
@@ -98,7 +116,7 @@ Company audits (the gate before a pack or an application) live in a separate sto
 
 ## Record adapter
 
-The ledger stays the source of truth. `ensembly record apps import` reads it and appends record events. It does not rewrite or delete ledger rows. A second import of the same rows appends nothing, including when the writer or the import clock differs. The idempotency key is the canonical link plus the stage. Sameness uses ledger fields only. A row with no submit time stores the import clock and marks `synthetic_time`; that clock is not compared. A corrected submit time on the same stage is refused: import does not rewrite the stored event. Append a later ledger stage, then import again. A return to an earlier stage is refused and names the link. Writers are the public host aliases `laptop-1`, `laptop-2`, and `mac-mini`.
+The ledger stays the source of truth. `ensembly record apps import` reads it and appends record events. It does not rewrite or delete ledger rows. A second import of the same rows appends nothing, including when the writer or the import clock differs. The idempotency key is the canonical link plus the stage. Sameness uses ledger fields only. A row with no submit time stores the import clock and marks `synthetic_time`; that clock is not compared. A corrected submit time on the same stage is refused: import does not rewrite the stored event. Append a later ledger stage, then import again. A return to an earlier stage is refused and names the link. New writes use the configured `ENSEMBLY_WRITER` identity.
 
 | Ledger status | Record stage |
 |---|---|

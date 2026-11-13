@@ -1,8 +1,12 @@
-//! Per-connection write grant and durable pulse-store triggers.
+//! Accident-guard triggers for the pulse store.
 //!
-//! Triggers call a SQL function that only a kernel connection registers.
-//! A bot that opens the same file with rusqlite has no such function and
-//! the write is refused.
+//! These triggers ask for a per-connection SQL function. That is enough to
+//! catch a forgotten raw INSERT from tests or a casual CLI, but it is not a
+//! security boundary: any local process that can open the file can register
+//! the same function or drop the trigger. Crate users are limited by the
+//! public API ([`crate::KernelWriter`] is the only published writer). Local
+//! tooling is limited by file permissions and ownership. Anything beyond
+//! that is out of scope.
 
 use rusqlite::functions::FunctionFlags;
 use rusqlite::Connection;
@@ -10,7 +14,8 @@ use rusqlite::Connection;
 const GRANT_FN: &str = "kernel_writer_grant";
 const TABLES: &[&str] = &["memory_traces", "supersession_events", "conflicts"];
 
-/// Allow this connection to pass the pulse write triggers.
+/// Mark this connection as a kernel write connection so the accident-guard
+/// triggers allow it through. Not a secret: any rusqlite client can do this.
 pub fn grant_session(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.create_scalar_function(GRANT_FN, 0, FunctionFlags::SQLITE_UTF8, |_| Ok(1i64))
 }

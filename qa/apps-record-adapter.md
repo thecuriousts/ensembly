@@ -8,7 +8,7 @@ compare        stage, submit time, and silent since
                exit 1 mismatch
                exit 2 error, including a missing log or a directory given as the log
 no submit time import clock is stored and marked synthetic
-writers        laptop-1, laptop-2, mac-mini
+writers        configured ENSEMBLY_WRITER identity; fixtures use laptop-1, laptop-2, mac-mini
 
 known limit    submitted -> interview -> submitted is refused
                the ledger stays the truth; the log is never rewritten
