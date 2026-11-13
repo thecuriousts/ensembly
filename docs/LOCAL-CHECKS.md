@@ -31,9 +31,14 @@ model file.
   `grok` on `PATH` is never auto-detected. Each cloud call is logged with
   its reason and argv0 only — never the prompt or statement. A fail-closed
   redaction gate refuses the call entirely (it never partly redacts and
-  sends) if the text looks like a token, civic or coordination number,
-  phone, email, home path, IP, MAC, hostname, or a name-like field. Tests
-  use synthetic fixtures only.
+  sends) if any view of the text looks like a token, civic or coordination
+  number, phone, email, home path, IP, MAC, hostname, or a name-like field.
+  Views are the raw text; NFKC with zero-width/format characters stripped
+  and confusables folded to ASCII; up to three rounds of percent and
+  HTML-entity decoding; whitespace collapsed around `@./:-` (and removed
+  entirely for token-prefix matching); and valid UTF-8 from base64 or
+  base64url runs of 16 or more characters. Tests use synthetic fixtures
+  only.
 
 ## Models and licences
 
@@ -99,17 +104,26 @@ cargo run -p ensembly-agents --bin ensembly-local-check -- fixtures
 
 | Variable | Meaning |
 |---|---|
-| `ENSEMBLY_LOCAL_MODELS` | `1` to run real models (alias `PERAM_LOCAL_MODELS`) |
+| `ENSEMBLY_LOCAL_MODELS` | Truthy (`1`, `true`, `yes`, or `on`, any case) to run real models. Unset or any other value is off. |
 | `ENSEMBLY_LOCAL_RUNTIME` | `llama.cpp` (default) or `mlx` (requires `ENSEMBLY_MLX_EXPERIMENTAL=1`) |
 | `ENSEMBLY_LLAMA_CLI` | Path to `llama-cli` or `llama-completion` |
 | `ENSEMBLY_MLX_BIN` | Path to an MLX generate binary |
-| `ENSEMBLY_MLX_EXPERIMENTAL` | `1` to allow MLX despite missing schema-constrained generation |
+| `ENSEMBLY_MLX_EXPERIMENTAL` | Truthy (`1`, `true`, `yes`, or `on`) to allow MLX despite missing schema-constrained generation |
 | `ENSEMBLY_CLASSIFY_MODEL` | 4B weights (GGUF or MLX dir) |
 | `ENSEMBLY_CONFLICT_MODEL` | 9B weights |
 | `ENSEMBLY_LOCAL_CONFIDENCE_MIN` | Cloud-eligible floor, default `0.6` (cloud still needs the opt-in below) |
-| `ENSEMBLY_CLOUD_CHECKS` | `1` to allow cloud fallback. Off if unset. |
+| `ENSEMBLY_CLOUD_CHECKS` | Truthy (`1`, `true`, `yes`, or `on`, any case) to allow cloud fallback. Off if unset or any other value. |
 | `ENSEMBLY_CLOUD_CHECK_CMD` | Command template; `{{prompt}}` is replaced. Required together with `ENSEMBLY_CLOUD_CHECKS=1`. Never inferred from `PATH`. |
 | `ENSEMBLY_LOCAL_LOCK` | Override the one-model lock path |
 | `ENSEMBLY_INFERENCE=local` | Selects the local backend (`ollama`, `llama.cpp`, and `mlx` are aliases) |
 
-`ENSEMBLY_*` is preferred; `PERAM_*` remains a one-release alias.
+Local checks read only `ENSEMBLY_*` variables. There is no legacy alias.
+
+The CLI `status` command reports `cloud_opted_in` (both the flag and a
+non-empty command are set), `cloud_cmd_set` (a command template is set),
+`cloud_checks` (the flag alone), and `cloud_status` (`off`,
+`cmd-set-flag-off`, `flag-set-cmd-missing`, or `opted-in`) so a set
+command is not mistaken for an active fallback.
+
+CLI JSON does not include model `raw` output (which can echo user content)
+unless you pass `--debug`.

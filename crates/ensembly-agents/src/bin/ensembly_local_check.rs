@@ -22,6 +22,9 @@ use std::time::Instant;
     about = "Fact classification and conflict checks (recorded fixtures or opt-in local models)"
 )]
 struct Cli {
+    /// Include model raw output in JSON. Off by default so user content is not echoed.
+    #[arg(long, global = true)]
+    debug: bool,
     #[command(subcommand)]
     cmd: Cmd,
 }
@@ -59,22 +62,22 @@ enum Cmd {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::Classify { text, id } => cmd_classify(text, id),
-        Cmd::Conflict { left, right, id } => cmd_conflict(left, right, id),
-        Cmd::Fixtures { dir, only } => cmd_fixtures(dir, only),
+        Cmd::Classify { text, id } => cmd_classify(text, id, cli.debug),
+        Cmd::Conflict { left, right, id } => cmd_conflict(left, right, id, cli.debug),
+        Cmd::Fixtures { dir, only } => cmd_fixtures(dir, only, cli.debug),
         Cmd::Status => cmd_status(),
     }
 }
 
-fn cmd_classify(text: Option<String>, id: Option<String>) -> Result<()> {
+fn cmd_classify(text: Option<String>, id: Option<String>, debug: bool) -> Result<()> {
     if live_models_enabled() {
         let statement = required_text(text)?;
         let checker = LocalChecker::from_env();
         print_result(
             checker
                 .classify(&statement)
-                .map(serialize_ok)
-                .map_err(serialize_err),
+                .map(|ok| serialize_ok(ok, debug))
+                .map_err(|err| serialize_err(err, debug)),
         )
     } else {
         let set = load_set(None)?;
@@ -83,11 +86,20 @@ fn cmd_classify(text: Option<String>, id: Option<String>) -> Result<()> {
         } else {
             set.classify(&required_text(text)?)
         };
-        print_result(result.map(serialize_ok).map_err(serialize_err))
+        print_result(
+            result
+                .map(|ok| serialize_ok(ok, debug))
+                .map_err(|err| serialize_err(err, debug)),
+        )
     }
 }
 
-fn cmd_conflict(left: Option<String>, right: Option<String>, id: Option<String>) -> Result<()> {
+fn cmd_conflict(
+    left: Option<String>,
+    right: Option<String>,
+    id: Option<String>,
+    debug: bool,
+) -> Result<()> {
     if live_models_enabled() {
         let left = left.context("--left is required for a live conflict check")?;
         let right = right.context("--right is required for a live conflict check")?;
@@ -95,8 +107,8 @@ fn cmd_conflict(left: Option<String>, right: Option<String>, id: Option<String>)
         print_result(
             checker
                 .conflict(&left, &right)
-                .map(serialize_ok)
-                .map_err(serialize_err),
+                .map(|ok| serialize_ok(ok, debug))
+                .map_err(|err| serialize_err(err, debug)),
         )
     } else {
         let set = load_set(None)?;
@@ -107,11 +119,15 @@ fn cmd_conflict(left: Option<String>, right: Option<String>, id: Option<String>)
             let right = right.context("--right is required")?;
             set.conflict(&left, &right)
         };
-        print_result(result.map(serialize_ok).map_err(serialize_err))
+        print_result(
+            result
+                .map(|ok| serialize_ok(ok, debug))
+                .map_err(|err| serialize_err(err, debug)),
+        )
     }
 }
 
-fn cmd_fixtures(dir: Option<PathBuf>, only: Option<String>) -> Result<()> {
+fn cmd_fixtures(dir: Option<PathBuf>, only: Option<String>, debug: bool) -> Result<()> {
     let root = match dir {
         Some(d) => d,
         None => fixture_root_from(&std::env::current_dir()?),
@@ -145,12 +161,12 @@ fn cmd_fixtures(dir: Option<PathBuf>, only: Option<String>) -> Result<()> {
         let result = if let Some(checker) = &checker {
             checker
                 .classify(&fixture.statement)
-                .map(serialize_ok)
-                .map_err(serialize_err)
+                .map(|ok| serialize_ok(ok, debug))
+                .map_err(|err| serialize_err(err, debug))
         } else {
             set.classify_by_id(&fixture.id)
-                .map(serialize_ok)
-                .map_err(serialize_err)
+                .map(|ok| serialize_ok(ok, debug))
+                .map_err(|err| serialize_err(err, debug))
         };
         let value = flatten(result);
         if value.get("ok") == Some(&json!(true)) {
@@ -166,12 +182,12 @@ fn cmd_fixtures(dir: Option<PathBuf>, only: Option<String>) -> Result<()> {
         let result = if let Some(checker) = &checker {
             checker
                 .conflict(&fixture.left, &fixture.right)
-                .map(serialize_ok)
-                .map_err(serialize_err)
+                .map(|ok| serialize_ok(ok, debug))
+                .map_err(|err| serialize_err(err, debug))
         } else {
             set.conflict_by_id(&fixture.id)
-                .map(serialize_ok)
-                .map_err(serialize_err)
+                .map(|ok| serialize_ok(ok, debug))
+                .map_err(|err| serialize_err(err, debug))
         };
         let value = flatten(result);
         if value.get("ok") == Some(&json!(true)) {
@@ -209,7 +225,8 @@ fn cmd_status() -> Result<()> {
         "conflict_model": cfg.conflict_model.as_ref().map(|p| ensembly_agents::local_checks::runtime::display_model(p)),
         "cloud_opted_in": cfg.cloud_opted_in(),
         "cloud_checks": cfg.cloud_checks,
-        "cloud_cmd_set": cfg.cloud_cmd.is_some(),
+        "cloud_cmd_set": cfg.cloud_cmd.as_ref().is_some_and(|c| !c.is_empty()),
+        "cloud_status": cloud_status(&cfg),
         "confidence_floor": cfg.confidence_floor,
         "available_bytes": available,
         "fixture_root": FIXTURE_ROOT,
@@ -236,26 +253,42 @@ fn required_text(text: Option<String>) -> Result<String> {
     Ok(buf)
 }
 
-fn serialize_ok<T: serde::Serialize>(ok: CheckSuccess<T>) -> Value {
-    json!({
+fn cloud_status(cfg: &ensembly_agents::local_checks::LocalCheckConfig) -> &'static str {
+    let cmd = cfg.cloud_cmd.as_ref().is_some_and(|c| !c.is_empty());
+    match (cfg.cloud_checks, cmd) {
+        (true, true) => "opted-in",
+        (false, true) => "cmd-set-flag-off",
+        (true, false) => "flag-set-cmd-missing",
+        (false, false) => "off",
+    }
+}
+
+fn serialize_ok<T: serde::Serialize>(ok: CheckSuccess<T>, debug: bool) -> Value {
+    let mut value = json!({
         "ok": true,
         "value": ok.value,
         "runtime": ok.source.runtime.as_str(),
         "model": ok.source.model,
         "fallback": ok.source.fallback.map(FallbackReason::as_str),
         "latency_ms": ok.latency.as_millis(),
-        "raw": ok.raw,
-    })
+    });
+    if debug {
+        value["raw"] = json!(ok.raw);
+    }
+    value
 }
 
-fn serialize_err(err: CheckFailure) -> Value {
-    json!({
+fn serialize_err(err: CheckFailure, debug: bool) -> Value {
+    let mut value = json!({
         "ok": false,
         "reason": err.reason.as_str(),
         "detail": err.detail,
         "latency_ms": err.latency.as_millis(),
-        "raw": err.raw,
-    })
+    });
+    if debug {
+        value["raw"] = json!(err.raw);
+    }
+    value
 }
 
 fn flatten(result: Result<Value, Value>) -> Value {

@@ -17,7 +17,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::env_alias::env_alias;
 use crate::local_checks::schema::{
     classify_system_prompt, classify_user_prompt, conflict_json_schema, conflict_system_prompt,
     conflict_user_prompt, fact_json_schema, parse_conflict_class, parse_fact_class, ConflictClass,
@@ -156,7 +155,7 @@ impl Default for LocalCheckConfig {
 
 impl LocalCheckConfig {
     pub fn from_env() -> Self {
-        let prefer = match env_alias("ENSEMBLY_LOCAL_RUNTIME", "PERAM_LOCAL_RUNTIME")
+        let prefer = match env_var("ENSEMBLY_LOCAL_RUNTIME")
             .unwrap_or_default()
             .to_ascii_lowercase()
             .as_str()
@@ -164,34 +163,29 @@ impl LocalCheckConfig {
             "mlx" => RuntimeKind::Mlx,
             _ => RuntimeKind::LlamaCpp,
         };
-        let floor = env_alias(
-            "ENSEMBLY_LOCAL_CONFIDENCE_MIN",
-            "PERAM_LOCAL_CONFIDENCE_MIN",
-        )
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(DEFAULT_CONFIDENCE_FLOOR);
+        let floor = env_var("ENSEMBLY_LOCAL_CONFIDENCE_MIN")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_CONFIDENCE_FLOOR);
         let timeout = Duration::from_secs(
-            env_alias("ENSEMBLY_LOCAL_TIMEOUT_SECS", "PERAM_LOCAL_TIMEOUT_SECS")
+            env_var("ENSEMBLY_LOCAL_TIMEOUT_SECS")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(DEFAULT_TIMEOUT_SECS),
         );
         Self {
-            llama_bin: env_path("ENSEMBLY_LLAMA_CLI", "PERAM_LLAMA_CLI")
-                .or_else(discover_llama_bin),
-            mlx_bin: env_path("ENSEMBLY_MLX_BIN", "PERAM_MLX_BIN").or_else(discover_mlx_bin),
-            classify_model: env_path("ENSEMBLY_CLASSIFY_MODEL", "PERAM_CLASSIFY_MODEL"),
-            conflict_model: env_path("ENSEMBLY_CONFLICT_MODEL", "PERAM_CONFLICT_MODEL"),
+            llama_bin: env_path("ENSEMBLY_LLAMA_CLI").or_else(discover_llama_bin),
+            mlx_bin: env_path("ENSEMBLY_MLX_BIN").or_else(discover_mlx_bin),
+            classify_model: env_path("ENSEMBLY_CLASSIFY_MODEL"),
+            conflict_model: env_path("ENSEMBLY_CONFLICT_MODEL"),
             cloud_checks: cloud_checks_enabled(),
             cloud_cmd: parse_cloud_cmd(),
             confidence_floor: floor,
             timeout,
             context: DEFAULT_CONTEXT,
             max_tokens: DEFAULT_MAX_TOKENS,
-            lock_path: env_path("ENSEMBLY_LOCAL_LOCK", "PERAM_LOCAL_LOCK")
-                .unwrap_or_else(default_lock_path),
+            lock_path: env_path("ENSEMBLY_LOCAL_LOCK").unwrap_or_else(default_lock_path),
             prefer,
             memory_retries: 8,
-            mlx_experimental: env_truthy("ENSEMBLY_MLX_EXPERIMENTAL", "PERAM_MLX_EXPERIMENTAL"),
+            mlx_experimental: env_truthy("ENSEMBLY_MLX_EXPERIMENTAL"),
         }
     }
 
@@ -201,14 +195,18 @@ impl LocalCheckConfig {
     }
 }
 
-fn env_path(primary: &str, legacy: &str) -> Option<PathBuf> {
-    env_alias(primary, legacy).map(PathBuf::from)
+fn env_path(name: &str) -> Option<PathBuf> {
+    env_var(name).map(PathBuf::from)
+}
+
+fn env_var(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|s| !s.is_empty())
 }
 
 fn parse_cloud_cmd() -> Option<Vec<String>> {
     // Never auto-detect a cloud binary. The command is used only when
     // `cloud_checks_enabled()` is also true.
-    let raw = env_alias("ENSEMBLY_CLOUD_CHECK_CMD", "PERAM_CLOUD_CHECK_CMD")?;
+    let raw = env_var("ENSEMBLY_CLOUD_CHECK_CMD")?;
     let parts = shell_split(&raw);
     if parts.is_empty() {
         None
@@ -337,17 +335,20 @@ fn discover_mlx_bin() -> Option<PathBuf> {
 
 /// Opt-in gate for live model processes. CI stays on recorded fixtures.
 pub fn live_models_enabled() -> bool {
-    env_truthy("ENSEMBLY_LOCAL_MODELS", "PERAM_LOCAL_MODELS")
+    env_truthy("ENSEMBLY_LOCAL_MODELS")
 }
 
 /// Opt-in gate for cloud fallback. Off unless set, even if a command is present.
 pub fn cloud_checks_enabled() -> bool {
-    env_truthy("ENSEMBLY_CLOUD_CHECKS", "PERAM_CLOUD_CHECKS")
+    env_truthy("ENSEMBLY_CLOUD_CHECKS")
 }
 
-fn env_truthy(primary: &str, legacy: &str) -> bool {
+/// True when `name` is set to `1`, `true`, `yes`, or `on` (ASCII case-insensitive).
+/// Any other value, including empty or unset, is false. Only `ENSEMBLY_*`
+/// names are read; there is no legacy alias.
+fn env_truthy(name: &str) -> bool {
     matches!(
-        env_alias(primary, legacy)
+        env_var(name)
             .unwrap_or_default()
             .to_ascii_lowercase()
             .as_str(),
