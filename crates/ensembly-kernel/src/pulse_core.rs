@@ -34,7 +34,7 @@ pub enum Severity {
     Fail,
 }
 
-/// A write the pulse core refuses to make; the CLI maps it to exit code 3.
+/// A write the pulse core refuses to make; the CLI maps it to exit code 7.
 #[derive(Debug)]
 pub struct RefusedWrite(pub String);
 
@@ -141,11 +141,32 @@ pub fn parse_ts(s: &str) -> Option<DateTime<Utc>> {
 
 // ---------------------------------------------------------------- read-only DB
 
-/// Open the pulse DB read-only. `query_only` is a second belt: any write errors.
+/// The read-only SQLite URI for a path: `file:` + percent-encoded path bytes (keeping
+/// `A-Z a-z 0-9 - . _ ~ /`, uppercase hex) + `?mode=ro`. Relative paths stay relative.
+/// The Python checker (`scripts/pulse/pulse_pack_check.py ro-uri`) builds the same string.
+pub fn ro_uri(path: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut out = String::from("file:");
+    for &b in path.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~' | b'/') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out.push_str("?mode=ro");
+    out
+}
+
+/// Open the pulse DB read-only: the `mode=ro` URI from [`ro_uri`] with
+/// `SQLITE_OPEN_READ_ONLY | SQLITE_OPEN_URI`, then `PRAGMA query_only = ON` as a
+/// second belt, so any write errors. A missing DB is an error and is not created.
 pub fn open_ro(path: &Path) -> Result<Connection> {
     let conn = Connection::open_with_flags(
-        path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        ro_uri(path),
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .with_context(|| format!("open read-only {}", path.display()))?;
     conn.execute_batch("PRAGMA query_only = ON;")?;
@@ -163,6 +184,10 @@ pub struct DbStats {
     pub locked: i64,
     pub unresolved_conflicts: i64,
     pub dangling_superseded: Vec<String>,
+    /// `tool-verified` rows whose `verify_hash` is missing or does not pin the snippet.
+    pub unpinned_verified: Vec<String>,
+    /// Supersessions stopped at `intent` or `applied`, as `old -> new (phase)`.
+    pub half_supersessions: Vec<String>,
 }
 
 pub fn db_stats(conn: &Connection) -> Result<DbStats> {
@@ -205,7 +230,59 @@ pub fn db_stats(conn: &Connection) -> Result<DbStats> {
     s.dangling_superseded = st
         .query_map([], |r| r.get::<_, String>(0))?
         .collect::<std::result::Result<_, _>>()?;
+    s.unpinned_verified = unpinned_verified(conn)?;
+    s.half_supersessions = half_supersessions(conn)?;
     Ok(s)
+}
+
+/// Keys of `tool-verified` rows with no evidence pin: `verify_hash` is NULL, empty, or
+/// not `sha256:<hex>` of the snippet. Sorted by key bytes.
+pub fn unpinned_verified(conn: &Connection) -> Result<Vec<String>> {
+    let mut st = conn.prepare(
+        "SELECT nat_key, snippet, verify_hash FROM memory_traces \
+         WHERE status = 'tool-verified' ORDER BY nat_key",
+    )?;
+    let rows = st.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, Option<String>>(2)?,
+        ))
+    })?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (key, snippet, hash) = row?;
+        if hash.as_deref() != Some(crate::pulse_pack::canonical::content_hash(&snippet).as_str()) {
+            out.push(key);
+        }
+    }
+    Ok(out)
+}
+
+/// Supersessions that stopped at `intent` or `applied`, as `old -> new (phase)`.
+/// Empty when the store has no `supersession_events` table.
+pub fn half_supersessions(conn: &Connection) -> Result<Vec<String>> {
+    let has: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'supersession_events'",
+        [],
+        |r| r.get(0),
+    )?;
+    if has == 0 {
+        return Ok(Vec::new());
+    }
+    let mut st = conn.prepare(
+        "SELECT old_key, new_key, phase FROM supersession_events \
+         WHERE phase IN ('intent', 'applied') ORDER BY old_key, new_key",
+    )?;
+    let rows = st.query_map([], |r| {
+        Ok(format!(
+            "{} -> {} ({})",
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?
+        ))
+    })?;
+    Ok(rows.collect::<std::result::Result<_, _>>()?)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -766,6 +843,26 @@ fn check_db_stats(cfg: &PulseCfg, f: &mut Findings, s: &DbStats) -> Option<i64> 
             format!(
                 "superseded_by points nowhere for: {}",
                 s.dangling_superseded.join(", ")
+            ),
+        );
+    }
+    if !s.unpinned_verified.is_empty() {
+        f.add(
+            "db.evidence",
+            Severity::Warn,
+            format!(
+                "tool-verified without a matching verify_hash: {}",
+                s.unpinned_verified.join(", ")
+            ),
+        );
+    }
+    if !s.half_supersessions.is_empty() {
+        f.add(
+            "db.supersession",
+            Severity::Warn,
+            format!(
+                "supersession stopped before verified (rerun the same supersede): {}",
+                s.half_supersessions.join(", ")
             ),
         );
     }

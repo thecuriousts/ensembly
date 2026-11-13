@@ -116,6 +116,7 @@ cargo run -p ensembly-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.
 | **Pulse core** | `ensembly pulse check\|read\|list\|history\|supersede\|admit\|conflict resolve\|missions` | Check and read stay read-only. `list` is live memory (`kind = memory`, `superseded_by` empty). `history` reads the archive chain. `supersede`, `admit --supersedes`, and `conflict resolve` record supersession (source, time, reason, writer) and keep the old row. Exit 0 ok, 1 warn, 2 fail, 7 refused write (audit keeps 3 for flag) |
 | **Company audit** | `ensembly apps audit validate\|append\|export\|status` | Scam-risk gate before packs/applications; exit 0/3/4/5; see [COMPANY-AUDIT.md](COMPANY-AUDIT.md) |
 | Pulse pack | `pulse-pack export` | Portable memory + archive events |
+| **Pulse canon** | `ensembly pulse canon [PACK \| --from-db]` · `pulse pack-check PACK` | One canonical pack (`pulse-pack-v1`, canon 1); reads Python and Rust packs; store opened `mode=ro` + `query_only`. Spec: [spec/PULSE-PACK-SPEC.md](spec/PULSE-PACK-SPEC.md) |
 | Ops bundle | `ops-bundle` | Full ops snapshot (canonical host only) |
 
 Legacy Node turn/graph IR lives in `prototype/` — not maintained at root.

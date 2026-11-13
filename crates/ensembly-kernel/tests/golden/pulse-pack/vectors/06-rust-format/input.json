@@ -1,0 +1,48 @@
+{
+  "format": "ensembly-pulse-pack-v1",
+  "exported_at": "2026-11-13T12:00:00Z",
+  "source_host": "laptop-1",
+  "pack_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "memory_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "memory_traces": [
+    {
+      "nat_key": "demo/rust-a",
+      "ts": "2026-11-01T09:00:00Z",
+      "kind": "observation",
+      "content": "rust string content",
+      "coherence": 0.7,
+      "agent_id": "demo-agent",
+      "metadata": {
+        "tag": "demo"
+      },
+      "admitted_at": "2026-11-01T09:05:00Z"
+    },
+    {
+      "nat_key": "demo/rust-b",
+      "ts": "2026-11-01T10:00:00Z",
+      "kind": "decision",
+      "content": {
+        "b": [
+          1,
+          2
+        ],
+        "a": "x"
+      },
+      "coherence": 0.0005,
+      "agent_id": "demo-agent",
+      "metadata": {},
+      "admitted_at": "2026-11-01T10:00:00Z"
+    }
+  ],
+  "archive_events": [
+    {
+      "nat_key": "demo/evt-1",
+      "ts": "2026-11-01T11:00:00Z",
+      "kind": "audit",
+      "payload": {
+        "ok": true
+      }
+    }
+  ],
+  "memory_crdt": null
+}
