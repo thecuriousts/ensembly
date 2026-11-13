@@ -3,6 +3,12 @@
 //! The decider is not live. Proposals wait for an operator confirm or
 //! override. Timeout writes `expired` and takes no action. Writes go
 //! through [`crate::KernelWriter`] only.
+//!
+//! [`fit`] and [`pick_band`] are public so tests and tooling can call them,
+//! but they fit on whatever rows they are given. Passing held-out (or val)
+//! rows into either leaks the evaluation set into the weights and the
+//! threshold band. The eval path ([`run_eval`]) already restricts fitting
+//! to labelled train rows; do not call these entry points on a mixed split.
 
 pub mod eval;
 pub mod gate;

@@ -78,6 +78,16 @@ fn held_out_metrics_are_omitted_when_labels_are_missing() {
 }
 
 #[test]
+fn synthetic_eval_json_carries_a_fixture_disclaimer() {
+    let rows = load_labels(&fixture_labels()).unwrap();
+    let report = run_eval(&rows, &FlagList::default(), 0.90).unwrap();
+    let note = report.fixture_disclaimer.as_deref().unwrap();
+    assert!(note.contains("synthetic fixture"), "{note}");
+    assert!(note.contains("invented labels"), "{note}");
+    assert!(note.contains("not operator-held-out"), "{note}");
+}
+
+#[test]
 fn flipping_held_out_labels_does_not_change_the_band() {
     let rows = load_labels(&fixture_labels()).unwrap();
     let a = run_eval(&rows, &FlagList::default(), 0.90).unwrap();

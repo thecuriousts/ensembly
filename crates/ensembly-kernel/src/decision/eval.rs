@@ -62,6 +62,10 @@ pub struct EvalReport {
     pub trained_on: usize,
     pub band: super::model::Band,
     pub splits: Vec<SplitReport>,
+    /// Set when any input row is a synthetic fixture, so JSON output cannot
+    /// be mistaken for operator-held-out claims.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fixture_disclaimer: Option<String>,
 }
 
 pub fn load_labels(path: &Path) -> anyhow::Result<Vec<LabelRow>> {
@@ -95,6 +99,14 @@ pub fn run_eval(
         .into_iter()
         .map(|bucket| report_split(rows, bucket, &model, flags))
         .collect();
+    let fixture_disclaimer = if rows.iter().any(|r| r.provenance == "synthetic-fixture") {
+        Some(
+            "synthetic fixture with invented labels; metrics are not operator-held-out claims and are not a claim of real accuracy"
+                .into(),
+        )
+    } else {
+        None
+    };
     Ok(EvalReport {
         triage_question: TRIAGE_QUESTION.into(),
         claim: "No accuracy is claimed on unlabelled rows or on rows used to pick the threshold."
@@ -102,6 +114,7 @@ pub fn run_eval(
         trained_on: model.trained_on,
         band: model.band.clone(),
         splits,
+        fixture_disclaimer,
     })
 }
 
@@ -207,5 +220,36 @@ fn from_answered(m: &AnsweredMetrics) -> MetricJson {
             high: w.high,
         }),
         expected_calibration_error: m.expected_calibration_error,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::decision::model::Band;
+
+    #[test]
+    fn fixture_disclaimer_is_present_in_synthetic_json() {
+        let report = EvalReport {
+            triage_question: "q".into(),
+            claim: "c".into(),
+            trained_on: 0,
+            band: Band {
+                t_skip: 0.3,
+                t_apply: 0.7,
+            },
+            splits: vec![],
+            fixture_disclaimer: Some(
+                "synthetic fixture with invented labels; metrics are not operator-held-out claims and are not a claim of real accuracy"
+                    .into(),
+            ),
+        };
+        let json = serde_json::to_value(&report).unwrap();
+        let field = json
+            .get("fixture_disclaimer")
+            .and_then(|v| v.as_str())
+            .expect("fixture_disclaimer missing from JSON");
+        assert!(field.contains("synthetic fixture"), "{field}");
+        assert!(field.contains("invented labels"), "{field}");
     }
 }

@@ -169,4 +169,30 @@ mod tests {
         assert_eq!(m.apply_precision, None);
         assert_eq!(m.n, 0);
     }
+
+    #[test]
+    fn wilson_n_zero_is_none() {
+        assert!(wilson(0, 0, 1.96).is_none());
+        assert!(wilson(1, 0, 1.96).is_none());
+    }
+
+    #[test]
+    fn wilson_p_zero_is_clamped() {
+        let w = wilson(0, 10, 1.96).unwrap();
+        assert_eq!(w.successes, 0);
+        assert_eq!(w.n, 10);
+        assert!((w.estimate - 0.0).abs() < 1e-12);
+        assert!(w.low >= 0.0);
+        assert!(w.high > 0.0 && w.high < 1.0);
+    }
+
+    #[test]
+    fn wilson_p_one_is_clamped() {
+        let w = wilson(10, 10, 1.96).unwrap();
+        assert_eq!(w.successes, 10);
+        assert_eq!(w.n, 10);
+        assert!((w.estimate - 1.0).abs() < 1e-12);
+        assert!(w.high <= 1.0);
+        assert!(w.low > 0.0 && w.low < 1.0);
+    }
 }

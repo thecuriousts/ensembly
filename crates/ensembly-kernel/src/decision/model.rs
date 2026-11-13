@@ -156,6 +156,11 @@ pub fn decide_from_p(p: f64, gate: &GateResult, band: &Band) -> ModelDecision {
 }
 
 /// Fit mean/std and L2 logistic weights on labelled train rows only.
+///
+/// This function does not check the split. Passing held-out or validation
+/// rows here leaks the evaluation set into the weights and the band.
+/// Callers must pass labelled train rows only; [`super::run_eval`] already
+/// does that.
 pub fn fit(rows: &[&LabelRow], flags: &FlagList, target_prec: f64) -> Result<FittedModel, String> {
     if rows.is_empty() {
         return Err("train set is empty".into());
@@ -246,6 +251,10 @@ pub fn fit(rows: &[&LabelRow], flags: &FlagList, target_prec: f64) -> Result<Fit
 }
 
 /// Choose (t_skip, t_apply) on the given labelled rows only.
+///
+/// Like [`fit`], this has no split check. Passing held-out scores here
+/// moves the band. Callers must pass train (or a dedicated tuning set)
+/// only; [`super::run_eval`] already does that.
 pub fn pick_band(y: &[f64], p: &[f64], gates: &[GateResult], target_prec: f64) -> Band {
     let mut best: Option<(i32, i32, i32, i32, i32, Band)> = None;
     let mut t_apply = 0.50;

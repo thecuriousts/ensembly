@@ -12,7 +12,13 @@ operator.
 - Schema and types in `ensembly-schema` (`LabelRow`, `DecisionEvent`, frozen
   `assign_split`).
 - A scam-gate that runs first and is never learned. Fixture flags use
-  `*.example.test` only.
+  `*.example.test` only. Listed domains are matched on the posting URL
+  host and on hosts extracted from the posting text (case-insensitive,
+  trailing dots stripped, subdomains included). Hard cues fail and skip
+  after normalisation (NFKC, format/zero-width stripped, whitespace
+  collapsed, lowercased, common lookalikes mapped). Soft cues
+  (`Uncertain`) abstain: they are not a hard fail and do not skip the
+  posting; the model defers to the operator.
 - A transparent feature model and an untuned keyword baseline. Weights and
   the abstain band are fit on train only.
 - Propose-and-wait through `KernelWriter`. Raw event-log writes are
@@ -24,7 +30,14 @@ operator.
 
 Held-out precision and accuracy, with a Wilson interval, are reported
 only after the operator's held-out rows are labelled. Until then the
-report says so and makes no accuracy claim.
+report says so and makes no accuracy claim. Eval JSON on a synthetic
+fixture includes a `fixture_disclaimer` so those metrics cannot be
+mistaken for operator-held-out claims.
+
+`fit` and `pick_band` are public for tests and tooling, but they fit on
+whatever rows they are given. Passing held-out rows into either is a
+misuse; `decision eval` already restricts fitting to labelled train
+rows.
 
 ## Statechart (written for this crate)
 
