@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Install flowingstack and the CLI into a fresh HOME and CLAUDE_CONFIG_DIR, then run both doctors.
+# Exit 0 green, 1 a step failed, 2 bad arguments. Needs cargo, git, python3 and claude on PATH.
+set -euo pipefail
+[[ $# -eq 1 ]] || { echo "usage: clean-profile WORKDIR" >&2; exit 2; }
+work=$1
+[[ ! -e $work ]] || { echo "$work: must not exist" >&2; exit 2; }
+repo=$(cd "$(dirname "$0")/.." && pwd)
+plugin=marketplaces/cursor/flowingstack
+claude=$(command -v claude) || { echo "claude not on PATH" >&2; exit 2; }
+mkdir -p "$work/home" "$work/market/.claude-plugin"
+home=$(cd "$work/home" && pwd)
+market=$(cd "$work/market" && pwd)
+
+step() { printf '== %s\n' "$*"; }
+fail() { printf 'fail %s\n' "$*" >&2; exit 1; }
+
+step "build CLI"
+cargo install --quiet --locked --debug --path "$repo/crates/ensembly-kernel" --bin ensembly --root "$home/.local"
+
+export HOME=$home CLAUDE_CONFIG_DIR=$home/.claude PATH=$home/.local/bin:$PATH
+export DISABLE_AUTOUPDATER=1 CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 GIT_TERMINAL_PROMPT=0
+[[ ! -e $CLAUDE_CONFIG_DIR ]] || fail "profile not clean"
+
+step "claude plugin validate"
+"$claude" --version
+"$claude" plugin validate --strict "$repo/$plugin"
+
+step "local marketplace from committed files"
+git -C "$repo" archive HEAD "$plugin" | tar -x -C "$market"
+mv "$market/$plugin" "$market/flowingstack"
+version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$market/flowingstack/.claude-plugin/plugin.json")
+cat > "$market/.claude-plugin/marketplace.json" <<JSON
+{"name": "ensembly-ci", "owner": {"name": "thecuriousts"}, "metadata": {"description": "Clean-profile CI only"},
+ "plugins": [{"name": "flowingstack", "source": "./flowingstack", "version": "$version"}]}
+JSON
+"$claude" plugin validate --strict "$market"
+"$claude" plugin marketplace add "$market"
+"$claude" plugin install flowingstack@ensembly-ci
+installed=$("$claude" plugin list --json | python3 -c '
+import json, sys
+rows = [r for r in json.load(sys.stdin) if r["id"] == "flowingstack@ensembly-ci" and r["enabled"]]
+print(rows[0]["version"], rows[0]["installPath"]) if rows else sys.exit("flowingstack@ensembly-ci not installed")')
+read -r got path <<<"$installed"
+[[ $got == "$version" ]] || fail "installed $got, manifest $version"
+
+step "cursor local plugin link"
+mkdir -p "$HOME/.cursor/plugins/local"
+ln -s "$market/flowingstack" "$HOME/.cursor/plugins/local/flowingstack"
+
+expect() {
+  local out=$1; shift
+  for line in "$@"; do
+    grep -qxF -- "$line" <<<"$out" || fail "missing line: $line"
+  done
+}
+
+step "flowingstack doctor"
+out=$("$path/bin/flowingstack-doctor") || fail "flowingstack doctor exit $?"
+printf '%s\n' "$out"
+expect "$out" "flowingstack $version" "harness claude-code flowingstack@ensembly-ci $version user" "harness cursor flowingstack $version"
+out=$(FLOWINGSTACK_DOCTOR_REMOTE=https://127.0.0.1:9/none.git "$path/bin/flowingstack-doctor") || fail "flowingstack doctor offline exit $?"
+expect "$out" "latest offline"
+
+step "ensembly doctor"
+cd "$work"
+out=$(ensembly --no-memory doctor) || fail "ensembly doctor exit $?"
+printf '%s\n' "$out"
+expect "$out" "plugin claude-code flowingstack@ensembly-ci $version" "plugin cursor flowingstack $version" "ops-db absent"
+out=$(ENSEMBLY_DOCTOR_REMOTE=https://127.0.0.1:9/none.git ensembly --no-memory doctor) || fail "ensembly doctor offline exit $?"
+expect "$out" "latest offline"
+step "green"

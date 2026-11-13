@@ -13,6 +13,7 @@ use ensembly_kernel::channel_pulse::{
     DEFAULT_CHANNEL_PULSE_PATH,
 };
 use ensembly_kernel::digital_flow::{run_cycle, DigitalFlow};
+use ensembly_kernel::doctor;
 use ensembly_kernel::memory_sink::MemorySink;
 use ensembly_kernel::msg_bus::ManualCmd;
 use ensembly_kernel::paths::{
@@ -180,6 +181,14 @@ enum MissionsCmd {
 enum Commands {
     /// Print kernel version + law banner
     Version,
+    /// Versions, harness and plugin state. Exit 0 healthy or offline, 1 broken install or store, 2 usage.
+    Doctor {
+        /// Skip the latest-tag lookup.
+        #[arg(long)]
+        offline: bool,
+        #[arg(long)]
+        json: bool,
+    },
     /// Build FocusPlan (next body + next auth) from fixture actions + durable snapshot
     Turn {
         /// JSON fixture path with extra_candidates (state-sample shape)
@@ -987,6 +996,7 @@ struct Ctx {
 fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
     match cmd {
         Commands::Version => cmd_version(),
+        Commands::Doctor { offline, json } => cmd_doctor(&ctx.db_path, offline, json),
         Commands::MigrateLocalPaths {
             dry_run,
             root,
@@ -1112,6 +1122,16 @@ fn cmd_version() -> Result<()> {
     println!("private_paths: {:?}", private_path_patterns());
     println!("law: Node src/* legacy; ensembly-kernel is control SoT");
     Ok(())
+}
+
+fn cmd_doctor(db: &std::path::Path, offline: bool, json: bool) -> Result<()> {
+    let report = doctor::run(&doctor::Opts::from_env(db.to_path_buf(), offline));
+    if json {
+        print_json(&report)?;
+    } else {
+        println!("{}", report.render());
+    }
+    std::process::exit(report.exit_code());
 }
 
 fn cmd_migrate(dry_run: bool, root: Option<PathBuf>, json: bool) -> Result<()> {

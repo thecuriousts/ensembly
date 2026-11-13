@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Release tags are NAME--vX.Y.Z and must equal the shipped version.
+
+Exit 0 consistent, 1 mismatch, 2 unreadable manifest or bad arguments.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tomllib
+
+PRODUCTS = {
+    "flowingstack": {
+        "manifests": ["marketplaces/cursor/flowingstack/.cursor-plugin/plugin.json",
+                      "marketplaces/cursor/flowingstack/.claude-plugin/plugin.json"],
+        "paths": ["marketplaces/cursor/flowingstack"],
+    },
+    "ensembly": {
+        "manifests": ["marketplaces/grokbot/ensembly/plugin.json"],
+        "paths": ["marketplaces/grokbot/ensembly"],
+    },
+    "ensembly-cli": {
+        "manifests": ["crates/ensembly-kernel/Cargo.toml"],
+        "paths": ["crates", "Cargo.toml", "Cargo.lock"],
+    },
+}
+SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+class Unreadable(Exception):
+    pass
+
+
+def read_version(repo, rel):
+    p = os.path.join(repo, rel)
+    try:
+        with open(p, "rb") as f:
+            raw = f.read()
+        if rel.endswith(".toml"):
+            v = tomllib.loads(raw.decode())["package"]["version"]
+        else:
+            v = json.loads(raw)["version"]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise Unreadable(f"{rel}: {e.__class__.__name__}") from e
+    if not isinstance(v, str) or not SEMVER.match(v):
+        raise Unreadable(f"{rel}: version {v!r} is not X.Y.Z")
+    return v
+
+
+def git(repo, *args):
+    return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
+
+
+def tags(repo, name):
+    out = git(repo, "tag", "--list", f"{name}--v*").stdout.split()
+    return sorted((tuple(int(x) for x in t.split("--v", 1)[1].split(".")), t)
+                  for t in out if SEMVER.match(t.split("--v", 1)[1]))
+
+
+def check(repo, name, spec):
+    errs = []
+    versions = {rel: read_version(repo, rel) for rel in spec["manifests"]}
+    if len(set(versions.values())) > 1:
+        errs.append(f"{name}: manifests disagree " + " ".join(f"{k}={v}" for k, v in versions.items()))
+        return None, errs
+    v = next(iter(versions.values()))
+    tag = f"{name}--v{v}"
+    known = tags(repo, name)
+    if known and known[-1][0] > tuple(int(x) for x in v.split(".")):
+        errs.append(f"{name}: version {v} is behind tag {known[-1][1]}")
+    if any(t == tag for _, t in known):
+        if git(repo, "diff", "--quiet", tag, "HEAD", "--", *spec["paths"]).returncode != 0:
+            errs.append(f"{name}: changed since {tag}; bump version")
+        state = "released"
+    else:
+        state = "unreleased"
+    print(f"{name} {v} {tag} {state}")
+    return v, errs
+
+
+def main():
+    a = argparse.ArgumentParser()
+    a.add_argument("--repo", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    a.add_argument("--tag", help="release tag being cut, NAME--vX.Y.Z")
+    o = a.parse_args()
+    errs, versions = [], {}
+    try:
+        for name, spec in PRODUCTS.items():
+            v, e = check(o.repo, name, spec)
+            versions[name] = v
+            errs += e
+    except Unreadable as e:
+        print(f"unreadable {e}", file=sys.stderr)
+        return 2
+    if o.tag:
+        name, sep, v = o.tag.partition("--v")
+        if not sep or name not in PRODUCTS:
+            errs.append(f"{o.tag}: not a product tag; use one of " + ", ".join(f"{n}--vX.Y.Z" for n in PRODUCTS))
+        elif v != versions[name]:
+            errs.append(f"{o.tag}: tag {v} differs from {name} version {versions[name]}")
+    for e in errs:
+        print(f"fail {e}", file=sys.stderr)
+    return 1 if errs else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

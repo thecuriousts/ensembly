@@ -76,7 +76,28 @@ A10 model-rule fix names /setup-pstack; doctor does not write that file
 |---|---|
 | `scripts/doctor --project P --plugins-dir D` | report, exit 0 or 1 |
 | `scripts/doctor --project P --init` | `next:` first required fix or `next: none`, tree unchanged |
+| `bin/flowingstack-doctor` | versions, harness and plugin state, exit 0, 1 or 2 |
+| `bin/flowingstack-doctor --offline` | same, latest-tag lookup skipped |
 | `python3 -m unittest discover -s test -p 'test_doctor*'` | green |
+
+## Rails mode
+
+`bin/flowingstack-doctor` runs `scripts/doctor --rails`. It reads, never writes.
+
+| Line | Meaning |
+|---|---|
+| `flowingstack X.Y.Z` | version in `.cursor-plugin/plugin.json` |
+| `manifest claude X.Y.Z` | `.claude-plugin/plugin.json`, must match |
+| `tool NAME V` or `missing` | git, python3, claude, cursor-agent |
+| `harness claude-code KEY V SCOPE` | entry in `$CLAUDE_CONFIG_DIR/plugins/installed_plugins.json` |
+| `harness cursor flowingstack V` | plugin under `~/.cursor/plugins` |
+| `latest flowingstack--vX.Y.Z`, `none`, `offline`, `skipped` | newest release tag on the remote |
+
+| Exit | When |
+|---|---|
+| 0 | healthy, including offline and missing optional tools |
+| 1 | manifests disagree, `installed_plugins.json` unreadable, or an install path is gone |
+| 2 | `.cursor-plugin/plugin.json` unreadable, or bad arguments |
 
 ## Notes
 

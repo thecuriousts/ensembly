@@ -10,6 +10,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from overlay import merge_rows, user_path
 from rootpath import plugin_root
+import rails
 
 COLS = ["name", "required", "kind", "arg", "fix"]
 KINDS = {"file", "glob", "verify", "regex", "plugin", "disk"}
@@ -132,7 +133,11 @@ def main():
     a.add_argument("--ci-status")
     a.add_argument("--disk-percent", type=float)
     a.add_argument("--init", action="store_true")
+    a.add_argument("--rails", action="store_true", help="versions, harness and plugin state")
+    a.add_argument("--offline", action="store_true", help="skip the latest-tag lookup")
     o = a.parse_args()
+    if o.rails:
+        return rails.run(o.offline)
     u = shutil.disk_usage(o.project)
     disk = o.disk_percent if o.disk_percent is not None else 100 * u.used / u.total
     rows = load_checks(os.path.join(plugin_root(), "doctor.tsv"))

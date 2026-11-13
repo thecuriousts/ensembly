@@ -1,0 +1,52 @@
+name: rails
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+    tags: ["*--v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rails-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CLAUDE_CODE_VERSION: 2.1.323
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: version-check tests
+        run: python3 -m unittest discover -s scripts -p 'test_version_check.py'
+      - name: versions match tags
+        run: scripts/version-check
+      - name: release tag equals version
+        if: github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/version-check --tag "$TAG"
+
+  clean-profile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Claude Code CLI, no login
+        run: |
+          npm install --prefix "$RUNNER_TEMP/cc" --no-audit --no-fund "@anthropic-ai/claude-code@$CLAUDE_CODE_VERSION"
+          echo "$RUNNER_TEMP/cc/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: install into a fresh HOME and CLAUDE_CONFIG_DIR, run doctor
+        run: scripts/clean-profile "$RUNNER_TEMP/profile"

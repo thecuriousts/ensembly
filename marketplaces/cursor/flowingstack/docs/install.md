@@ -26,5 +26,8 @@ flowchart TD
 |---|---|---|
 | install | Cursor marketplace | entry has fields past name source description |
 | setup | `scripts/doctor --project .` | required item missing |
+| rails | `bin/flowingstack-doctor` | manifests disagree or an install is broken; offline exits 0 |
 | sync | `scripts/sync-from-upstream` | drift, bad pin or source |
 | check | `scripts/check` | any check fails |
+
+Each release tag reads `flowingstack--vX.Y.Z`, the format `claude plugin tag` writes. The tag must equal `version` in both `.cursor-plugin/plugin.json` and `.claude-plugin/plugin.json`; Claude Code caches by `version`, so every release bumps it.
