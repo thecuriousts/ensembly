@@ -46,8 +46,23 @@ operator.
   Cue matching also runs on an HTML-tag-stripped view, a view that
   turns punctuation between letters or words (`-`, `.`, `/`, `_`)
   into a space and joins single-letter runs (`w.i.r.e` → `wire`),
-  and a separate leet-fold view (`1→i`, `0→o`, `3→e`, `4→a`, `5→s`,
-  `7→t`). Before that join, every Unicode Dash_Punctuation (`Pd`)
+  a separate leet-fold view (`1→i`, `0→o`, `3→e`, `4→a`, `5→s`,
+  `7→t`), and a junk-as-separator view derived from the fixed
+  point and from the raw text. That view replaces every escape-shaped token with a space
+  (for cues) or, in a second host view, with `.`, whether or not the
+  token decodes: `&#` decimal and hex references (including invalid
+  scalars such as surrogates and values above U+10FFFF, which become
+  U+FFFD and then a space or `.`), named entities
+  (`&` + a letter + alphanumerics, optional `;`, including unknown
+  names such as `&zzzzz;` and `&NDASH;`), and `%` plus up to two
+  non-whitespace characters. The junk view is used only for hard-cue
+  and flag-host matching, never for the depth-residual rule, so
+  ordinary text (`R&D`, `AT&T`, `Q&A`, `50% off`, `a && b`, utm
+  `%20` URLs, ordinary job-ad HTML) does not trip
+  `encoding-depth-exceeded`. The decoder itself stays case-sensitive:
+  `&NDASH;` is not folded to `&ndash;`, but it is an unknown name
+  and so fails on the cue via the junk-as-separator view. Cues must
+  still be whole multi-word phrases after the replacement. Before the punctuation-join, every Unicode Dash_Punctuation (`Pd`)
   code point plus minus (`U+2212`), hyphen bullet (`U+2043`) and
   the small/fullwidth hyphens (`U+FE63`, `U+FF0D`) folds to ASCII
   `-`; every Space_Separator (`Zs`) folds to a space; and slash

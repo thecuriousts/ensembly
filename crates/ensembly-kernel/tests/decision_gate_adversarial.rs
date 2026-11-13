@@ -6,8 +6,10 @@
 //! entities (including ndash/mdash/minus/hyphen/nbsp, with and without a
 //! semicolon, ZWSP-split names, and double-encoded forms) and negative
 //! cases. ZWJ (U+200D) and ZWNJ (U+200C) are format characters and are
-//! documented in the matrix below. `&NDASH;` is case-sensitive and is
-//! an intended pass.
+//! documented in the matrix below. `&NDASH;` is not a WHATWG name
+//! (the decoder stays case-sensitive and will not fold it to `&ndash;`)
+//! but the junk-as-separator cue view treats unknown names as
+//! separators, so `wire&NDASH;money today` is a hard fail.
 //! Fixtures are synthetic (`*.example.test` only).
 
 use ensembly_kernel::decision::{
@@ -587,13 +589,57 @@ fn matrix() -> Vec<Case> {
             body: "see also jobs-board.example.test",
             want: pass,
         },
-        // &NDASH; is not a WHATWG name (names are case-sensitive). This
-        // pass is intended: the gate must not fold the name to &ndash;.
+        // &NDASH; is not a WHATWG name (the decoder stays case-sensitive
+        // and will not fold it to &ndash;). The junk-as-separator view
+        // still treats the unknown name as a cue separator, so this is
+        // a hard fail.
         Case {
-            name: "uppercase NDASH entity is not a hard cue",
+            name: "uppercase NDASH entity is a junk-as-separator hard cue",
             url: "https://jobs.example.test/posting/1",
             body: "wire&NDASH;money today",
-            want: pass,
+            want: fail,
+        },
+        Case {
+            name: "surrogate numeric entity is a junk-as-separator hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire&#xD800;money today",
+            want: fail,
+        },
+        Case {
+            name: "overflow numeric entity is a junk-as-separator hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire&#99999999;money today",
+            want: fail,
+        },
+        Case {
+            name: "non-hex numeric entity is a junk-as-separator hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire&#xZZ;money today",
+            want: fail,
+        },
+        Case {
+            name: "truncated percent escape is a junk-as-separator hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire%2money today",
+            want: fail,
+        },
+        Case {
+            name: "non-hex percent escape is a junk-as-separator hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire%G1money today",
+            want: fail,
+        },
+        Case {
+            name: "unknown named entity is a junk-as-separator hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire&zzzzz; money today",
+            want: fail,
+        },
+        Case {
+            name: "unknown named entity between flag-host labels fails",
+            url: "https://jobs.example.test/posting/1",
+            body: "see phish&zzzzz;example.test",
+            want: fail,
         },
         Case {
             name: "R&D is not a hard cue",
@@ -623,6 +669,24 @@ fn matrix() -> Vec<Case> {
             name: "ordinary job-ad HTML with R&amp;D is not a hard cue",
             url: "https://jobs.example.test/posting/1",
             body: "<p>R&amp;D engineer in Stockholm</p>",
+            want: pass,
+        },
+        Case {
+            name: "50% off is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "50% off relocation bonus",
+            want: pass,
+        },
+        Case {
+            name: "a && b is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "a && b are both required skills",
+            want: pass,
+        },
+        Case {
+            name: "utm percent-20 URL is not a flagged host",
+            url: "https://jobs.example.test/posting/1?utm_source=board&utm_medium=email%20list",
+            body: "staff engineer, rust and systems",
             want: pass,
         },
     ]

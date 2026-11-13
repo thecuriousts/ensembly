@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 use super::normalize::{
-    extend_cue_views, extract_hosts, flag_matches, host_from_url_views, views_with_canon,
+    extend_cue_views, extract_hosts, flag_matches, host_from_url_views, junk_dotted_forms,
+    views_with_canon,
 };
 
 pub const GATE_REASON: &str = "scam-gate";
@@ -111,6 +112,13 @@ pub fn audit(url: &str, posting_text: &str, flags: &FlagList) -> GateResult {
     for view in &views {
         hosts.extend(extract_hosts(view));
     }
+    // Junk-as-separator host views of the fixed point: an unknown or
+    // malformed entity between labels becomes '.' so a flag host
+    // hidden as phish&zzzzz;example.test still matches. Not used for
+    // the depth-residual rule.
+    for src in junk_dotted_forms(&canon, &blob) {
+        hosts.extend(extract_hosts(&src));
+    }
     if flags
         .flags
         .iter()
@@ -118,7 +126,7 @@ pub fn audit(url: &str, posting_text: &str, flags: &FlagList) -> GateResult {
     {
         return fail();
     }
-    let cue_views = extend_cue_views(&blob, views);
+    let cue_views = extend_cue_views(&blob, views, &canon);
     if cue_views.iter().any(|v| cue_fail().is_match(v)) {
         return fail();
     }
@@ -462,11 +470,17 @@ mod tests {
             g.reason
         );
         assert_ne!(g.verdict, GateVerdict::Pass);
-        // Deep wraps that outrun the cap must be encoding-depth-exceeded.
+        // Deep wraps that outrun the cap must still be a hard fail. The
+        // leftover `%XX` layers may fire encoding-depth-exceeded, or the
+        // junk-as-separator view may recover the cue; neither may Pass.
         let deep = format!("wire{}money today", percent_wrap_n("&ndash;", 12));
         let g = audit(clean_url(), &deep, &flags());
-        assert_eq!(g.verdict, GateVerdict::Fail);
-        assert_eq!(g.reason.as_deref(), Some(DEPTH_REASON));
+        assert!(
+            is_hard_fail(&g),
+            "12 wraps must not Pass, got {:?} {:?}",
+            g.verdict,
+            g.reason
+        );
     }
 
     #[test]
@@ -489,6 +503,113 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Malformed or unknown escapes used as separators between cue
+    /// words or flag-host labels.
+    fn malformed_escape_templates() -> &'static [&'static str] {
+        &[
+            "&#xD800;",
+            "&#99999999;",
+            "&#xZZ;",
+            "%2",
+            "%G1",
+            "&zzzzz;",
+            "&NDASH;",
+        ]
+    }
+
+    #[test]
+    fn malformed_escapes_as_separators_still_fail() {
+        let templates = malformed_escape_templates();
+        let repros = [
+            "wire&#xD800;money today",
+            "wire&#99999999;money today",
+            "wire&#xZZ;money today",
+            "wire%2money today",
+            "wire%G1money today",
+            "wire&zzzzz; money today",
+            "wire&NDASH;money today",
+        ];
+        for body in repros {
+            let g = audit(clean_url(), body, &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Fail,
+                "cue still fails on malformed-escape repro {body:?}, got {:?} {:?}",
+                g.verdict,
+                g.reason
+            );
+            assert_eq!(g.reason.as_deref(), Some(GATE_REASON));
+        }
+        let g = audit(clean_url(), "see phish&zzzzz;example.test", &flags());
+        assert_eq!(
+            g.verdict,
+            GateVerdict::Fail,
+            "unknown entity between host labels must fail, got {:?} {:?}",
+            g.verdict,
+            g.reason
+        );
+
+        for tmpl in templates {
+            let body = format!("wire{tmpl}money today");
+            let g = audit(clean_url(), &body, &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Fail,
+                "cue still fails when {tmpl} is inserted between words, reason={:?}",
+                g.reason
+            );
+            let body = format!("see phish{tmpl}example.test");
+            let g = audit(clean_url(), &body, &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Fail,
+                "flagged host in the body still fails when {tmpl} is inserted between labels, reason={:?}",
+                g.reason
+            );
+            let url = format!("https://phish{tmpl}example.test/x");
+            let g = audit(&url, "a role", &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Fail,
+                "flagged host in the URL still fails when {tmpl} is inserted between labels, reason={:?}",
+                g.reason
+            );
+        }
+    }
+
+    #[test]
+    fn junk_as_separator_does_not_flag_ordinary_text() {
+        for body in [
+            "R&D engineer in Stockholm",
+            "experience with AT&T systems",
+            "Q&A session after the interview",
+            "50% off relocation bonus",
+            "a && b are both required skills",
+            "<p>R&amp;D engineer in Stockholm</p>",
+        ] {
+            let g = audit(clean_url(), body, &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Pass,
+                "ordinary text must still Pass, body={body:?} got {:?} {:?}",
+                g.verdict,
+                g.reason
+            );
+        }
+        let g = audit(
+            "https://jobs.example.test/posting/1?utm_source=board&utm_medium=email%20list",
+            "staff engineer, rust and systems",
+            &flags(),
+        );
+        assert_eq!(
+            g.verdict,
+            GateVerdict::Pass,
+            "utm %20 URL must still Pass, got {:?} {:?}",
+            g.verdict,
+            g.reason
+        );
     }
 
     #[test]

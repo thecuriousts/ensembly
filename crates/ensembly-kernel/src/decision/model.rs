@@ -407,6 +407,7 @@ pub fn baseline(row: &LabelRow, flags: &FlagList) -> Score {
 
 #[cfg(test)]
 mod tests {
+    use super::super::gate::DEPTH_REASON;
     use super::*;
     use ensembly_schema::FitLabel;
 
@@ -449,5 +450,48 @@ mod tests {
             },
         );
         assert_eq!(d, ModelDecision::Skip);
+    }
+
+    #[test]
+    fn encoding_depth_exceeded_propagates_through_score_and_baseline() {
+        fn percent_wrap_n(s: &str, n: usize) -> String {
+            let mut cur = s.to_string();
+            for _ in 0..n {
+                let mut next = String::with_capacity(cur.len() * 3);
+                for b in cur.as_bytes() {
+                    next.push_str(&format!("%{b:02X}"));
+                }
+                cur = next;
+            }
+            cur
+        }
+        let body = format!("hello {}", percent_wrap_n("&ndash;", 12));
+        let r = row("depth", &body, FitLabel::Apply);
+        let flags = FlagList::default();
+
+        let base = baseline(&r, &flags);
+        assert_eq!(base.gate.verdict, GateVerdict::Fail);
+        assert_eq!(base.gate.reason.as_deref(), Some(DEPTH_REASON));
+        assert_eq!(base.decision, ModelDecision::Skip);
+        assert_eq!(base.reason, DEPTH_REASON);
+
+        let k = features(&r).len();
+        let model = FittedModel {
+            version: "test".into(),
+            mean: vec![0.0; k],
+            std: vec![1.0; k],
+            weights: vec![0.0; k],
+            bias: 5.0,
+            band: Band {
+                t_skip: 0.2,
+                t_apply: 0.8,
+            },
+            trained_on: 1,
+        };
+        let s = score(&model, &r, &flags);
+        assert_eq!(s.gate.verdict, GateVerdict::Fail);
+        assert_eq!(s.gate.reason.as_deref(), Some(DEPTH_REASON));
+        assert_eq!(s.decision, ModelDecision::Skip);
+        assert_eq!(s.reason, DEPTH_REASON);
     }
 }

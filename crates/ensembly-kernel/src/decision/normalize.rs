@@ -850,16 +850,202 @@ fn has_leet_digit(text: &str) -> bool {
         .any(|c| matches!(c, '0' | '1' | '3' | '4' | '5' | '7'))
 }
 
+/// Replace every escape-shaped token with `repl`, whether or not it
+/// decodes. This view is only for hard-cue and flag-host matching; it
+/// is never consulted by the depth-residual rule, so ordinary text
+/// such as `R&D`, `50% off`, or a `utm` `%20` URL cannot trip
+/// `encoding-depth-exceeded`.
+///
+/// Tokens (optional trailing `;` on entities):
+/// - `&#` + 1..=12 decimal digits
+/// - `&#x` / `&#X` + 1..=10 alphanumeric characters (covers `&#xZZ;`)
+/// - `&` + a letter + 0..=31 alphanumeric (covers unknown names
+///   such as `&zzzzz;` and `&NDASH;`)
+/// - `%` + 0..=`percent_max` non-whitespace characters, stopping
+///   before a following 2+ letter word so `wire%2money` keeps `money`
+///
+/// U+FFFD, including invalid scalar values that decode to it
+/// (surrogates, values above U+10FFFF, or invalid UTF-8 after a
+/// percent decode), also becomes `repl`.
+pub(super) fn junk_as_separator(text: &str, repl: char, percent_max: usize) -> String {
+    account(text.len());
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'&' {
+            if let Some(n) = entity_junk_len(&bytes[i..]) {
+                out.push(repl);
+                i += n;
+                continue;
+            }
+        }
+        if bytes[i] == b'%' {
+            let n = percent_junk_len(&text[i..], percent_max);
+            out.push(repl);
+            i += n;
+            continue;
+        }
+        let ch = text[i..].chars().next().unwrap();
+        if ch == '\u{FFFD}' {
+            out.push(repl);
+        } else {
+            out.push(ch);
+        }
+        i += ch.len_utf8();
+    }
+    out
+}
+
+fn may_have_escape_shaped(s: &str) -> bool {
+    s.as_bytes().iter().any(|b| *b == b'&' || *b == b'%') || s.contains('\u{FFFD}')
+}
+
+/// Decimal, hex, or named entity *shape*, whether or not the name or
+/// scalar is valid. `parse_entity_into` returning `None` is the
+/// case this exists to cover.
+fn entity_junk_len(bytes: &[u8]) -> Option<usize> {
+    if bytes.first() != Some(&b'&') || bytes.len() < 2 {
+        return None;
+    }
+    if bytes[1] == b'#' {
+        if bytes.len() >= 3 && (bytes[2] == b'x' || bytes[2] == b'X') {
+            let mut n = 0usize;
+            while 3 + n < bytes.len() && n < 10 && bytes[3 + n].is_ascii_alphanumeric() {
+                n += 1;
+            }
+            if n == 0 {
+                return None;
+            }
+            let mut len = 3 + n;
+            if len < bytes.len() && bytes[len] == b';' {
+                len += 1;
+            }
+            return Some(len);
+        }
+        let mut n = 0usize;
+        while 2 + n < bytes.len() && n < 12 && bytes[2 + n].is_ascii_digit() {
+            n += 1;
+        }
+        if n == 0 {
+            return None;
+        }
+        let mut len = 2 + n;
+        if len < bytes.len() && bytes[len] == b';' {
+            len += 1;
+        }
+        return Some(len);
+    }
+    if bytes[1].is_ascii_alphabetic() {
+        let mut n = 1usize;
+        while 1 + n < bytes.len() && n < 32 && bytes[1 + n].is_ascii_alphanumeric() {
+            n += 1;
+        }
+        let mut len = 1 + n;
+        if len < bytes.len() && bytes[len] == b';' {
+            len += 1;
+        }
+        return Some(len);
+    }
+    None
+}
+
+/// `%` plus up to `max_non_ws` non-whitespace characters. A well-formed
+/// `%HH` is always consumed as three bytes when `max_non_ws >= 2`.
+/// Stops before a following 2+ ASCII-letter word so a truncated
+/// `%2` in `wire%2money` is the separator, not `%2m`.
+fn percent_junk_len(s: &str, max_non_ws: usize) -> usize {
+    let bytes = s.as_bytes();
+    debug_assert!(!bytes.is_empty() && bytes[0] == b'%');
+    if max_non_ws >= 2
+        && bytes.len() >= 3
+        && from_hex(bytes[1]).is_some()
+        && from_hex(bytes[2]).is_some()
+    {
+        return 3;
+    }
+    let mut n = 1usize;
+    let mut taken = 0usize;
+    while taken < max_non_ws && n < bytes.len() {
+        let ch = s[n..].chars().next().unwrap();
+        if ch.is_whitespace() {
+            break;
+        }
+        if ch.is_ascii_alphabetic() {
+            let next = n + ch.len_utf8();
+            if next < bytes.len() && bytes[next].is_ascii_alphabetic() {
+                break;
+            }
+        }
+        n += ch.len_utf8();
+        taken += 1;
+    }
+    n
+}
+
+/// Sources for the junk-as-separator view: the fixed point, and the
+/// raw text so a truncated `%2` is not absorbed into a `%2e` decode
+/// of the following host label.
+fn junk_sources<'a>(forms: &'a CanonForms, raw: &'a str) -> Vec<&'a str> {
+    let mut out = vec![raw, forms.decoded.as_str(), forms.folded.as_str()];
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// Dotted junk-as-separator forms, used only for flag-host matching.
+/// An unknown or malformed entity between labels becomes `.` here
+/// (the cue path uses a space instead).
+pub(super) fn junk_dotted_forms(forms: &CanonForms, raw: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for src in junk_sources(forms, raw) {
+        if !may_have_escape_shaped(src) {
+            continue;
+        }
+        for cap in [1usize, 2] {
+            let dotted = junk_as_separator(src, '.', cap);
+            if seen.insert(dotted.clone()) {
+                out.push(dotted);
+            }
+        }
+    }
+    out
+}
+
+/// Spaced, collapsed junk-as-separator forms, used only for hard-cue matching.
+pub(super) fn junk_spaced_forms(forms: &CanonForms, raw: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for src in junk_sources(forms, raw) {
+        if !may_have_escape_shaped(src) {
+            continue;
+        }
+        for cap in [1usize, 2] {
+            let spaced = collapse_and_lower(&junk_as_separator(src, ' ', cap));
+            if !spaced.is_empty() && seen.insert(spaced.clone()) {
+                out.push(spaced);
+            }
+        }
+    }
+    out
+}
+
 /// Cue-only views: shared host/cue views plus HTML-stripped, punctuation-join,
 /// and a separate leet view. A hit on any view is a hit.
 #[allow(dead_code)]
 pub fn cue_views(text: &str) -> Vec<String> {
-    extend_cue_views(text, views(text))
+    let (views, forms) = views_with_canon(text);
+    extend_cue_views(text, views, &forms)
 }
 
 /// Extend already-built host/cue views with cue-only folds, without
 /// running [`views`] again.
-pub fn extend_cue_views(text: &str, mut out: Vec<String>) -> Vec<String> {
+pub(super) fn extend_cue_views(
+    text: &str,
+    mut out: Vec<String>,
+    forms: &CanonForms,
+) -> Vec<String> {
     let mut seen: std::collections::HashSet<String> = out.iter().cloned().collect();
     let push = |s: String, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>| {
         if seen.insert(s.clone()) {
@@ -888,6 +1074,28 @@ pub fn extend_cue_views(text: &str, mut out: Vec<String>) -> Vec<String> {
         }
     }
 
+    // Junk-as-separator views of the fixed point: every escape-shaped
+    // token becomes a space, whether or not it decodes. Unknown names
+    // (`&zzzzz;`, `&NDASH;`) and malformed numerics or percent sequences
+    // therefore cannot hide a multi-word cue. Not used for the
+    // depth-residual rule.
+    for v in junk_spaced_forms(forms, text) {
+        push(v, &mut out, &mut seen);
+    }
+    if text.contains('<') {
+        for src in [&forms.decoded, &forms.folded] {
+            if may_have_escape_shaped(src) {
+                for cap in [1usize, 2] {
+                    push(
+                        collapse_and_lower(&junk_as_separator(&strip_html_tags(src), ' ', cap)),
+                        &mut out,
+                        &mut seen,
+                    );
+                }
+            }
+        }
+    }
+
     let base = out.clone();
     for v in &base {
         push(punct_and_join(v), &mut out, &mut seen);
@@ -911,6 +1119,7 @@ pub fn extend_cue_views(text: &str, mut out: Vec<String>) -> Vec<String> {
 /// de-obfuscation, (c) unicode fold, and (a)/(b) format handling.
 /// Transforms that cannot change this input are skipped, and identical
 /// views are dropped. Linear in `text`.
+#[allow(dead_code)]
 pub fn views(text: &str) -> Vec<String> {
     views_with_canon(text).0
 }
