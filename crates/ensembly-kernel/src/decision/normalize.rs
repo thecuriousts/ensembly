@@ -1056,6 +1056,72 @@ pub fn token_stream(text: &str) -> String {
     out.trim().to_string()
 }
 
+fn is_cue_letter(c: char) -> bool {
+    // Hard cues are ASCII letter phrases (enforced by a test). After
+    // confusable folding, lookalikes are already ASCII; leftover
+    // digits, marks, symbols, and mixed-script letters are separators
+    // or intra-letter junk, not cue tokens.
+    c.is_ascii_alphabetic()
+}
+
+/// Letters-only separator view, built from the token-stream form: any
+/// run of non-letter characters (digits included) becomes a single
+/// space. `wire2money today` becomes `wire money today`. Whole tokens
+/// are kept, so `wireless` and `wire2less` (→ `wire less`) do not
+/// match `wire` as a prefix.
+pub fn letters_only_stream(text: &str) -> String {
+    account(text.len());
+    let mut out = String::with_capacity(text.len());
+    let mut in_sep = false;
+    for c in text.chars() {
+        if is_cue_letter(c) {
+            out.extend(c.to_lowercase());
+            in_sep = false;
+        } else if !in_sep {
+            out.push(' ');
+            in_sep = true;
+        }
+    }
+    out.trim().to_string()
+}
+
+/// Digit-stripped view, built from the token-stream form: a run of
+/// non-letter, non-whitespace characters sitting between two letters
+/// is deleted (`w2ire` → `wire`, `w&ire` → `wire`, a combining mark
+/// or mixed-script letter between ASCII letters likewise), and the
+/// result is then tokenised. A digit between two cue *words*
+/// (`wire2money`) is a separator in [`letters_only_stream`], not
+/// a glue; `wire2less` becomes `wireless` here and stays a whole token.
+pub fn strip_intra_letter_junk(text: &str) -> String {
+    account(text.len());
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if is_cue_letter(chars[i]) {
+            out.extend(chars[i].to_lowercase());
+            i += 1;
+            let start = i;
+            // ASCII spaces stay token boundaries; NBSP and other Zs
+            // between letters are intra-letter junk, like a digit.
+            while i < chars.len() && !is_cue_letter(chars[i]) && !is_ascii_space(chars[i]) {
+                i += 1;
+            }
+            let between_letters = i > start && i < chars.len() && is_cue_letter(chars[i]);
+            if between_letters {
+                // drop the intra-letter junk
+            } else {
+                out.extend(chars[start..i].iter().copied());
+            }
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    // Tokenise after the deletions so leftover punctuation becomes spaces.
+    letters_only_stream(&out)
+}
+
 fn is_ascii_dns_label_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '-'
 }
@@ -1066,8 +1132,9 @@ fn is_ascii_space(c: char) -> bool {
 
 /// Any run of characters that are not `[a-z0-9-]` becomes a single `.`.
 /// Invalid or overlong percent sequences should already be U+FFFD in
-/// decoded input; they join the same non-label run. ASCII `-` is kept,
-/// so a hyphenated domain stays distinct from a dotted flag.
+/// decoded input; they join the same non-label run. ASCII `-` is kept
+/// on purpose: `phish-example.test` is a different host from the
+/// dotted flag `phish.example.test` and must Pass.
 pub fn fold_non_label_runs(text: &str) -> String {
     account(text.len());
     let mut pieces = String::with_capacity(text.len());
@@ -1283,17 +1350,31 @@ pub(super) fn extend_cue_views(
         }
     }
 
-    // Token-stream views: collapse every run of non letter-or-digit
-    // characters (punctuation, symbols, format, leftover junk) to one
-    // space, then match cues as whole token sequences. Current views
-    // are kept; this one closes the class of separator characters
-    // without listing them. Not used for the depth-residual rule.
+    // Token-stream views, plus two views built from them that finish
+    // the letters class: letters-only separators (digits and other
+    // non-letters become a space) and intra-letter junk stripping
+    // (a digit or other non-whitespace junk between two letters is
+    // deleted, then the result is tokenised). Current views are kept.
+    // Not used for the depth-residual rule.
     for src in junk_sources(forms, text) {
-        push(token_stream(src), &mut out, &mut seen);
+        let ts = token_stream(src);
+        push(letters_only_stream(&ts), &mut out, &mut seen);
+        push(strip_intra_letter_junk(&ts), &mut out, &mut seen);
+        // Also from the source itself so combining marks and mixed
+        // scripts are still adjacent to letters, not already spaces.
+        push(ts, &mut out, &mut seen);
+        push(letters_only_stream(src), &mut out, &mut seen);
+        push(strip_intra_letter_junk(src), &mut out, &mut seen);
     }
     if text.contains('<') {
         for src in junk_sources(forms, text) {
-            push(token_stream(&strip_html_tags(src)), &mut out, &mut seen);
+            let stripped = strip_html_tags(src);
+            let ts = token_stream(&stripped);
+            push(letters_only_stream(&ts), &mut out, &mut seen);
+            push(strip_intra_letter_junk(&ts), &mut out, &mut seen);
+            push(ts, &mut out, &mut seen);
+            push(letters_only_stream(&stripped), &mut out, &mut seen);
+            push(strip_intra_letter_junk(&stripped), &mut out, &mut seen);
         }
     }
 
@@ -1857,6 +1938,9 @@ mod tests {
 
     #[test]
     fn ascii_hyphen_host_is_not_turned_into_dots() {
+        // Passes on purpose: ASCII '-' is a label character, not a
+        // host separator, so phish-example.test stays distinct from
+        // the dotted flag phish.example.test.
         let views = canonicalize_host_views("phish-example.test");
         assert_eq!(views, vec!["phish-example.test".to_string()]);
         assert!(!flag_matches("phish-example.test", "phish.example.test"));
@@ -1887,6 +1971,42 @@ mod tests {
         assert_eq!(token_stream("wireless money today"), "wireless money today");
         assert_eq!(token_stream("R&D engineer"), "r d engineer");
         assert_eq!(token_stream("50% off"), "50 off");
+        assert_eq!(token_stream("wire2money today"), "wire2money today");
+    }
+
+    #[test]
+    fn letters_only_and_digit_strip_finish_the_letter_class() {
+        assert_eq!(letters_only_stream("wire2money today"), "wire money today");
+        assert_eq!(
+            letters_only_stream("wire 2 money today"),
+            "wire money today"
+        );
+        assert_eq!(letters_only_stream("WIRE2MONEY TODAY"), "wire money today");
+        assert_eq!(
+            strip_intra_letter_junk("w2ire money today"),
+            "wire money today"
+        );
+        assert_eq!(
+            strip_intra_letter_junk("w&ire money today"),
+            "wire money today"
+        );
+        assert_eq!(
+            strip_intra_letter_junk("w\u{0301}ire money today"),
+            "wire money today"
+        );
+        // A digit inside wireless glues back to a whole token, not a cue.
+        assert_eq!(
+            strip_intra_letter_junk("wire2less money today"),
+            "wireless money today"
+        );
+        assert_eq!(
+            letters_only_stream("wire2less money today"),
+            "wire less money today"
+        );
+        assert_eq!(
+            letters_only_stream("wireless money today"),
+            "wireless money today"
+        );
     }
 
     #[test]

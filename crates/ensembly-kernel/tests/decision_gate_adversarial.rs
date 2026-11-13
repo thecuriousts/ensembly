@@ -583,6 +583,9 @@ fn matrix() -> Vec<Case> {
             body: "pay a fee for lunch",
             want: pass,
         },
+        // Passes on purpose: ASCII '-' is a host-label character, not a
+        // separator, so phish-example.test is distinct from the dotted
+        // flag phish.example.test.
         Case {
             name: "ASCII hyphenated unflagged domain stays distinct",
             url: "https://phish-example.test/job",
@@ -729,6 +732,48 @@ fn matrix() -> Vec<Case> {
             name: "wire inside wireless is not a hard cue",
             url: "https://jobs.example.test/posting/1",
             body: "wireless money today",
+            want: pass,
+        },
+        Case {
+            name: "digit between cue words is a letters-only hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire2money today",
+            want: fail,
+        },
+        Case {
+            name: "digit inside a cue word is a digit-stripped hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "w2ire money today",
+            want: fail,
+        },
+        Case {
+            name: "digit inside wireless is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "wire2less money today",
+            want: pass,
+        },
+        Case {
+            name: "ordinal 2nd is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "the 2nd interview is on Monday",
+            want: pass,
+        },
+        Case {
+            name: "w.i.p. is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "w.i.p. on the onboarding guide",
+            want: pass,
+        },
+        Case {
+            name: "version string is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "experience with rust 1.2.3 and v1.0",
+            want: pass,
+        },
+        Case {
+            name: "price is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "salary is $19.99 an hour",
             want: pass,
         },
     ]

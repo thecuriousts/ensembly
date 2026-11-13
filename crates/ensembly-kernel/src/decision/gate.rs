@@ -65,14 +65,30 @@ pub struct GateResult {
     pub reason: Option<String>,
 }
 
+/// Hard-cue phrases. Each is a letter-only token sequence (ASCII
+/// letters and spaces). A unit test fails if a future cue introduces
+/// a digit or other non-letter.
+pub(super) const HARD_CUE_PHRASES: &[&str] = &[
+    "wire money today",
+    "wire money now",
+    "wire funds today",
+    "wire funds now",
+    "pay a fee to apply",
+    "pay a deposit to apply",
+    "crypto payment required",
+    "urgent hiring fee",
+];
+
 fn cue_fail() -> &'static Regex {
     static RX: OnceLock<Regex> = OnceLock::new();
     RX.get_or_init(|| {
         // Linear-time (regex crate). Alternation of fixed phrases, no nested stars.
-        Regex::new(
-            r"(?i)\b(?:wire (?:money|funds) (?:today|now)|pay a (?:fee|deposit) to apply|crypto payment required|urgent hiring fee)\b",
-        )
-        .expect("gate fail regex")
+        let alts: String = HARD_CUE_PHRASES
+            .iter()
+            .map(|p| regex::escape(p))
+            .collect::<Vec<_>>()
+            .join("|");
+        Regex::new(&format!("(?i)\\b(?:{alts})\\b")).expect("gate fail regex")
     })
 }
 
@@ -596,6 +612,12 @@ mod tests {
             "<p>R&amp;D engineer in Stockholm</p>",
             "wireless money today",
             "rewire money today",
+            "wire2less money today",
+            "the 2nd interview is on Monday",
+            "w.i.p. on the onboarding guide",
+            "v1.0 release next week",
+            "experience with rust 1.2.3",
+            "salary is $19.99 an hour",
         ] {
             let g = audit(clean_url(), body, &flags());
             assert_eq!(
@@ -754,6 +776,123 @@ mod tests {
                         g.verdict,
                         GateVerdict::Fail,
                         "flagged host in the URL still fails when U+{:04X} is inserted, url={url:?} reason={:?}",
+                        c as u32,
+                        g.reason
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn hard_cues_are_letter_only_phrases() {
+        assert!(
+            !super::HARD_CUE_PHRASES.is_empty(),
+            "hard-cue list must not be empty"
+        );
+        for phrase in super::HARD_CUE_PHRASES {
+            assert!(
+                phrase
+                    .chars()
+                    .all(|c| c.is_ascii_alphabetic() || c == ' '),
+                "hard cue {phrase:?} must be a letter-only phrase; a digit or other non-letter in a new cue is a contract break"
+            );
+            assert!(
+                !phrase.split_whitespace().any(|w| w.is_empty()),
+                "hard cue {phrase:?} must be whole tokens"
+            );
+            assert!(
+                super::cue_fail().is_match(phrase),
+                "hard cue {phrase:?} must match the fail regex"
+            );
+        }
+    }
+
+    #[test]
+    fn digits_as_separators_or_inside_words_still_fail() {
+        for body in [
+            "wire2money today",
+            "WIRE2MONEY TODAY",
+            "wire 2 money today",
+            "wire2 money today",
+            "wire 2money today",
+            "w2ire money today",
+            "wi2re money today",
+            "wir2e money today",
+        ] {
+            let g = audit(clean_url(), body, &flags());
+            assert_eq!(
+                g.verdict,
+                GateVerdict::Fail,
+                "digit in or between cue words must Fail, body={body:?} got {:?} {:?}",
+                g.verdict,
+                g.reason
+            );
+        }
+    }
+
+    #[test]
+    fn letter_digit_mark_class_still_fails() {
+        let marks_and_symbols = [
+            '\u{0301}', // combining acute
+            '\u{0308}', // combining diaeresis
+            '\u{0327}', // combining cedilla
+            '\u{00AE}', // registered
+            '\u{2122}', // trade mark
+            '\u{0456}', // cyrillic i (lookalike; also mixed script)
+            '\u{0430}', // cyrillic a
+        ];
+        let mut inserts: Vec<char> = ('0'..='9').collect();
+        inserts.extend(punctuation_samples());
+        inserts.extend(marks_and_symbols);
+
+        for &c in &inserts {
+            // Between cue words, all spacing variants and a casing variant.
+            for body in spacing_variants("wire", &c.to_string(), "money today") {
+                let g = audit(clean_url(), &body, &flags());
+                assert_eq!(
+                    g.verdict,
+                    GateVerdict::Fail,
+                    "cue still fails when U+{:04X} is inserted between words, body={body:?} reason={:?}",
+                    c as u32,
+                    g.reason
+                );
+                let upper = body.to_uppercase();
+                let g = audit(clean_url(), &upper, &flags());
+                assert_eq!(
+                    g.verdict,
+                    GateVerdict::Fail,
+                    "cue still fails (upper) when U+{:04X} is inserted between words, body={upper:?} reason={:?}",
+                    c as u32,
+                    g.reason
+                );
+            }
+            // Inside each cue word. Mixed-script *letters* are only
+            // inserted strictly inside (not as a prefix/suffix that
+            // would fold onto the word). Digits, marks, and punctuation
+            // are tried at every position.
+            for word_holder in ["wire", "money", "today"] {
+                let chars: Vec<char> = word_holder.chars().collect();
+                let positions: Vec<usize> = if c.is_alphabetic() && !c.is_ascii_alphabetic() {
+                    (1..chars.len()).collect()
+                } else {
+                    (0..=chars.len()).collect()
+                };
+                for i in positions {
+                    let mut mid = String::new();
+                    mid.extend(chars[..i].iter().copied());
+                    mid.push(c);
+                    mid.extend(chars[i..].iter().copied());
+                    let body = match word_holder {
+                        "wire" => format!("{mid} money today"),
+                        "money" => format!("wire {mid} today"),
+                        _ => format!("wire money {mid}"),
+                    };
+                    let g = audit(clean_url(), &body, &flags());
+                    assert_eq!(
+                        g.verdict,
+                        GateVerdict::Fail,
+                        "cue still fails when U+{:04X} is inserted inside {word_holder} at {i}, body={body:?} reason={:?}",
                         c as u32,
                         g.reason
                     );

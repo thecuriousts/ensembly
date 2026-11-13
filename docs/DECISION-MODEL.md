@@ -68,7 +68,16 @@ operator.
   symbols, dashes, spaces, format and zero-width characters, replacement
   characters, leftover escape junk) into one space and matches hard
   cues as whole token sequences, so `wire& money today` fails while
-  `wire` inside `wireless` does not match. For flag hosts, any run of
+  `wire` inside `wireless` does not match. Two further views are built
+  from that token stream: a letters-only view, where any non-letter run
+  (digits included) becomes a space, so `wire2money today` fails; and a
+  digit-stripped view, where a digit or other non-whitespace junk
+  between two letters is deleted and the result is then tokenised, so
+  `w2ire money today` fails while `wire2less` stays a whole token
+  (`wireless`) and does not match. Hard cues are letter-only phrases
+  and are matched in every view; a hit on any view is a fail. Ordinary
+  tokens (`wireless`, ordinals like `2nd`, `w.i.p.`, version strings,
+  prices) still pass unless they really form a cue. For flag hosts, any run of
   characters other than `[a-z0-9-]` between labels — including invalid
   or overlong percent sequences decoded to U+FFFD — becomes a single
   `.`, matched as a consecutive label window; ASCII `-` stays a label
@@ -80,7 +89,9 @@ operator.
   `U+FE52`) fold to `/` or `.`. For hosts, a second view treats
   non-ASCII dashes between labels as `.`, while a hyphen view
   keeps them as ASCII `-`. ASCII `-` is never turned into `.`, so
-  a real hyphenated domain stays distinct from a dotted flag.
+  a real hyphenated domain stays distinct from a dotted flag:
+  `phish-example.test` Passes on purpose and does not match the flag
+  `phish.example.test`.
   The hard-cue phrase is `wire money/funds today/now`; `wire
   transfer` alone is deliberately not a hard cue. Soft cues
   (`Uncertain`) abstain: they are not a hard fail and do not skip
