@@ -49,6 +49,8 @@ the writer will not adopt current bytes.
 - Writer identity is the `ENSEMBLY_WRITER` environment variable, checked
   as non-empty and safe. There is no list of machine names in the write
   path. A pulse or record write must name that configured value.
+  `ENSEMBLY_WRITER` does not gate ledger append; the ledger seal and the
+  `KernelWriter` API do.
 - On Unix, a sealed ledger is marked read-only after each append. That
   change of mode does nothing on non-Unix systems.
 - Pulse accident-guard triggers are installed on every canonical write
