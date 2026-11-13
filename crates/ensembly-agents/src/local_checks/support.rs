@@ -108,6 +108,8 @@ impl ModelLock {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("lock dir: {e}"))?;
         }
+        // Bounded wait: 40 × 50 ms ≈ 2 s, then fail closed (the runtime maps
+        // this to LockBusy and never sends the text to a cloud fallback).
         for _ in 0..40 {
             match OpenOptions::new().write(true).create_new(true).open(path) {
                 Ok(mut file) => {
@@ -153,6 +155,9 @@ fn stale_lock(path: &Path) -> bool {
         return true;
     }
     // Safety: `kill(pid, 0)` only probes existence.
+    // PID-reuse race: if a new process reused the crashed holder's PID, this
+    // probe treats the lock as live and the waiter times out after ~2 s,
+    // failing closed. That is preferred to deleting a live lock.
     #[cfg(unix)]
     {
         let alive = libc_kill(pid, 0) == 0;
@@ -180,77 +185,7 @@ fn libc_kill(pid: i32, sig: i32) -> i32 {
     unsafe { kill(pid, sig) }
 }
 
-/// Patterns that must never ride a cloud fallback. Synthetic fixtures avoid them.
-pub fn cloud_redaction_hits(text: &str) -> Vec<&'static str> {
-    let mut hits = Vec::new();
-    let lower = text.to_ascii_lowercase();
-    if text.contains("/Users/") || text.contains("/home/") || lower.contains("\\users\\") {
-        hits.push("home-path");
-    }
-    if text.contains("@") && text.contains('.') {
-        // cheap email shape: token@token.tld
-        if text.split_whitespace().any(is_email_shape) {
-            hits.push("email");
-        }
-    }
-    if looks_like_phone(&lower) {
-        hits.push("phone");
-    }
-    if looks_like_cgnat(text) {
-        hits.push("cgnat-ip");
-    }
-    // Real host names are denied; aliases are fine.
-    if lower.contains(".local") && !lower.contains("example.local") {
-        hits.push("local-hostname");
-    }
-    hits
-}
-
-pub fn assert_safe_for_cloud(parts: &[&str]) -> Result<(), String> {
-    let mut joined = String::new();
-    for part in parts {
-        joined.push_str(part);
-        joined.push('\n');
-    }
-    let hits = cloud_redaction_hits(&joined);
-    if hits.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "refusing to send text to the cloud fallback ({})",
-            hits.join(", ")
-        ))
-    }
-}
-
-fn is_email_shape(tok: &str) -> bool {
-    let tok = tok.trim_matches(|c: char| {
-        !c.is_ascii_alphanumeric() && c != '@' && c != '.' && c != '_' && c != '-' && c != '+'
-    });
-    let Some((user, rest)) = tok.split_once('@') else {
-        return false;
-    };
-    let Some((host, tld)) = rest.rsplit_once('.') else {
-        return false;
-    };
-    !user.is_empty() && !host.is_empty() && (2..=24).contains(&tld.len())
-}
-
-fn looks_like_phone(lower: &str) -> bool {
-    let digits: String = lower.chars().filter(|c| c.is_ascii_digit()).collect();
-    digits.len() >= 10
-        && (lower.contains('+') || lower.contains("tel:") || has_phone_separators(lower))
-}
-
-fn has_phone_separators(text: &str) -> bool {
-    text.contains("(+") || text.chars().filter(|c| *c == '-').count() >= 2
-}
-
-fn looks_like_cgnat(text: &str) -> bool {
-    text.split(|c: char| !c.is_ascii_digit() && c != '.')
-        .filter(|tok| !tok.is_empty())
-        .any(|tok| tok.starts_with("100.") && tok.chars().filter(|c| *c == '.').count() == 3)
-}
+pub use crate::local_checks::redact::{assert_safe_for_cloud, cloud_redaction_hits};
 
 pub fn default_lock_path() -> PathBuf {
     std::env::temp_dir().join("ensembly-local-check.lock")
@@ -292,21 +227,5 @@ mod tests {
         ModelLock::acquire(&path2).unwrap();
         drop(first);
         assert!(start.elapsed() < Duration::from_secs(5));
-    }
-
-    #[test]
-    fn redaction_blocks_email_and_home() {
-        let home = format!("/{}/someone/notes", "Users");
-        let mail = format!("{}@{}", "ada", "example.test");
-        let hits = cloud_redaction_hits(&format!("write {home} and {mail}"));
-        assert!(hits.contains(&"home-path"));
-        assert!(hits.contains(&"email"));
-        assert!(assert_safe_for_cloud(&["River Co. holds 12 teal crates."]).is_ok());
-    }
-
-    #[test]
-    fn aliases_are_allowed() {
-        let hits = cloud_redaction_hits("checked on mac-mini and laptop-1");
-        assert!(hits.is_empty(), "{hits:?}");
     }
 }

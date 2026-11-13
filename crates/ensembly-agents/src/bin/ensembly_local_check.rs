@@ -1,8 +1,9 @@
-//! Opt-in local fact/conflict checks (llama.cpp or MLX) plus fixture replay.
+//! Opt-in local fact/conflict checks (llama.cpp, or experimental MLX) plus fixture replay.
 //!
 //! Default (no `ENSEMBLY_LOCAL_MODELS=1`): replay recorded synthetic JSON.
-//! Live model processes run only when the flag is set. Cloud fallback never
-//! receives personal data; the redaction gate refuses those texts.
+//! Live model processes run only when the flag is set. Cloud fallback stays
+//! off unless both `ENSEMBLY_CLOUD_CHECKS=1` and `ENSEMBLY_CLOUD_CHECK_CMD`
+//! are set. The redaction gate refuses a call entirely if anything matches.
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -206,7 +207,9 @@ fn cmd_status() -> Result<()> {
         "mlx_bin": cfg.mlx_bin.as_ref().map(|p| ensembly_agents::local_checks::runtime::display_model(p)),
         "classify_model": cfg.classify_model.as_ref().map(|p| ensembly_agents::local_checks::runtime::display_model(p)),
         "conflict_model": cfg.conflict_model.as_ref().map(|p| ensembly_agents::local_checks::runtime::display_model(p)),
-        "cloud_configured": cfg.cloud_cmd.is_some(),
+        "cloud_opted_in": cfg.cloud_opted_in(),
+        "cloud_checks": cfg.cloud_checks,
+        "cloud_cmd_set": cfg.cloud_cmd.is_some(),
         "confidence_floor": cfg.confidence_floor,
         "available_bytes": available,
         "fixture_root": FIXTURE_ROOT,

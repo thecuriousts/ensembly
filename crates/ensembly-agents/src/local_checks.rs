@@ -1,14 +1,21 @@
 //! Local fact classification and conflict checks.
 //!
-//! Replaces the Ollama adapter stub with a llama.cpp (preferred) or MLX
-//! runtime on the operator machine (mac-mini). Cloud fallback runs only when
-//! the local runtime is missing, memory is short, JSON is invalid after one
-//! retry, or confidence is below the floor — and only after a redaction gate.
+//! Replaces the Ollama adapter stub with a llama.cpp (preferred) runtime on
+//! the operator machine (mac-mini). MLX is not a production runtime until it
+//! can constrain JSON with a schema (`ENSEMBLY_MLX_EXPERIMENTAL=1` overrides).
+//!
+//! Cloud fallback is off unless both `ENSEMBLY_CLOUD_CHECKS=1` and
+//! `ENSEMBLY_CLOUD_CHECK_CMD` are set. A local failure returns that local
+//! error (lock, memory, missing model or runtime, invalid JSON) and never
+//! escalates. Only a successful local result below the confidence floor may
+//! call the cloud, after a fail-closed redaction gate. `grok` on `PATH` is
+//! never auto-detected.
 //!
 //! CI never needs the models. Default tests replay recorded synthetic JSON
-//! under `fixtures/local-checks/`. Live runs are opt-in via
+//! under `fixtures/local-checks/`. Live model processes are opt-in via
 //! `ENSEMBLY_LOCAL_MODELS=1`.
 
+pub mod redact;
 pub mod replay;
 pub mod runtime;
 pub mod schema;
@@ -16,8 +23,8 @@ pub mod support;
 
 pub use replay::{fixture_root_from, RecordedSet, FIXTURE_ROOT};
 pub use runtime::{
-    live_models_enabled, CheckFailure, CheckResult, CheckSource, CheckSuccess, FallbackReason,
-    LocalCheckConfig, LocalChecker, RuntimeKind,
+    cloud_checks_enabled, live_models_enabled, CheckFailure, CheckResult, CheckSource,
+    CheckSuccess, FallbackReason, LocalCheckConfig, LocalChecker, RuntimeKind,
 };
 pub use schema::{ConflictClass, ConflictRelation, FactClass, FactLabel, DEFAULT_CONFIDENCE_FLOOR};
 
@@ -25,8 +32,13 @@ use crate::inference::{InferenceBackend, InferenceProvider};
 use ensembly_memory::{CrdtDocument, Reflection};
 use std::path::Path;
 
-/// Resolve a fact/conflict checker. Live processes require the opt-in flag
-/// and a local runtime; otherwise callers should use [`RecordedSet`].
+/// Resolve a fact/conflict checker from the process environment.
+///
+/// This does **not** consult `ENSEMBLY_LOCAL_MODELS`. That flag is the CLI
+/// gate for spawning live model processes; library callers that want recorded
+/// fixtures should use [`RecordedSet`]. Cloud fallback stays off unless both
+/// `ENSEMBLY_CLOUD_CHECKS=1` and `ENSEMBLY_CLOUD_CHECK_CMD` are set in the
+/// environment this reads.
 pub fn resolve_checker() -> LocalChecker {
     LocalChecker::from_env()
 }

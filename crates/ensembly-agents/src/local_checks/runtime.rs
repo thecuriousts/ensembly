@@ -2,8 +2,17 @@
 //!
 //! No compile-time dependency on those tools. CI never needs the models:
 //! tests inject a mock command or replay recorded synthetic JSON.
+//!
+//! Cloud fallback is off unless the operator sets both
+//! `ENSEMBLY_CLOUD_CHECKS=1` and `ENSEMBLY_CLOUD_CHECK_CMD`. `grok` on
+//! `PATH` is never auto-detected. Local errors (lock, memory, missing
+//! model or runtime, invalid JSON, timeouts) return a local failure and
+//! never escalate. Only a successful local result below the confidence
+//! floor may call the cloud, after a fail-closed redaction gate, and each
+//! such call is logged without its content.
 
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -22,6 +31,8 @@ use crate::local_checks::support::{
 const DEFAULT_TIMEOUT_SECS: u64 = 180;
 const DEFAULT_CONTEXT: u32 = 2048;
 const DEFAULT_MAX_TOKENS: u32 = 256;
+/// Bound on child stdout (and stderr) before `run_cmd` fails safe.
+pub const MAX_STDOUT_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeKind {
@@ -69,6 +80,7 @@ pub enum FallbackReason {
     RuntimeMissing,
     ModelMissing,
     NotEnoughMemory,
+    LockBusy,
     InvalidJson,
     LowConfidence,
     CloudBlocked,
@@ -81,6 +93,7 @@ impl FallbackReason {
             Self::RuntimeMissing => "local-runtime-missing",
             Self::ModelMissing => "model-missing",
             Self::NotEnoughMemory => "not-enough-memory",
+            Self::LockBusy => "lock-busy",
             Self::InvalidJson => "invalid-json",
             Self::LowConfidence => "low-confidence",
             Self::CloudBlocked => "cloud-redaction",
@@ -120,6 +133,8 @@ pub struct LocalCheckConfig {
     pub mlx_bin: Option<PathBuf>,
     pub classify_model: Option<PathBuf>,
     pub conflict_model: Option<PathBuf>,
+    /// Must be true *and* `cloud_cmd` set before any cloud call is allowed.
+    pub cloud_checks: bool,
     pub cloud_cmd: Option<Vec<String>>,
     pub confidence_floor: f32,
     pub timeout: Duration,
@@ -129,6 +144,8 @@ pub struct LocalCheckConfig {
     pub prefer: RuntimeKind,
     /// Extra memory probes when the first reading is short (Metal teardown).
     pub memory_retries: u32,
+    /// MLX has no `--json-schema` parity with llama.cpp. Off unless opted in.
+    pub mlx_experimental: bool,
 }
 
 impl Default for LocalCheckConfig {
@@ -164,6 +181,7 @@ impl LocalCheckConfig {
             mlx_bin: env_path("ENSEMBLY_MLX_BIN", "PERAM_MLX_BIN").or_else(discover_mlx_bin),
             classify_model: env_path("ENSEMBLY_CLASSIFY_MODEL", "PERAM_CLASSIFY_MODEL"),
             conflict_model: env_path("ENSEMBLY_CONFLICT_MODEL", "PERAM_CONFLICT_MODEL"),
+            cloud_checks: cloud_checks_enabled(),
             cloud_cmd: parse_cloud_cmd(),
             confidence_floor: floor,
             timeout,
@@ -173,7 +191,13 @@ impl LocalCheckConfig {
                 .unwrap_or_else(default_lock_path),
             prefer,
             memory_retries: 8,
+            mlx_experimental: env_truthy("ENSEMBLY_MLX_EXPERIMENTAL", "PERAM_MLX_EXPERIMENTAL"),
         }
+    }
+
+    /// Cloud is used only when both the opt-in flag and a command template are set.
+    pub fn cloud_opted_in(&self) -> bool {
+        self.cloud_checks && self.cloud_cmd.as_ref().is_some_and(|c| !c.is_empty())
     }
 }
 
@@ -182,23 +206,15 @@ fn env_path(primary: &str, legacy: &str) -> Option<PathBuf> {
 }
 
 fn parse_cloud_cmd() -> Option<Vec<String>> {
-    if let Some(raw) = env_alias("ENSEMBLY_CLOUD_CHECK_CMD", "PERAM_CLOUD_CHECK_CMD") {
-        let parts = shell_split(&raw);
-        if !parts.is_empty() {
-            return Some(parts);
-        }
+    // Never auto-detect a cloud binary. The command is used only when
+    // `cloud_checks_enabled()` is also true.
+    let raw = env_alias("ENSEMBLY_CLOUD_CHECK_CMD", "PERAM_CLOUD_CHECK_CMD")?;
+    let parts = shell_split(&raw);
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts)
     }
-    if command_exists("grok") {
-        return Some(vec![
-            "grok".into(),
-            "--no-auto-update".into(),
-            "-p".into(),
-            "{{prompt}}".into(),
-            "--output-format".into(),
-            "json".into(),
-        ]);
-    }
-    None
 }
 
 fn shell_split(raw: &str) -> Vec<String> {
@@ -225,11 +241,49 @@ fn shell_split(raw: &str) -> Vec<String> {
 }
 
 fn command_exists(name: &str) -> bool {
-    Command::new("sh")
-        .args(["-c", &format!("command -v {name} >/dev/null 2>&1")])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    if name.is_empty() {
+        return false;
+    }
+    let path = Path::new(name);
+    if name.contains('/') || name.contains('\\') || path.components().count() > 1 {
+        return is_executable(path);
+    }
+    let Ok(path_var) = std::env::var("PATH") else {
+        return false;
+    };
+    for dir in std::env::split_paths(&path_var) {
+        let candidate = dir.join(name);
+        if is_executable(&candidate) {
+            return true;
+        }
+        #[cfg(windows)]
+        {
+            if !name.ends_with(".exe") {
+                let exe = dir.join(format!("{name}.exe"));
+                if is_executable(&exe) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn is_executable(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        path.metadata()
+            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 fn discover_llama_bin() -> Option<PathBuf> {
@@ -283,12 +337,30 @@ fn discover_mlx_bin() -> Option<PathBuf> {
 
 /// Opt-in gate for live model processes. CI stays on recorded fixtures.
 pub fn live_models_enabled() -> bool {
+    env_truthy("ENSEMBLY_LOCAL_MODELS", "PERAM_LOCAL_MODELS")
+}
+
+/// Opt-in gate for cloud fallback. Off unless set, even if a command is present.
+pub fn cloud_checks_enabled() -> bool {
+    env_truthy("ENSEMBLY_CLOUD_CHECKS", "PERAM_CLOUD_CHECKS")
+}
+
+fn env_truthy(primary: &str, legacy: &str) -> bool {
     matches!(
-        env_alias("ENSEMBLY_LOCAL_MODELS", "PERAM_LOCAL_MODELS")
+        env_alias(primary, legacy)
             .unwrap_or_default()
             .to_ascii_lowercase()
             .as_str(),
         "1" | "true" | "yes" | "on"
+    )
+}
+
+/// Log line for a cloud call. Never includes the prompt or statement text.
+pub fn cloud_call_log_line(reason: FallbackReason, argv0: &str) -> String {
+    format!(
+        "ensembly-local-check: cloud call reason={} argv0={}",
+        reason.as_str(),
+        argv0
     )
 }
 
@@ -335,37 +407,39 @@ impl<M: MemoryView> LocalChecker<M> {
         match self.run_local(kind, left, right, &parse, started) {
             Ok(success) => {
                 if success.value.confidence() < self.config.confidence_floor {
-                    return self.cloud_or_fail(
-                        CloudCtx {
-                            kind,
-                            left,
-                            right,
-                            started,
-                        },
-                        parse,
-                        FallbackReason::LowConfidence,
-                        Some(success.raw),
-                        format!(
-                            "local confidence {:.2} is below {:.2}",
-                            success.value.confidence(),
-                            self.config.confidence_floor
-                        ),
+                    let detail = format!(
+                        "local confidence {:.2} is below {:.2}",
+                        success.value.confidence(),
+                        self.config.confidence_floor
                     );
+                    if self.config.cloud_opted_in() {
+                        return self.cloud_or_fail(
+                            CloudCtx {
+                                kind,
+                                left,
+                                right,
+                                started,
+                            },
+                            parse,
+                            FallbackReason::LowConfidence,
+                            Some(success.raw),
+                            detail,
+                        );
+                    }
+                    return Err(CheckFailure {
+                        reason: FallbackReason::LowConfidence,
+                        detail: format!(
+                            "{detail}; cloud fallback is off (set ENSEMBLY_CLOUD_CHECKS=1 and ENSEMBLY_CLOUD_CHECK_CMD to opt in)"
+                        ),
+                        latency: started.elapsed(),
+                        raw: Some(success.raw),
+                    });
                 }
                 Ok(success)
             }
-            Err(failure) => self.cloud_or_fail(
-                CloudCtx {
-                    kind,
-                    left,
-                    right,
-                    started,
-                },
-                parse,
-                failure.reason,
-                failure.raw,
-                failure.detail,
-            ),
+            // Lock, memory, missing model/runtime, invalid JSON, and any other
+            // local error stay local. They never escalate to the cloud.
+            Err(failure) => Err(failure),
         }
     }
 
@@ -391,8 +465,8 @@ impl<M: MemoryView> LocalChecker<M> {
         })?;
         self.wait_for_memory(size, started)?;
         let _lock = ModelLock::acquire(&self.config.lock_path)
-            .map_err(|e| fail(FallbackReason::RuntimeMissing, started, e))?;
-        // Retry once on invalid JSON, then fall through to cloud.
+            .map_err(|e| fail(FallbackReason::LockBusy, started, e))?;
+        // Retry once on invalid JSON, then return InvalidJson (no cloud).
         let mut last_raw = String::new();
         let mut last_err = String::new();
         for _ in 0..2 {
@@ -474,11 +548,17 @@ impl<M: MemoryView> LocalChecker<M> {
     }
 
     fn pick_runtime(&self) -> Result<RuntimeKind, CheckFailure> {
+        let mlx_ok = self.config.mlx_bin.is_some() && self.config.mlx_experimental;
         match self.config.prefer {
-            RuntimeKind::Mlx if self.config.mlx_bin.is_some() => Ok(RuntimeKind::Mlx),
+            RuntimeKind::Mlx if mlx_ok => Ok(RuntimeKind::Mlx),
             RuntimeKind::LlamaCpp if self.config.llama_bin.is_some() => Ok(RuntimeKind::LlamaCpp),
             _ if self.config.llama_bin.is_some() => Ok(RuntimeKind::LlamaCpp),
-            _ if self.config.mlx_bin.is_some() => Ok(RuntimeKind::Mlx),
+            _ if mlx_ok => Ok(RuntimeKind::Mlx),
+            _ if self.config.mlx_bin.is_some() && !self.config.mlx_experimental => Err(fail(
+                FallbackReason::RuntimeMissing,
+                Instant::now(),
+                "MLX is not used for production checks until it supports schema-constrained JSON (set ENSEMBLY_MLX_EXPERIMENTAL=1 to override)".into(),
+            )),
             _ => Err(fail(
                 FallbackReason::RuntimeMissing,
                 Instant::now(),
@@ -612,6 +692,8 @@ impl<M: MemoryView> LocalChecker<M> {
         left: &str,
         right: Option<&str>,
     ) -> Result<String, String> {
+        // Reached only when `mlx_experimental` is on. mlx_lm.generate has no
+        // `--json-schema` flag; output is parsed after the fact.
         let bin = self
             .config
             .mlx_bin
@@ -645,6 +727,12 @@ impl<M: MemoryView> LocalChecker<M> {
         left: &str,
         right: Option<&str>,
     ) -> Result<String, (FallbackReason, String)> {
+        if !self.config.cloud_opted_in() {
+            return Err((
+                FallbackReason::CloudMissing,
+                "cloud fallback is off (set ENSEMBLY_CLOUD_CHECKS=1 and ENSEMBLY_CLOUD_CHECK_CMD to opt in)".into(),
+            ));
+        }
         let mut parts = vec![left];
         if let Some(r) = right {
             parts.push(r);
@@ -676,6 +764,10 @@ impl<M: MemoryView> LocalChecker<M> {
         if !template.iter().any(|p| p.contains("{{prompt}}")) {
             cmd.arg(&prompt);
         }
+        eprintln!(
+            "{}",
+            cloud_call_log_line(FallbackReason::LowConfidence, bin)
+        );
         run_cmd(cmd, self.config.timeout).map_err(|e| (FallbackReason::CloudMissing, e))
     }
 }
@@ -720,12 +812,24 @@ fn run_cmd(mut cmd: Command, timeout: Duration) -> Result<String, String> {
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("failed to start local check process: {e}"))?;
-    loop {
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+    let stdout_h = std::thread::spawn(move || match stdout {
+        Some(r) => read_capped(r, MAX_STDOUT_BYTES),
+        None => CappedRead::Ok(Vec::new()),
+    });
+    let stderr_h = std::thread::spawn(move || match stderr {
+        Some(r) => read_capped(r, MAX_STDOUT_BYTES),
+        None => CappedRead::Ok(Vec::new()),
+    });
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) if started.elapsed() > timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = stdout_h.join();
+                let _ = stderr_h.join();
                 return Err(format!(
                     "local check timed out after {}s",
                     timeout.as_secs()
@@ -734,19 +838,54 @@ fn run_cmd(mut cmd: Command, timeout: Duration) -> Result<String, String> {
             Ok(None) => std::thread::sleep(Duration::from_millis(20)),
             Err(err) => return Err(format!("local check wait: {err}")),
         }
+    };
+    let stdout = stdout_h.join().unwrap_or(CappedRead::Ok(Vec::new()));
+    let stderr = stderr_h.join().unwrap_or(CappedRead::Ok(Vec::new()));
+    if matches!(stdout, CappedRead::Exceeded) || matches!(stderr, CappedRead::Exceeded) {
+        return Err(format!(
+            "local check output exceeded {MAX_STDOUT_BYTES} bytes"
+        ));
     }
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("local check output: {e}"))?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = match stdout {
+        CappedRead::Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        CappedRead::Exceeded => unreachable!(),
+    };
+    if !status.success() {
+        let stderr = match stderr {
+            CappedRead::Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+            CappedRead::Exceeded => String::new(),
+        };
         return Err(format!(
             "local check exited {}: {stderr}",
-            output.status.code().unwrap_or(-1)
+            status.code().unwrap_or(-1)
         ));
     }
     Ok(stdout)
+}
+
+enum CappedRead {
+    Ok(Vec<u8>),
+    Exceeded,
+}
+
+fn read_capped<R: Read>(mut reader: R, cap: usize) -> CappedRead {
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 4096];
+    loop {
+        match reader.read(&mut tmp) {
+            Ok(0) => return CappedRead::Ok(buf),
+            Ok(n) => {
+                if buf.len().saturating_add(n) > cap {
+                    let mut sink = [0u8; 8192];
+                    while matches!(reader.read(&mut sink), Ok(k) if k > 0) {}
+                    return CappedRead::Exceeded;
+                }
+                buf.extend_from_slice(&tmp[..n]);
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return CappedRead::Ok(buf),
+        }
+    }
 }
 
 fn fail(reason: FallbackReason, started: Instant, detail: String) -> CheckFailure {
@@ -819,6 +958,7 @@ mod tests {
             mlx_bin: None,
             classify_model: Some(model_path.clone()),
             conflict_model: Some(model_path),
+            cloud_checks: false,
             cloud_cmd: None,
             confidence_floor: DEFAULT_CONFIDENCE_FLOOR,
             timeout: Duration::from_secs(5),
@@ -827,7 +967,28 @@ mod tests {
             lock_path: dir.join("model.lock"),
             prefer: RuntimeKind::LlamaCpp,
             memory_retries: 0,
+            mlx_experimental: false,
         }
+    }
+
+    fn write_cloud(dir: &Path, json: Option<&str>) -> (Vec<String>, PathBuf) {
+        let sentinel = dir.join("cloud-called");
+        let cloud = dir.join("cloud.sh");
+        let body = match json {
+            Some(j) => format!(
+                "#!/bin/sh\n: > \"{}\"\nprintf '%s\\n' '{j}'\n",
+                sentinel.display()
+            ),
+            None => format!(
+                "#!/bin/sh\n: > \"{}\"\necho should-not-be-called >&2; exit 1\n",
+                sentinel.display()
+            ),
+        };
+        write_exec(&cloud, &body);
+        (
+            vec![cloud.to_string_lossy().into(), "{{prompt}}".into()],
+            sentinel,
+        )
     }
 
     #[test]
@@ -862,34 +1023,77 @@ mod tests {
             ),
             "qwen.gguf",
         );
-        let cloud = dir.path().join("cloud.sh");
-        write_exec(
-            &cloud,
-            &classify_script(
+        let (cmd, sentinel) = write_cloud(
+            dir.path(),
+            Some(
                 r#"{"label":"fact","confidence":0.81,"rationale":"Cloud fallback parsed the stock figure."}"#,
             ),
         );
-        cfg.cloud_cmd = Some(vec![cloud.to_string_lossy().into(), "{{prompt}}".into()]);
+        cfg.cloud_checks = true;
+        cfg.cloud_cmd = Some(cmd);
         let checker = LocalChecker::new(cfg, FixedMemory(8 * 1024 * 1024 * 1024));
-        let got = checker
-            .classify("The Northbridge depot of River Co. holds 12 teal crates.")
-            .unwrap();
+        let statement = "The Northbridge depot of River Co. holds 12 teal crates.";
+        let got = checker.classify(statement).unwrap();
         assert_eq!(
             got.value.label,
             crate::local_checks::schema::FactLabel::Fact
         );
         assert_eq!(got.source.runtime, RuntimeKind::Cloud);
         assert_eq!(got.source.fallback, Some(FallbackReason::LowConfidence));
+        assert!(sentinel.is_file(), "opted-in cloud should have been called");
+        let log = cloud_call_log_line(FallbackReason::LowConfidence, "cloud.sh");
+        assert!(log.contains("reason=low-confidence"));
+        assert!(!log.contains(statement));
+        assert!(!log.contains("teal crates"));
     }
 
     #[test]
-    fn missing_runtime_falls_back_when_cloud_configured() {
+    fn cloud_requires_both_flag_and_command() {
         let dir = tempfile::tempdir().unwrap();
-        let cloud = dir.path().join("cloud.sh");
-        write_exec(
-            &cloud,
+        let mut cfg = base_config(
+            dir.path(),
             &classify_script(
-                r#"{"label":"opinion","confidence":0.77,"rationale":"Cloud ran because no local runtime was present."}"#,
+                r#"{"label":"uncertain","confidence":0.21,"rationale":"The local model is unsure."}"#,
+            ),
+            "qwen.gguf",
+        );
+        let (cmd, sentinel) = write_cloud(
+            dir.path(),
+            Some(
+                r#"{"label":"fact","confidence":0.81,"rationale":"Should not run without the flag."}"#,
+            ),
+        );
+        cfg.cloud_checks = false;
+        cfg.cloud_cmd = Some(cmd.clone());
+        assert!(!cfg.cloud_opted_in());
+        let checker = LocalChecker::new(cfg.clone(), FixedMemory(8 * 1024 * 1024 * 1024));
+        let err = checker
+            .classify("The Northbridge depot of River Co. holds 12 teal crates.")
+            .unwrap_err();
+        assert_eq!(err.reason, FallbackReason::LowConfidence);
+        assert!(
+            err.detail.contains("cloud fallback is off"),
+            "{}",
+            err.detail
+        );
+        assert!(!sentinel.is_file());
+
+        cfg.cloud_checks = true;
+        cfg.cloud_cmd = None;
+        assert!(!cfg.cloud_opted_in());
+        cfg.cloud_cmd = Some(vec![]);
+        assert!(!cfg.cloud_opted_in());
+        cfg.cloud_cmd = Some(cmd);
+        assert!(cfg.cloud_opted_in());
+    }
+
+    #[test]
+    fn missing_runtime_does_not_call_cloud() {
+        let dir = tempfile::tempdir().unwrap();
+        let (cmd, sentinel) = write_cloud(
+            dir.path(),
+            Some(
+                r#"{"label":"opinion","confidence":0.77,"rationale":"Cloud must not run on a local error."}"#,
             ),
         );
         let cfg = LocalCheckConfig {
@@ -897,7 +1101,8 @@ mod tests {
             mlx_bin: None,
             classify_model: Some(dir.path().join("missing.gguf")),
             conflict_model: None,
-            cloud_cmd: Some(vec![cloud.to_string_lossy().into(), "{{prompt}}".into()]),
+            cloud_checks: true,
+            cloud_cmd: Some(cmd),
             confidence_floor: DEFAULT_CONFIDENCE_FLOOR,
             timeout: Duration::from_secs(5),
             context: 512,
@@ -905,22 +1110,23 @@ mod tests {
             lock_path: dir.path().join("model.lock"),
             prefer: RuntimeKind::LlamaCpp,
             memory_retries: 0,
+            mlx_experimental: false,
         };
         let checker = LocalChecker::new(cfg, FixedMemory(8 * 1024 * 1024 * 1024));
-        let got = checker
+        let err = checker
             .classify("River Co. makes the most cheerful crates in the valley.")
-            .unwrap();
-        assert_eq!(
-            got.value.label,
-            crate::local_checks::schema::FactLabel::Opinion
+            .unwrap_err();
+        assert_eq!(err.reason, FallbackReason::RuntimeMissing);
+        assert!(
+            !sentinel.is_file(),
+            "cloud must not run on a missing runtime"
         );
-        assert_eq!(got.source.fallback, Some(FallbackReason::RuntimeMissing));
     }
 
     #[test]
     fn memory_shortfall_does_not_start_the_model() {
         let dir = tempfile::tempdir().unwrap();
-        let cfg = base_config(
+        let mut cfg = base_config(
             dir.path(),
             "#!/bin/sh\necho should-not-run >&2; exit 1\n",
             "qwen.gguf",
@@ -928,26 +1134,39 @@ mod tests {
         let model_size = fs::metadata(cfg.classify_model.as_ref().unwrap())
             .unwrap()
             .len();
+        let (cmd, sentinel) = write_cloud(dir.path(), None);
+        cfg.cloud_checks = true;
+        cfg.cloud_cmd = Some(cmd);
         let checker = LocalChecker::new(cfg, FixedMemory(model_size)); // no headroom
         let err = checker
             .classify("The Northbridge depot of River Co. holds 12 teal crates.")
             .unwrap_err();
         assert_eq!(err.reason, FallbackReason::NotEnoughMemory);
         assert!(err.detail.contains("headroom") || err.detail.contains("available"));
+        assert!(
+            !sentinel.is_file(),
+            "cloud must not run on a memory refusal"
+        );
         let _ = MEMORY_HEADROOM_BYTES;
     }
 
     #[test]
     fn cloud_is_refused_for_personal_data() {
         let dir = tempfile::tempdir().unwrap();
-        let mut cfg = base_config(dir.path(), "#!/bin/sh\nexit 1\n", "qwen.gguf");
-        cfg.llama_bin = None; // force fallback
-        let cloud = dir.path().join("cloud.sh");
-        write_exec(&cloud, "#!/bin/sh\necho should-not-be-called >&2; exit 1\n");
-        cfg.cloud_cmd = Some(vec![cloud.to_string_lossy().into(), "{{prompt}}".into()]);
+        let mut cfg = base_config(
+            dir.path(),
+            &classify_script(
+                r#"{"label":"uncertain","confidence":0.21,"rationale":"The local model is unsure."}"#,
+            ),
+            "qwen.gguf",
+        );
+        let (cmd, sentinel) = write_cloud(dir.path(), None);
+        cfg.cloud_checks = true;
+        cfg.cloud_cmd = Some(cmd);
         let checker = LocalChecker::new(cfg, FixedMemory(8 * 1024 * 1024 * 1024));
+        let mail = format!("{}@{}", "ada", "example.com");
         let err = checker
-            .classify("mail me at ada@example.com please")
+            .classify(&format!("mail me at {mail} please"))
             .unwrap_err();
         assert_eq!(err.reason, FallbackReason::CloudBlocked);
         assert!(err.detail.contains("cloud fallback"), "{}", err.detail);
@@ -956,32 +1175,123 @@ mod tests {
             "{}",
             err.detail
         );
+        assert!(
+            !sentinel.is_file(),
+            "redaction must refuse the call entirely"
+        );
     }
 
     #[test]
-    fn invalid_json_retries_then_falls_back() {
+    fn invalid_json_retries_then_stays_local() {
         let dir = tempfile::tempdir().unwrap();
         let mut cfg = base_config(
             dir.path(),
             "#!/bin/sh\nprintf '%s\\n' 'not-json'\n",
             "qwen.gguf",
         );
-        let cloud = dir.path().join("cloud.sh");
-        write_exec(
-            &cloud,
-            &classify_script(
-                r#"{"label":"other","confidence":0.7,"rationale":"Cloud recovered after invalid local JSON."}"#,
+        let (cmd, sentinel) = write_cloud(
+            dir.path(),
+            Some(
+                r#"{"label":"other","confidence":0.7,"rationale":"Cloud must not recover invalid local JSON."}"#,
             ),
         );
-        cfg.cloud_cmd = Some(vec![cloud.to_string_lossy().into(), "{{prompt}}".into()]);
+        cfg.cloud_checks = true;
+        cfg.cloud_cmd = Some(cmd);
         let checker = LocalChecker::new(cfg, FixedMemory(8 * 1024 * 1024 * 1024));
-        let got = checker
+        let err = checker
             .classify("Hello, this is a test ping with no claim.")
-            .unwrap();
-        assert_eq!(
-            got.value.label,
-            crate::local_checks::schema::FactLabel::Other
+            .unwrap_err();
+        assert_eq!(err.reason, FallbackReason::InvalidJson);
+        assert!(
+            !sentinel.is_file(),
+            "cloud must not run on invalid local JSON"
         );
-        assert_eq!(got.source.fallback, Some(FallbackReason::InvalidJson));
+    }
+
+    #[test]
+    fn missing_model_does_not_call_cloud() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = base_config(
+            dir.path(),
+            &classify_script(r#"{"label":"fact","confidence":0.9,"rationale":"Should not run."}"#),
+            "qwen.gguf",
+        );
+        cfg.classify_model = Some(dir.path().join("absent.gguf"));
+        let (cmd, sentinel) = write_cloud(dir.path(), None);
+        cfg.cloud_checks = true;
+        cfg.cloud_cmd = Some(cmd);
+        let checker = LocalChecker::new(cfg, FixedMemory(8 * 1024 * 1024 * 1024));
+        let err = checker
+            .classify("The Northbridge depot of River Co. holds 12 teal crates.")
+            .unwrap_err();
+        assert_eq!(err.reason, FallbackReason::ModelMissing);
+        assert!(!sentinel.is_file());
+    }
+
+    #[test]
+    fn lock_busy_does_not_call_cloud() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = base_config(
+            dir.path(),
+            &classify_script(r#"{"label":"fact","confidence":0.9,"rationale":"Should not run."}"#),
+            "qwen.gguf",
+        );
+        let (cmd, sentinel) = write_cloud(dir.path(), None);
+        cfg.cloud_checks = true;
+        cfg.cloud_cmd = Some(cmd);
+        let _held = crate::local_checks::support::ModelLock::acquire(&cfg.lock_path).unwrap();
+        let checker = LocalChecker::new(cfg, FixedMemory(8 * 1024 * 1024 * 1024));
+        let err = checker
+            .classify("The Northbridge depot of River Co. holds 12 teal crates.")
+            .unwrap_err();
+        assert_eq!(err.reason, FallbackReason::LockBusy);
+        assert!(
+            !sentinel.is_file(),
+            "cloud must not run when the lock is busy"
+        );
+    }
+
+    #[test]
+    fn mlx_is_rejected_without_experimental_flag() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = base_config(
+            dir.path(),
+            "#!/bin/sh\necho should-not-run >&2; exit 1\n",
+            "qwen.gguf",
+        );
+        cfg.llama_bin = None;
+        cfg.mlx_bin = Some(dir.path().join("mlx"));
+        cfg.mlx_experimental = false;
+        let (cmd, sentinel) = write_cloud(dir.path(), None);
+        cfg.cloud_checks = true;
+        cfg.cloud_cmd = Some(cmd);
+        let checker = LocalChecker::new(cfg, FixedMemory(8 * 1024 * 1024 * 1024));
+        let err = checker
+            .classify("The Northbridge depot of River Co. holds 12 teal crates.")
+            .unwrap_err();
+        assert_eq!(err.reason, FallbackReason::RuntimeMissing);
+        assert!(
+            err.detail.contains("schema-constrained") || err.detail.contains("MLX"),
+            "{}",
+            err.detail
+        );
+        assert!(!sentinel.is_file());
+    }
+
+    #[test]
+    fn stdout_over_the_cap_fails_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        let script = "#!/bin/sh\ndd if=/dev/zero bs=1024 count=80 2>/dev/null | tr '\\0' 'a'\n";
+        let cfg = base_config(dir.path(), script, "qwen.gguf");
+        let checker = LocalChecker::new(cfg, FixedMemory(8 * 1024 * 1024 * 1024));
+        let err = checker
+            .classify("The Northbridge depot of River Co. holds 12 teal crates.")
+            .unwrap_err();
+        assert_eq!(err.reason, FallbackReason::RuntimeMissing);
+        assert!(
+            err.detail.contains("exceeded") && err.detail.contains(&MAX_STDOUT_BYTES.to_string()),
+            "{}",
+            err.detail
+        );
     }
 }

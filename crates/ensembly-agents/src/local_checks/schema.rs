@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// Default floor: below this, the router asks the cloud fallback (if configured).
+/// Default floor: below this, the router may ask the cloud fallback, but only when the operator has opted in.
 pub const DEFAULT_CONFIDENCE_FLOOR: f32 = 0.6;
 
 /// Allowed fact-classification labels.
