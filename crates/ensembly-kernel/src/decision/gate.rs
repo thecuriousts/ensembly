@@ -13,7 +13,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-use super::normalize::{cue_views, extract_hosts, flag_matches, host_from_url_views, views};
+use super::normalize::{extend_cue_views, extract_hosts, flag_matches, host_from_url_views, views};
 
 pub const GATE_REASON: &str = "scam-gate";
 
@@ -101,7 +101,7 @@ pub fn audit(url: &str, posting_text: &str, flags: &FlagList) -> GateResult {
     {
         return fail();
     }
-    let cue_views = cue_views(&blob);
+    let cue_views = extend_cue_views(&blob, views);
     if cue_views.iter().any(|v| cue_fail().is_match(v)) {
         return fail();
     }

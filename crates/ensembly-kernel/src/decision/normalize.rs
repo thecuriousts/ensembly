@@ -216,12 +216,33 @@ fn strip_format_chars(text: &str) -> String {
         .collect()
 }
 
+fn decode_then_maybe_nfkc(text: &str) -> String {
+    let after_html = if text.as_bytes().contains(&b'&') {
+        html_decode_round(text)
+    } else {
+        text.to_string()
+    };
+    let decoded = if after_html.as_bytes().contains(&b'%') {
+        percent_decode_round(&after_html)
+    } else {
+        after_html
+    };
+    // NFKC is a no-op on ASCII and is the expensive part of a 1 MB pass.
+    if decoded.is_ascii() {
+        decoded
+    } else {
+        nfkc_strip_marks_fold(&decoded)
+    }
+}
+
 /// One decode step: strip format/zero-width characters, decode HTML
 /// named and numeric references, percent-decode, then unicode-fold.
 fn canonicalize_decode_pass(text: &str) -> String {
-    nfkc_strip_marks_fold(&percent_decode_round(&html_decode_round(
-        &strip_format_chars(text),
-    )))
+    if text.chars().any(is_format_or_zero_width) {
+        decode_then_maybe_nfkc(&strip_format_chars(text))
+    } else {
+        decode_then_maybe_nfkc(text)
+    }
 }
 
 struct CanonForms {
@@ -758,8 +779,14 @@ fn has_leet_digit(text: &str) -> bool {
 
 /// Cue-only views: shared host/cue views plus HTML-stripped, punctuation-join,
 /// and a separate leet view. A hit on any view is a hit.
+#[allow(dead_code)]
 pub fn cue_views(text: &str) -> Vec<String> {
-    let mut out = views(text);
+    extend_cue_views(text, views(text))
+}
+
+/// Extend already-built host/cue views with cue-only folds, without
+/// running [`views`] again.
+pub fn extend_cue_views(text: &str, mut out: Vec<String>) -> Vec<String> {
     let mut seen: std::collections::HashSet<String> = out.iter().cloned().collect();
     let push = |s: String, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>| {
         if seen.insert(s.clone()) {
