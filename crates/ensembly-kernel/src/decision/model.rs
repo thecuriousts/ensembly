@@ -339,7 +339,9 @@ pub fn score(model: &FittedModel, row: &LabelRow, flags: &FlagList) -> Score {
     let p = predict_raw(model, &features(row));
     let decision = decide_from_p(p, &gate, &model.band);
     let reason = if gate.verdict == GateVerdict::Fail {
-        GATE_REASON.to_string()
+        gate.reason
+            .clone()
+            .unwrap_or_else(|| GATE_REASON.to_string())
     } else if gate.verdict == GateVerdict::Uncertain {
         "scam-gate-uncertain".into()
     } else {
@@ -366,7 +368,10 @@ pub fn baseline(row: &LabelRow, flags: &FlagList) -> Score {
         return Score {
             p_apply: 0.05,
             decision: ModelDecision::Skip,
-            reason: GATE_REASON.into(),
+            reason: gate
+                .reason
+                .clone()
+                .unwrap_or_else(|| GATE_REASON.to_string()),
             gate,
         };
     }

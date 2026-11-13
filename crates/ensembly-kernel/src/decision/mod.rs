@@ -21,8 +21,10 @@ pub mod store;
 pub mod workflow;
 
 pub use eval::{load_labels, run_eval, EvalReport};
-pub use gate::{audit, FlagList, GateResult, GATE_REASON};
+pub use gate::{audit, FlagList, GateResult, DEPTH_REASON, GATE_REASON};
 pub use metrics::{answered_metrics, wilson, AnsweredMetrics, WilsonInterval};
 pub use model::{baseline, features, fit, pick_band, score, Band, FittedModel, Score};
+#[doc(hidden)]
+pub use normalize::{byte_work, reset_byte_work};
 pub use store::load_events;
 pub use workflow::{apply, phase, silence_took_action, Phase, Signal, TransitionError};

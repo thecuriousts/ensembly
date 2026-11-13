@@ -13,9 +13,17 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-use super::normalize::{extend_cue_views, extract_hosts, flag_matches, host_from_url_views, views};
+use super::normalize::{
+    extend_cue_views, extract_hosts, flag_matches, host_from_url_views, views_with_canon,
+};
 
 pub const GATE_REASON: &str = "scam-gate";
+/// Fail-closed reason when the fixed-point decode budget is exhausted
+/// or a further `%XX` / `&name;` / `&#...` layer remains. This is a
+/// hard Fail, not [`GateVerdict::Uncertain`]: Uncertain is an abstain
+/// and does not skip the posting, so a budget miss would be treated as
+/// safe enough to score.
+pub const DEPTH_REASON: &str = "encoding-depth-exceeded";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -82,14 +90,23 @@ fn fail() -> GateResult {
     }
 }
 
+fn fail_depth() -> GateResult {
+    GateResult {
+        verdict: GateVerdict::Fail,
+        reason: Some(DEPTH_REASON.into()),
+    }
+}
+
 /// Audit a posting. Listed domains (URL host and hosts in the body) and hard
 /// text cues fail. Soft cues are uncertain (abstain, not a hard fail).
 ///
 /// Matching uses every normaliser view of the URL and body. A hit on any
-/// view is a hit.
+/// view is a hit. If the fixed-point decode budget is exhausted, the
+/// verdict is Fail with [`DEPTH_REASON`], never Pass: Uncertain would
+/// not skip the posting.
 pub fn audit(url: &str, posting_text: &str, flags: &FlagList) -> GateResult {
     let blob = format!("{url} {posting_text}");
-    let views = views(&blob);
+    let (views, canon) = views_with_canon(&blob);
     let mut hosts = host_from_url_views(url);
     for view in &views {
         hosts.extend(extract_hosts(view));
@@ -104,6 +121,9 @@ pub fn audit(url: &str, posting_text: &str, flags: &FlagList) -> GateResult {
     let cue_views = extend_cue_views(&blob, views);
     if cue_views.iter().any(|v| cue_fail().is_match(v)) {
         return fail();
+    }
+    if canon.depth_exceeded() {
+        return fail_depth();
     }
     if cue_views.iter().any(|v| cue_uncertain().is_match(v)) {
         return GateResult {
@@ -395,5 +415,115 @@ mod tests {
                 "host combination {name} should fail, body={body:?}"
             );
         }
+    }
+
+    fn percent_wrap(s: &str) -> String {
+        let mut out = String::with_capacity(s.len() * 3);
+        for b in s.as_bytes() {
+            out.push_str(&format!("%{b:02X}"));
+        }
+        out
+    }
+
+    fn percent_wrap_n(s: &str, n: usize) -> String {
+        let mut cur = s.to_string();
+        for _ in 0..n {
+            cur = percent_wrap(&cur);
+        }
+        cur
+    }
+
+    fn is_hard_fail(g: &super::GateResult) -> bool {
+        g.verdict == GateVerdict::Fail
+            && (g.reason.as_deref() == Some(GATE_REASON)
+                || g.reason.as_deref() == Some(DEPTH_REASON))
+    }
+
+    #[test]
+    fn exhausted_decode_budget_never_passes() {
+        // Review repros: four percent-wraps of a ZWSP-split name, and
+        // seven wraps of %26ndash%3B. Either the cue fires or the
+        // budget is exceeded; neither may Pass.
+        let four = format!("wire{}money today", percent_wrap_n("&n\u{200b}dash;", 4));
+        let g = audit(clean_url(), &four, &flags());
+        assert!(
+            is_hard_fail(&g),
+            "4 wraps of ZWSP-split ndash must not Pass, got {:?} {:?}",
+            g.verdict,
+            g.reason
+        );
+        assert_ne!(g.verdict, GateVerdict::Pass);
+        let seven = format!("wire{}money today", percent_wrap_n("%26ndash%3B", 7));
+        let g = audit(clean_url(), &seven, &flags());
+        assert!(
+            is_hard_fail(&g),
+            "7 wraps of %26ndash%3B must not Pass, got {:?} {:?}",
+            g.verdict,
+            g.reason
+        );
+        assert_ne!(g.verdict, GateVerdict::Pass);
+        // Deep wraps that outrun the cap must be encoding-depth-exceeded.
+        let deep = format!("wire{}money today", percent_wrap_n("&ndash;", 12));
+        let g = audit(clean_url(), &deep, &flags());
+        assert_eq!(g.verdict, GateVerdict::Fail);
+        assert_eq!(g.reason.as_deref(), Some(DEPTH_REASON));
+    }
+
+    #[test]
+    fn wrapped_entity_depths_never_pass() {
+        for depth in 0..=12 {
+            for (kind, inner) in [("zwsp-split", "&n\u{200b}dash;"), ("plain", "&ndash;")] {
+                let body = format!("wire{}money today", percent_wrap_n(inner, depth));
+                let g = audit(clean_url(), &body, &flags());
+                assert_ne!(
+                    g.verdict,
+                    GateVerdict::Pass,
+                    "{kind} wrap depth {depth} must not Pass, reason={:?}",
+                    g.reason
+                );
+                assert!(
+                    is_hard_fail(&g),
+                    "{kind} wrap depth {depth} must Fail on the cue or as encoding-depth-exceeded, got {:?} {:?}",
+                    g.verdict,
+                    g.reason
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn one_megabyte_work_is_proportional_to_input() {
+        use crate::decision::normalize::{byte_work, reset_byte_work};
+
+        let n = 1024 * 1024;
+        let url = "https://jobs.example.test/posting/1";
+        let flags = flags();
+        // 128 work units per input byte is ample for a handful of
+        // linear views and a capped (CANON_PASSES) decode loop.
+        let bound = |len: usize| (len as u64).saturating_mul(128).saturating_add(64 * 1024);
+
+        reset_byte_work();
+        let _ = audit(url, &"x".repeat(n), &flags);
+        let plain = byte_work();
+        assert!(
+            plain <= bound(n + url.len()),
+            "plain 1 MB work {plain} exceeded bound {}",
+            bound(n + url.len())
+        );
+
+        let mut nested = String::with_capacity(n);
+        nested.push_str("&amp;");
+        while nested.len() < n {
+            nested.push_str("%26amp%3B");
+        }
+        nested.truncate(n);
+        reset_byte_work();
+        let _ = audit(url, &nested, &flags);
+        let work = byte_work();
+        assert!(
+            work <= bound(n + url.len()),
+            "nested 1 MB work {work} exceeded bound {}",
+            bound(n + url.len())
+        );
     }
 }

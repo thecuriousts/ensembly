@@ -7,6 +7,7 @@
 
 use super::html5_entities::{lookup_named_entity, MAX_NAMED_ENTITY};
 use regex::Regex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
@@ -15,7 +16,29 @@ use unicode_normalization::UnicodeNormalization;
 /// decode helper (view d). The fixed-point loop uses [`CANON_PASSES`].
 const DECODE_ROUNDS: usize = 3;
 /// Hard cap on fixed-point canonicalisation passes.
-const CANON_PASSES: usize = 4;
+/// Exhausting this cap is a hard fail, not a pass: see
+/// [`CanonForms::depth_exceeded`].
+const CANON_PASSES: usize = 8;
+
+/// Bytes scanned in canonicalisation and view composition. Tests use this
+/// as a deterministic linear-time bound, independent of wall-clock speed.
+static BYTE_WORK: AtomicU64 = AtomicU64::new(0);
+
+fn account(n: usize) {
+    BYTE_WORK.fetch_add(n as u64, Ordering::Relaxed);
+}
+
+/// Reset the byte-work counter. For tests; hidden from the public docs.
+#[doc(hidden)]
+pub fn reset_byte_work() {
+    BYTE_WORK.store(0, Ordering::Relaxed);
+}
+
+/// Bytes accounted since the last reset. For tests; hidden from the public docs.
+#[doc(hidden)]
+pub fn byte_work() -> u64 {
+    BYTE_WORK.load(Ordering::Relaxed)
+}
 
 /// Format / zero-width / format characters (Cf and friends).
 /// On rustc 1.99, U+200B is neither `is_control()` nor `is_whitespace()`.
@@ -238,6 +261,7 @@ fn decode_then_maybe_nfkc(text: &str) -> String {
 /// One decode step: strip format/zero-width characters, decode HTML
 /// named and numeric references, percent-decode, then unicode-fold.
 fn canonicalize_decode_pass(text: &str) -> String {
+    account(text.len());
     if text.chars().any(is_format_or_zero_width) {
         decode_then_maybe_nfkc(&strip_format_chars(text))
     } else {
@@ -245,7 +269,7 @@ fn canonicalize_decode_pass(text: &str) -> String {
     }
 }
 
-struct CanonForms {
+pub(super) struct CanonForms {
     /// Strip + HTML-decode + percent-decode + unicode fold. Non-ASCII
     /// dashes are kept so a decoded en-dash can still stand in for a
     /// host label separator.
@@ -253,6 +277,42 @@ struct CanonForms {
     /// `decoded` after separator class folds (Pd and extra dashes to
     /// `-`, Zs to space, slash and period lookalikes to ASCII).
     folded: String,
+    /// True only when a pass left the string unchanged before the cap
+    /// or size bound was hit.
+    converged: bool,
+}
+
+impl CanonForms {
+    /// The decode budget was exhausted, or a further decode layer is
+    /// still visible. The gate must Fail; it must never Pass.
+    pub(super) fn depth_exceeded(&self) -> bool {
+        !self.converged
+            || has_residual_decode_layer(&self.decoded)
+            || has_residual_decode_layer(&self.folded)
+    }
+}
+
+/// True when a further HTML entity or `%XX` octet is still decodable.
+fn has_residual_decode_layer(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%'
+            && i + 2 < bytes.len()
+            && from_hex(bytes[i + 1]).is_some()
+            && from_hex(bytes[i + 2]).is_some()
+        {
+            return true;
+        }
+        if bytes[i] == b'&' {
+            let mut tmp = String::new();
+            if parse_entity_into(s, i, &mut tmp).is_some() {
+                return true;
+            }
+        }
+        i += 1;
+    }
+    false
 }
 
 /// Fixed-point canonicalisation for the scam-gate.
@@ -268,16 +328,24 @@ struct CanonForms {
 /// would exceed a size bound, so a pathological input cannot expand
 /// without limit or run forever. Views are derived from this fixed
 /// point and from the raw text, so a cheap reordering cannot skip a fold.
+///
+/// If the loop does not converge, or a decodable `%XX`, `&name;`, or
+/// `&#...` layer remains after the cap, the result is marked
+/// `depth_exceeded`. The scam-gate then fails closed with reason
+/// `encoding-depth-exceeded` rather than passing; `Uncertain` is an
+/// abstain and would not skip the posting.
 fn canonicalize_forms(text: &str) -> CanonForms {
     let bound = canon_size_bound(text.len());
     let mut cur = text.to_string();
     let mut decoded = cur.clone();
     let mut folded = fold_separators(&decoded);
+    let mut converged = false;
     for _ in 0..CANON_PASSES {
         let next = canonicalize_decode_pass(&cur);
         if next.len() > bound {
             break;
         }
+        account(next.len());
         let next_folded = fold_separators(&next);
         if next_folded.len() > bound {
             break;
@@ -285,11 +353,16 @@ fn canonicalize_forms(text: &str) -> CanonForms {
         decoded = next;
         folded = next_folded;
         if decoded == cur {
+            converged = true;
             break;
         }
         cur = decoded.clone();
     }
-    CanonForms { decoded, folded }
+    CanonForms {
+        decoded,
+        folded,
+        converged,
+    }
 }
 
 fn eq_ignore_ascii(chars: &[char], at: usize, pat: &str) -> bool {
@@ -795,7 +868,12 @@ pub fn extend_cue_views(text: &str, mut out: Vec<String>) -> Vec<String> {
     };
 
     if text.contains('<') {
-        for v in views(&strip_html_tags(text)) {
+        // Do not call views() here: that would run the fixed-point
+        // canonicalisation a second time. The caller already passed
+        // views of the raw text (including its canonical forms).
+        // Tag-stripped compose views are enough for cues like
+        // `wire <b>money</b> today`.
+        for v in compose_views(&strip_html_tags(text)) {
             push(v, &mut out, &mut seen);
         }
         let existing = out.clone();
@@ -834,6 +912,10 @@ pub fn extend_cue_views(text: &str, mut out: Vec<String>) -> Vec<String> {
 /// Transforms that cannot change this input are skipped, and identical
 /// views are dropped. Linear in `text`.
 pub fn views(text: &str) -> Vec<String> {
+    views_with_canon(text).0
+}
+
+pub(super) fn views_with_canon(text: &str) -> (Vec<String>, CanonForms) {
     let mut out = compose_views(text);
     let mut seen: std::collections::HashSet<String> = out.iter().cloned().collect();
     let forms = canonicalize_forms(text);
@@ -847,7 +929,7 @@ pub fn views(text: &str) -> Vec<String> {
             }
         }
     }
-    out
+    (out, forms)
 }
 
 fn compose_views(text: &str) -> Vec<String> {

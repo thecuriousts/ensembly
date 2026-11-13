@@ -10,9 +10,38 @@
 //! an intended pass.
 //! Fixtures are synthetic (`*.example.test` only).
 
-use ensembly_kernel::decision::{audit, FlagList, GATE_REASON};
+use ensembly_kernel::decision::{
+    audit, byte_work, reset_byte_work, FlagList, DEPTH_REASON, GATE_REASON,
+};
 use ensembly_schema::GateVerdict;
 use std::time::{Duration, Instant};
+
+fn wall_limit() -> Duration {
+    // Debug builds and shared CI runners vary; keep a generous debug
+    // bound and a tight one only in release. Linear-time is also
+    // checked with a byte-work counter in the unit tests.
+    if cfg!(debug_assertions) {
+        Duration::from_secs(10)
+    } else {
+        Duration::from_secs(3)
+    }
+}
+
+fn work_bound(input_len: usize) -> u64 {
+    // Ample for a handful of linear views and a capped decode loop.
+    (input_len as u64)
+        .saturating_mul(128)
+        .saturating_add(64 * 1024)
+}
+
+fn assert_work_linear(input_len: usize) {
+    let work = byte_work();
+    let bound = work_bound(input_len);
+    assert!(
+        work <= bound,
+        "byte work {work} exceeded bound {bound} for {input_len} input bytes"
+    );
+}
 
 fn flags() -> FlagList {
     FlagList::default()
@@ -590,7 +619,34 @@ fn matrix() -> Vec<Case> {
             body: "role starts in 2026 &copy; the company",
             want: pass,
         },
+        Case {
+            name: "ordinary job-ad HTML with R&amp;D is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "<p>R&amp;D engineer in Stockholm</p>",
+            want: pass,
+        },
     ]
+}
+
+fn percent_wrap(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 3);
+    for b in s.as_bytes() {
+        out.push_str(&format!("%{b:02X}"));
+    }
+    out
+}
+
+fn percent_wrap_n(s: &str, n: usize) -> String {
+    let mut cur = s.to_string();
+    for _ in 0..n {
+        cur = percent_wrap(&cur);
+    }
+    cur
+}
+
+fn is_hard_fail(g: &ensembly_kernel::decision::GateResult) -> bool {
+    g.verdict == GateVerdict::Fail
+        && (g.reason.as_deref() == Some(GATE_REASON) || g.reason.as_deref() == Some(DEPTH_REASON))
 }
 
 #[test]
@@ -614,31 +670,57 @@ fn adversarial_matrix_matches_expected_verdicts() {
 }
 
 #[test]
+fn exhausted_decode_budget_rows_never_pass() {
+    let u = clean_url();
+    let four = format!("wire{}money today", percent_wrap_n("&n\u{200b}dash;", 4));
+    let g = audit(u, &four, &flags());
+    assert!(
+        is_hard_fail(&g),
+        "4 percent-wraps of ZWSP-split ndash must not Pass, got {:?} {:?}",
+        g.verdict,
+        g.reason
+    );
+
+    let seven = format!("wire{}money today", percent_wrap_n("%26ndash%3B", 7));
+    let g = audit(u, &seven, &flags());
+    assert!(
+        is_hard_fail(&g),
+        "7 wraps of %26ndash%3B must not Pass, got {:?} {:?}",
+        g.verdict,
+        g.reason
+    );
+}
+
+#[test]
 fn one_megabyte_input_finishes_fast() {
     let mut body = "plain text ".repeat(100_000);
     body.truncate(1_000_000);
     assert_eq!(body.len(), 1_000_000);
+    reset_byte_work();
     let start = Instant::now();
     let g = audit(clean_url(), &body, &flags());
     let elapsed = start.elapsed();
     assert_eq!(g.verdict, GateVerdict::Pass);
     assert!(
-        elapsed < Duration::from_secs(3),
+        elapsed < wall_limit(),
         "1 MB audit took {elapsed:?}, expected linear-time"
     );
+    assert_work_linear(body.len() + clean_url().len());
 
     let mut with_cue = body;
     with_cue.truncate(1_000_000 - 17);
     with_cue.push_str(" wire money today");
     assert!(with_cue.len() >= 1_000_000);
+    reset_byte_work();
     let start = Instant::now();
     let g = audit(clean_url(), &with_cue, &flags());
     let elapsed = start.elapsed();
     assert_eq!(g.verdict, GateVerdict::Fail);
     assert!(
-        elapsed < Duration::from_secs(3),
+        elapsed < wall_limit(),
         "1 MB cue audit took {elapsed:?}, expected linear-time"
     );
+    assert_work_linear(with_cue.len() + clean_url().len());
 
     // Pathological nested encoding: percent-encoded ZWSP inside a named
     // entity, repeated to 1 MB, with a nested-encoded cue at the end.
@@ -646,25 +728,29 @@ fn one_megabyte_input_finishes_fast() {
     let mut nested = unit.repeat(1_000_000 / unit.len() + 1);
     nested.truncate(1_000_000);
     assert_eq!(nested.len(), 1_000_000);
+    reset_byte_work();
     let start = Instant::now();
     let g = audit(clean_url(), &nested, &flags());
     let elapsed = start.elapsed();
     assert_eq!(g.verdict, GateVerdict::Pass);
     assert!(
-        elapsed < Duration::from_secs(3),
+        elapsed < wall_limit(),
         "1 MB nested-encoding audit took {elapsed:?}, expected linear-time"
     );
+    assert_work_linear(nested.len() + clean_url().len());
 
     let cue = " wire%26n%E2%80%8Bdash%3Bmoney today";
     nested.truncate(1_000_000 - cue.len());
     nested.push_str(cue);
     assert!(nested.len() >= 1_000_000);
+    reset_byte_work();
     let start = Instant::now();
     let g = audit(clean_url(), &nested, &flags());
     let elapsed = start.elapsed();
     assert_eq!(g.verdict, GateVerdict::Fail);
     assert!(
-        elapsed < Duration::from_secs(3),
+        elapsed < wall_limit(),
         "1 MB nested-encoding cue audit took {elapsed:?}, expected linear-time"
     );
+    assert_work_linear(nested.len() + clean_url().len());
 }

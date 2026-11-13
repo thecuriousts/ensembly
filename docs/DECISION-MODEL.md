@@ -16,11 +16,27 @@ operator.
   host and on hosts extracted from the posting text (case-insensitive,
   trailing dots stripped, subdomains included). Cue matching and host
   extraction share one normaliser and run on several views; a hit on
-  any view is a hit. Views cover (a) format/zero-width stripped, (b)
-  format/zero-width replaced by a space, (c) NFKC then combining marks
-  removed and Cyrillic/Greek confusables folded (also applied to
-  domains), (d) up to three rounds of percent and HTML-entity decoding
-  on URL authorities and the body, and (e) de-obfuscation of `[.]`,
+  any view is a hit. Views are derived from the raw text and from a
+  single fixed-point canonicalisation of the body (and, separately, of
+  URL authorities and extracted hosts). Each pass strips format and
+  zero-width characters, decodes HTML named and numeric character
+  references (from the vendored WHATWG HTML5 table; names are
+  case-sensitive), percent-decodes one `%XX` layer, and applies
+  Unicode and separator class folds. The loop repeats until the text
+  stops changing, or until a hard cap of eight passes or a size bound
+  of `2 * input_len + 64` bytes is hit. If the loop does not
+  converge, or if a residual decode layer (`%XX`, `&name;`, or
+  `&#...`) is still detectable after the cap, the gate verdict is
+  `Fail` with reason `encoding-depth-exceeded`. That is fail-closed:
+  the budget must never produce `Pass`. The verdict is `Fail` rather
+  than `Uncertain` because soft-cue `Uncertain` is an abstain — it
+  does not skip the posting, and the model defers to the operator.
+  An exhausted budget is therefore treated as a hard fail so
+  downstream skip stays in force. Views cover (a) format/zero-width
+  stripped, (b) format/zero-width replaced by a space, (c) NFKC then
+  combining marks removed and Cyrillic/Greek confusables folded (also
+  applied to domains), (d) the converged (or budget-capped) decoded
+  and class-folded forms, and (e) de-obfuscation of `[.]`,
   `(.)`, `{.}`, ` dot `, ` [dot] `, ` at `, and `[at]`, including
   spaces inside the brackets (`[ dot ]`, `( . )`). Ideographic and
   fullwidth stops (`U+3002`, `U+FF61`, `U+FF0E`) fold to ASCII `.` in
@@ -69,7 +85,7 @@ rows.
 ```mermaid
 stateDiagram-v2
   [*] --> Gate
-  Gate --> Skipped: listed domain or hard cue
+  Gate --> Skipped: listed domain, hard cue, or encoding depth exceeded
   Gate --> Propose: clear
   Propose --> Waiting: card and event written
   Waiting --> Confirmed: operator confirm
