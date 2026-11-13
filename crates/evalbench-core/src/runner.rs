@@ -3,8 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::answer::check_answer;
 use crate::taskset::{Task, TaskSet};
-use crate::trace::TraceRow;
+use crate::trace::{jsonl_lines, valid_run_id, TraceRow, TRACE_SCHEMA_VERSION};
 
 pub const PROMPT_ID: &str = "gaps-v1";
 pub const PROMPT_TEMPLATE: &str = include_str!("../fixtures/prompts/gaps-v1.txt");
@@ -47,16 +48,39 @@ pub struct ReplyParseError {
 impl ReplayClient {
     /// Duplicate task_id is an error.
     pub fn from_jsonl(jsonl: &str) -> Result<ReplayClient, ReplyParseError> {
-        let _ = jsonl;
-        unimplemented!("E1: ReplayClient::from_jsonl")
+        let lines = jsonl_lines(jsonl).map_err(|line| ReplyParseError {
+            line,
+            msg: "blank line".into(),
+        })?;
+        let mut replies = std::collections::BTreeMap::new();
+        for (line, text) in lines {
+            let reply: ModelReply = serde_json::from_str(text).map_err(|e| ReplyParseError {
+                line,
+                msg: e.to_string(),
+            })?;
+            if replies.contains_key(&reply.task_id) {
+                return Err(ReplyParseError {
+                    line,
+                    msg: format!("duplicate reply for task {}", reply.task_id),
+                });
+            }
+            replies.insert(reply.task_id.clone(), reply);
+        }
+        Ok(ReplayClient { replies })
     }
 }
 
 impl ModelClient for ReplayClient {
     /// Unknown task -> `ClientError` naming it.
     fn complete(&mut self, task_id: &str, prompt: &str) -> Result<ModelReply, ClientError> {
-        let _ = (task_id, prompt, &self.replies);
-        unimplemented!("E1: ReplayClient::complete")
+        let _ = prompt;
+        self.replies
+            .get(task_id)
+            .cloned()
+            .ok_or_else(|| ClientError {
+                task_id: task_id.to_string(),
+                message: "no recorded reply for this task".into(),
+            })
     }
 }
 
@@ -72,8 +96,32 @@ pub enum RunError {
 
 /// Replaces `{{posting}}` and `{{pack}}` with the raw file text, once each.
 pub fn render_prompt(task: &Task) -> String {
-    let _ = task;
-    unimplemented!("E1: render_prompt")
+    // One pass over the template, so a marker inside a fixture is never expanded.
+    let mut out =
+        String::with_capacity(PROMPT_TEMPLATE.len() + task.posting_raw.len() + task.pack_raw.len());
+    let mut rest = PROMPT_TEMPLATE;
+    let mut posting_done = false;
+    let mut pack_done = false;
+    loop {
+        let next = [("{{posting}}", posting_done), ("{{pack}}", pack_done)]
+            .into_iter()
+            .filter(|(_, done)| !done)
+            .filter_map(|(m, _)| rest.find(m).map(|i| (i, m)))
+            .min();
+        let Some((i, marker)) = next else {
+            out.push_str(rest);
+            return out;
+        };
+        out.push_str(&rest[..i]);
+        if marker == "{{posting}}" {
+            out.push_str(&task.posting_raw);
+            posting_done = true;
+        } else {
+            out.push_str(&task.pack_raw);
+            pack_done = true;
+        }
+        rest = &rest[i + marker.len()..];
+    }
 }
 
 /// `pass` = `check_answer(task.expected_gaps, reply.text)`; prompt_id = `PROMPT_ID`.
@@ -84,8 +132,19 @@ pub fn trace_for(
     attempt: u32,
     reply: &ModelReply,
 ) -> TraceRow {
-    let _ = (task, task_set_hash, run_id, attempt, reply);
-    unimplemented!("E1: trace_for")
+    TraceRow {
+        schema_version: TRACE_SCHEMA_VERSION,
+        run_id: run_id.to_string(),
+        task_id: task.id.clone(),
+        attempt,
+        model_id: reply.model_id.clone(),
+        prompt_id: PROMPT_ID.to_string(),
+        tokens_in: reply.tokens_in,
+        tokens_out: reply.tokens_out,
+        cost_micro_usd: reply.cost_micro_usd,
+        pass: check_answer(&task.expected_gaps, &reply.text),
+        task_set_hash: task_set_hash.to_string(),
+    }
 }
 
 /// attempt = 1 for every task, in id order. A client error stops the run (D11).
@@ -94,6 +153,21 @@ pub fn run_set(
     set: &TaskSet,
     run_id: &str,
 ) -> Result<Vec<TraceRow>, RunError> {
-    let _ = (client, set, run_id);
-    unimplemented!("E1: run_set")
+    if !valid_run_id(run_id) {
+        return Err(RunError::BadRunId(run_id.to_string()));
+    }
+    let mut rows = Vec::with_capacity(set.tasks.len());
+    for task in &set.tasks {
+        let reply = client
+            .complete(&task.id, &render_prompt(task))
+            .map_err(RunError::Client)?;
+        if reply.task_id != task.id {
+            return Err(RunError::ReplyTaskMismatch {
+                expected: task.id.clone(),
+                got: reply.task_id,
+            });
+        }
+        rows.push(trace_for(task, &set.hash, run_id, 1, &reply));
+    }
+    Ok(rows)
 }

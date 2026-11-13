@@ -28,31 +28,49 @@ pub struct Pack {
 }
 
 pub fn parse_posting(json: &str) -> Result<Posting, serde_json::Error> {
-    let _ = json;
-    unimplemented!("E1: parse_posting")
+    serde_json::from_str(json)
 }
 
 pub fn parse_pack(json: &str) -> Result<Pack, serde_json::Error> {
-    let _ = json;
-    unimplemented!("E1: parse_pack")
+    serde_json::from_str(json)
 }
 
 /// One flag per must-have, in posting order. Proof counts when `Some(s)` and `s` is
 /// non-empty (no trim, D6). Lowercase with `str::to_lowercase` (D5). `""` keyword
 /// matches any proved claim (D2, Python parity).
 pub fn evidenced(posting: &Posting, pack: &Pack) -> Vec<bool> {
-    let _ = (posting, pack);
-    unimplemented!("E1: evidenced")
+    let proved: Vec<String> = pack
+        .evidence
+        .iter()
+        .filter(|e| e.proof.as_deref().is_some_and(|p| !p.is_empty()))
+        .map(|e| e.claim.to_lowercase())
+        .collect();
+    posting
+        .must_haves
+        .iter()
+        .map(|mh| {
+            let kws: Vec<String> = mh.keywords.iter().map(|k| k.to_lowercase()).collect();
+            proved
+                .iter()
+                .any(|claim| kws.iter().any(|k| claim.contains(k.as_str())))
+        })
+        .collect()
 }
 
 /// Indices of `false` flags, ascending.
 pub fn gaps_from_flags(flags: &[bool]) -> Vec<usize> {
-    let _ = flags;
-    unimplemented!("E1: gaps_from_flags")
+    flags
+        .iter()
+        .enumerate()
+        .filter(|(_, ok)| !**ok)
+        .map(|(i, _)| i)
+        .collect()
 }
 
 /// Gap names in posting order, duplicates kept.
 pub fn gaps(posting: &Posting, pack: &Pack) -> Vec<String> {
-    let _ = (posting, pack);
-    unimplemented!("E1: gaps")
+    gaps_from_flags(&evidenced(posting, pack))
+        .into_iter()
+        .map(|i| posting.must_haves[i].name.clone())
+        .collect()
 }
