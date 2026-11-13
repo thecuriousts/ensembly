@@ -15,6 +15,7 @@ pub mod gate;
 pub mod metrics;
 pub mod model;
 mod normalize;
+mod punycode;
 pub mod store;
 pub mod workflow;
 

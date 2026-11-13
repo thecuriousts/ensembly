@@ -1,8 +1,9 @@
 //! Adversarial regression matrix for the E3 scam-gate.
 //!
-//! Covers every probe from the same-family reviews of 7672d81 and
-//! 6d90827, plus HTML numeric entities and combining marks. Fixtures
-//! are synthetic (`*.example.test` only).
+//! Single source of truth for scam-gate adversarial probes: reviews of
+//! 7672d81, 6d90827 and 1e85825, plus userinfo, IDN dots, leet, HTML
+//! cues, spaced brackets and negative cases. Fixtures are synthetic
+//! (`*.example.test` only).
 
 use ensembly_kernel::decision::{audit, FlagList, GATE_REASON};
 use ensembly_schema::GateVerdict;
@@ -216,6 +217,116 @@ fn matrix() -> Vec<Case> {
             url: u,
             body: "w\u{0069}\u{0301}re money today",
             want: fail,
+        },
+        // --- third review (1e85825) and SHOULDs ---
+        Case {
+            name: "userinfo URL hides flag host after at",
+            url: "https://jobs.example.test@phish.example.test/job",
+            body: "a role",
+            want: fail,
+        },
+        Case {
+            name: "IDEOGRAPHIC FULL STOP U+3002 in body host",
+            url: u,
+            body: "contact phish\u{3002}example\u{3002}test",
+            want: fail,
+        },
+        Case {
+            name: "IDEOGRAPHIC FULL STOP U+3002 in URL host",
+            url: "https://phish\u{3002}example\u{3002}test/x",
+            body: "a role",
+            want: fail,
+        },
+        Case {
+            name: "HALFWIDTH IDEOGRAPHIC FULL STOP U+FF61 in body host",
+            url: u,
+            body: "contact phish\u{FF61}example\u{FF61}test",
+            want: fail,
+        },
+        Case {
+            name: "FULLWIDTH FULL STOP U+FF0E in body host",
+            url: u,
+            body: "contact phish\u{FF0E}example\u{FF0E}test",
+            want: fail,
+        },
+        Case {
+            name: "spaces inside bracket-dot",
+            url: u,
+            body: "contact phish [ dot ] example.test",
+            want: fail,
+        },
+        Case {
+            name: "spaces inside paren-dot",
+            url: u,
+            body: "contact phish ( . ) example.test",
+            want: fail,
+        },
+        Case {
+            name: "hyphen between cue words",
+            url: u,
+            body: "wire-money today",
+            want: fail,
+        },
+        Case {
+            name: "dotted single letters join to wire",
+            url: u,
+            body: "w.i.r.e money today",
+            want: fail,
+        },
+        Case {
+            name: "slash between cue words",
+            url: u,
+            body: "wire/money today",
+            want: fail,
+        },
+        Case {
+            name: "leet w1re money today",
+            url: u,
+            body: "w1re money today",
+            want: fail,
+        },
+        Case {
+            name: "HTML tags split a hard cue",
+            url: u,
+            body: "wire <b>money</b> today",
+            want: fail,
+        },
+        Case {
+            name: "punycode ACE label of a confusable flag host",
+            url: u,
+            body: "see xn--hish-f6d.example.test",
+            want: fail,
+        },
+        Case {
+            name: "punycode ACE flag host in the URL",
+            url: "https://xn--hish-f6d.example.test/x",
+            body: "a role",
+            want: fail,
+        },
+        Case {
+            name: "flag host in the URL path",
+            url: "https://jobs.example.test/go/phish.example.test",
+            body: "a role",
+            want: fail,
+        },
+        // negatives: punct/leet views must not fail ordinary postings
+        Case {
+            name: "dotted wip is not a hard cue",
+            url: "https://jobs.example.test/posting/1",
+            body: "w.i.p. engineer in Stockholm",
+            want: pass,
+        },
+        Case {
+            name: "digits in a normal posting are not leet cues",
+            url: "https://jobs.example.test/posting/1",
+            body: "Stage 1 rust interview, 7 years, 10 people",
+            want: pass,
+        },
+        Case {
+            name: "re-wire a board today is not wire money today",
+            url: "https://jobs.example.test/posting/1",
+            body: "re-wire a board today",
+            want: pass,
         },
     ]
 }

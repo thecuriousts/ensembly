@@ -254,22 +254,36 @@ pub fn deobfuscate(text: &str) -> String {
 }
 
 fn bracket_sep(chars: &[char], i: usize) -> Option<(char, usize)> {
-    let open = chars[i];
-    let close = match open {
+    let close = match chars[i] {
         '[' => ']',
         '(' => ')',
         '{' => '}',
         _ => return None,
     };
-    // [.] or [dot] or [at]
-    if i + 2 < chars.len() && chars[i + 1] == '.' && chars[i + 2] == close {
-        return Some(('.', i + 3));
+    // Tolerate spaces inside brackets: "[.]", "[ dot ]", "( . )".
+    let mut j = skip_ws_right(chars, i + 1);
+    if j >= chars.len() {
+        return None;
     }
-    if eq_ignore_ascii(chars, i + 1, "dot") && i + 4 < chars.len() && chars[i + 4] == close {
-        return Some(('.', i + 5));
+    if chars[j] == '.' {
+        j = skip_ws_right(chars, j + 1);
+        if j < chars.len() && chars[j] == close {
+            return Some(('.', j + 1));
+        }
+        return None;
     }
-    if eq_ignore_ascii(chars, i + 1, "at") && i + 3 < chars.len() && chars[i + 3] == close {
-        return Some(('@', i + 4));
+    if eq_ignore_ascii(chars, j, "dot") {
+        j = skip_ws_right(chars, j + 3);
+        if j < chars.len() && chars[j] == close {
+            return Some(('.', j + 1));
+        }
+        return None;
+    }
+    if eq_ignore_ascii(chars, j, "at") {
+        j = skip_ws_right(chars, j + 2);
+        if j < chars.len() && chars[j] == close {
+            return Some(('@', j + 1));
+        }
     }
     None
 }
@@ -309,6 +323,149 @@ pub fn format_as_space(text: &str) -> String {
         .map(|c| if is_format_or_zero_width(c) { ' ' } else { c })
         .collect();
     collapse_and_lower(&mapped)
+}
+
+/// Map IDN / fullwidth / halfwidth stops to ASCII '.' (U+3002, U+FF61, U+FF0E).
+pub fn fold_idn_dots(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '\u{3002}' | '\u{FF61}' | '\u{FF0E}' => '.',
+            _ => c,
+        })
+        .collect()
+}
+
+/// Strip simple `<...>` tags, replacing each tag with a space (linear, bounded look-ahead).
+pub fn strip_html_tags(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < text.len() {
+        if bytes[i] == b'<' {
+            let limit = (i + 1 + 256).min(text.len());
+            if let Some(rel) = text[i + 1..limit].find('>') {
+                out.push(' ');
+                i = i + 1 + rel + 1;
+                continue;
+            }
+        }
+        let c = text[i..].chars().next().unwrap();
+        out.push(c);
+        i += c.len_utf8();
+    }
+    out
+}
+
+fn is_join_punct(c: char) -> bool {
+    matches!(c, '-' | '.' | '/' | '_')
+}
+
+/// Turn `-` `.` `/` `_` next to letters into a space, then join single-letter runs
+/// (`w.i.r.e` becomes `wire`, `wire-money` becomes `wire money`).
+pub fn punct_and_join(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut spaced = String::with_capacity(text.len());
+    for (i, &c) in chars.iter().enumerate() {
+        if is_join_punct(c) {
+            let prev_letter = i > 0 && chars[i - 1].is_alphabetic();
+            let next_letter = chars.get(i + 1).is_some_and(|n| n.is_alphabetic());
+            if prev_letter || next_letter {
+                spaced.push(' ');
+                continue;
+            }
+        }
+        spaced.push(c);
+    }
+    join_single_letter_runs(&spaced)
+}
+
+fn join_single_letter_runs(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut run = String::new();
+    let flush_run = |run: &mut String, out: &mut String| {
+        if run.is_empty() {
+            return;
+        }
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(run);
+        run.clear();
+    };
+    for tok in text.split_whitespace() {
+        if tok.chars().count() == 1 && tok.chars().next().is_some_and(|c| c.is_alphabetic()) {
+            run.push_str(tok);
+        } else {
+            flush_run(&mut run, &mut out);
+            if !out.is_empty() {
+                out.push(' ');
+            }
+            out.push_str(tok);
+        }
+    }
+    flush_run(&mut run, &mut out);
+    out
+}
+
+/// Small leet map, used only in a separate cue view: 1>i 0>o 3>e 4>a 5>s 7>t.
+pub fn leet_fold(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            '1' => 'i',
+            '0' => 'o',
+            '3' => 'e',
+            '4' => 'a',
+            '5' => 's',
+            '7' => 't',
+            _ => c,
+        })
+        .collect()
+}
+
+fn has_leet_digit(text: &str) -> bool {
+    text.chars()
+        .any(|c| matches!(c, '0' | '1' | '3' | '4' | '5' | '7'))
+}
+
+/// Cue-only views: shared host/cue views plus HTML-stripped, punctuation-join,
+/// and a separate leet view. A hit on any view is a hit.
+pub fn cue_views(text: &str) -> Vec<String> {
+    let mut out = views(text);
+    let mut seen: std::collections::HashSet<String> = out.iter().cloned().collect();
+    let push = |s: String, out: &mut Vec<String>, seen: &mut std::collections::HashSet<String>| {
+        if seen.insert(s.clone()) {
+            out.push(s);
+        }
+    };
+
+    if text.contains('<') {
+        for v in views(&strip_html_tags(text)) {
+            push(v, &mut out, &mut seen);
+        }
+        let existing = out.clone();
+        for v in existing {
+            if v.contains('<') {
+                push(
+                    collapse_and_lower(&strip_html_tags(&v)),
+                    &mut out,
+                    &mut seen,
+                );
+            }
+        }
+    }
+
+    let base = out.clone();
+    for v in &base {
+        push(punct_and_join(v), &mut out, &mut seen);
+    }
+
+    let mid = out.clone();
+    for v in &mid {
+        if has_leet_digit(v) {
+            push(join_single_letter_runs(&leet_fold(v)), &mut out, &mut seen);
+        }
+    }
+    out
 }
 
 /// Every composed view of `text`. A later check treats a hit on any view as a hit.
@@ -436,17 +593,27 @@ fn input_features(s: &str) -> InputFeatures {
     feat
 }
 
-/// Canonical host: decode, unicode-fold, lowercase, no brackets, no trailing dots, no port.
+/// Canonical host: decode, IDN dots to ASCII, punycode, unicode-fold, lowercase,
+/// no brackets, no trailing dots, no port.
 pub fn canonicalize_host(raw: &str) -> String {
     let decoded = percent_and_html_decode(raw);
-    let folded = nfkc_strip_marks_fold(&decoded);
+    let dotted = fold_idn_dots(&decoded);
+    let puny = super::punycode::decode_host(&dotted);
+    let folded = nfkc_strip_marks_fold(&puny);
     let mut h = folded
         .trim()
         .trim_start_matches('[')
         .trim_end_matches(']')
         .to_ascii_lowercase();
-    // lookalikes may already be folded; lowercase again for ASCII flags
-    h = h.chars().map(map_lookalike).collect();
+    // lookalikes may already be folded; also fold IDN dots after lowercase
+    h = h
+        .chars()
+        .map(map_lookalike)
+        .map(|c| match c {
+            '\u{3002}' | '\u{FF61}' | '\u{FF0E}' => '.',
+            _ => c,
+        })
+        .collect();
     while h.ends_with('.') {
         h.pop();
     }
@@ -460,7 +627,8 @@ pub fn canonicalize_host(raw: &str) -> String {
 
 pub fn host_from_url(url: &str) -> String {
     let decoded = percent_and_html_decode(url);
-    let rest = decoded.split("://").nth(1).unwrap_or(&decoded);
+    let dotted = fold_idn_dots(&decoded);
+    let rest = dotted.split("://").nth(1).unwrap_or(dotted.as_str());
     let authority = rest.split('/').next().unwrap_or("");
     let after_user = authority.split('@').next_back().unwrap_or("");
     canonicalize_host(after_user)
@@ -488,9 +656,11 @@ fn host_extract() -> &'static Regex {
 }
 
 /// Hosts mentioned in an already-built view: URL hosts, email hosts, bare domains.
+/// IDN stops are folded to ASCII '.' before the extractor runs.
 pub fn extract_hosts(text: &str) -> Vec<String> {
+    let dotted = fold_idn_dots(text);
     host_extract()
-        .captures_iter(text)
+        .captures_iter(&dotted)
         .filter_map(|caps| {
             caps.get(1)
                 .or_else(|| caps.get(2))
@@ -567,5 +737,53 @@ mod tests {
     fn cyrillic_host_label_folds() {
         let s = nfkc_strip_marks_fold("p\u{0430}hish.example.test");
         assert_eq!(s, "pahish.example.test");
+    }
+
+    #[test]
+    fn idn_dots_fold_to_ascii_period() {
+        assert_eq!(
+            fold_idn_dots("phish\u{3002}example\u{3002}test"),
+            "phish.example.test"
+        );
+        assert_eq!(
+            fold_idn_dots("phish\u{FF61}example\u{FF61}test"),
+            "phish.example.test"
+        );
+        assert_eq!(
+            fold_idn_dots("phish\u{FF0E}example\u{FF0E}test"),
+            "phish.example.test"
+        );
+        assert_eq!(
+            canonicalize_host("phish\u{3002}example\u{3002}test"),
+            "phish.example.test"
+        );
+    }
+
+    #[test]
+    fn spaced_brackets_deobfuscate() {
+        assert_eq!(
+            deobfuscate("phish [ dot ] example.test"),
+            "phish.example.test"
+        );
+        assert_eq!(
+            deobfuscate("phish ( . ) example.test"),
+            "phish.example.test"
+        );
+    }
+
+    #[test]
+    fn punct_join_and_leet() {
+        assert_eq!(punct_and_join("w.i.r.e money today"), "wire money today");
+        assert_eq!(punct_and_join("wire-money today"), "wire money today");
+        assert_eq!(punct_and_join("wire/money today"), "wire money today");
+        assert_eq!(leet_fold("w1re m0ney"), "wire money");
+    }
+
+    #[test]
+    fn html_tags_are_stripped() {
+        assert_eq!(
+            collapse_and_lower(&strip_html_tags("wire <b>money</b> today")),
+            "wire money today"
+        );
     }
 }

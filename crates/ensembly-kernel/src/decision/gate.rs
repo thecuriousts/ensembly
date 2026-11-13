@@ -13,7 +13,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-use super::normalize::{extract_hosts, flag_matches, host_from_url, views};
+use super::normalize::{cue_views, extract_hosts, flag_matches, host_from_url, views};
 
 pub const GATE_REASON: &str = "scam-gate";
 
@@ -105,10 +105,11 @@ pub fn audit(url: &str, posting_text: &str, flags: &FlagList) -> GateResult {
     {
         return fail();
     }
-    if views.iter().any(|v| cue_fail().is_match(v)) {
+    let cue_views = cue_views(&blob);
+    if cue_views.iter().any(|v| cue_fail().is_match(v)) {
         return fail();
     }
-    if views.iter().any(|v| cue_uncertain().is_match(v)) {
+    if cue_views.iter().any(|v| cue_uncertain().is_match(v)) {
         return GateResult {
             verdict: GateVerdict::Uncertain,
             reason: Some("scam-gate-uncertain".into()),

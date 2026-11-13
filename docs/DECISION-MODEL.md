@@ -21,9 +21,18 @@ operator.
   removed and Cyrillic/Greek confusables folded (also applied to
   domains), (d) up to three rounds of percent and HTML-entity decoding
   on URL authorities and the body, and (e) de-obfuscation of `[.]`,
-  `(.)`, `{.}`, ` dot `, ` [dot] `, ` at `, and `[at]`. Soft cues
-  (`Uncertain`) abstain: they are not a hard fail and do not skip the
-  posting; the model defers to the operator.
+  `(.)`, `{.}`, ` dot `, ` [dot] `, ` at `, and `[at]`, including
+  spaces inside the brackets (`[ dot ]`, `( . )`). Ideographic and
+  fullwidth stops (`U+3002`, `U+FF61`, `U+FF0E`) fold to ASCII `.` in
+  host canonicalisation, authority parsing, and bare-text host
+  extraction. Punycode `xn--` labels are decoded (RFC 3492, in-tree;
+  no `idna` crate in the lockfile) before confusable folding.
+  Cue matching also runs on an HTML-tag-stripped view, a view that
+  turns punctuation between letters or words (`-`, `.`, `/`, `_`)
+  into a space and joins single-letter runs (`w.i.r.e` → `wire`),
+  and a separate leet-fold view (`1→i`, `0→o`, `3→e`, `4→a`, `5→s`,
+  `7→t`). Soft cues (`Uncertain`) abstain: they are not a hard fail
+  and do not skip the posting; the model defers to the operator.
 - A transparent feature model and an untuned keyword baseline. Weights and
   the abstain band are fit on train only.
 - Propose-and-wait through `KernelWriter`. Raw event-log writes are
