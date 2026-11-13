@@ -786,6 +786,7 @@ fn number_edge_codes_agree() {
 
 /// A store reached through a symlink opens read-only like any other: writes fail and
 /// the target's bytes do not change. A dangling link is an error and creates nothing.
+#[cfg(unix)]
 #[test]
 fn open_ro_through_a_symlink_refuses_writes_and_creates_nothing() {
     let tmp = tempfile::tempdir().unwrap();
@@ -803,6 +804,10 @@ fn open_ro_through_a_symlink_refuses_writes_and_creates_nothing() {
         .query_row("SELECT COUNT(*) FROM t", [], |r| r.get(0))
         .unwrap();
     assert_eq!(n, 1);
+    let query_only: i64 = conn
+        .query_row("PRAGMA query_only", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(query_only, 1);
     for sql in [
         "INSERT INTO t VALUES (2)",
         "DELETE FROM t",
