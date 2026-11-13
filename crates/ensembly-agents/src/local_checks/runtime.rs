@@ -242,9 +242,17 @@ fn discover_llama_bin() -> Option<PathBuf> {
         }
     }
     if let Ok(home) = std::env::var("HOME") {
-        let pinned = PathBuf::from(home).join(".local/share/ensembly/bin/llama-cli");
-        if pinned.is_file() {
-            return Some(pinned);
+        let prefix = PathBuf::from(home).join(".local/share/ensembly");
+        for rel in [
+            "runtime/llama-b12343/llama-completion",
+            "runtime/llama-b12343/llama-cli",
+            "bin/llama-completion",
+            "bin/llama-cli",
+        ] {
+            let pinned = prefix.join(rel);
+            if pinned.is_file() {
+                return Some(pinned);
+            }
         }
     }
     None
@@ -559,11 +567,27 @@ impl<M: MemoryView> LocalChecker<M> {
             .arg(self.config.max_tokens.to_string())
             .arg("--temp")
             .arg("0")
+            .arg("--min-p")
+            .arg("0")
+            .arg("--top-p")
+            .arg("1")
+            .arg("--top-k")
+            .arg("1")
             .arg("--no-display-prompt")
+            .arg("--reasoning")
+            .arg("off")
+            .arg("-no-cnv")
             .arg("-ngl")
-            .arg("99")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .arg("99");
+        // llama-cli starts a chat session unless asked to stop after one turn.
+        if bin
+            .file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| n.contains("cli"))
+        {
+            cmd.arg("-st").arg("--simple-io");
+        }
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         run_cmd(cmd, self.config.timeout)
     }
 

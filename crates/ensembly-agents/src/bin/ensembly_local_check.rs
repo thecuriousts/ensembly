@@ -47,6 +47,9 @@ enum Cmd {
     Fixtures {
         #[arg(long)]
         dir: Option<PathBuf>,
+        /// Replay or live-run only `classify` or `conflict` fixtures.
+        #[arg(long)]
+        only: Option<String>,
     },
     /// Show runtime, memory, and configured model paths (home path redacted).
     Status,
@@ -57,7 +60,7 @@ fn main() -> Result<()> {
     match cli.cmd {
         Cmd::Classify { text, id } => cmd_classify(text, id),
         Cmd::Conflict { left, right, id } => cmd_conflict(left, right, id),
-        Cmd::Fixtures { dir } => cmd_fixtures(dir),
+        Cmd::Fixtures { dir, only } => cmd_fixtures(dir, only),
         Cmd::Status => cmd_status(),
     }
 }
@@ -107,7 +110,7 @@ fn cmd_conflict(left: Option<String>, right: Option<String>, id: Option<String>)
     }
 }
 
-fn cmd_fixtures(dir: Option<PathBuf>) -> Result<()> {
+fn cmd_fixtures(dir: Option<PathBuf>, only: Option<String>) -> Result<()> {
     let root = match dir {
         Some(d) => d,
         None => fixture_root_from(&std::env::current_dir()?),
@@ -123,7 +126,20 @@ fn cmd_fixtures(dir: Option<PathBuf>) -> Result<()> {
     let mut rows = Vec::new();
     let mut json_ok = 0u32;
     let mut total = 0u32;
+    let only = only
+        .as_deref()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty());
+    if only
+        .as_deref()
+        .is_some_and(|s| s != "classify" && s != "conflict")
+    {
+        bail!("--only must be classify or conflict");
+    }
     for fixture in &set.classify {
+        if only.as_deref() == Some("conflict") {
+            continue;
+        }
         total += 1;
         let result = if let Some(checker) = &checker {
             checker
@@ -142,6 +158,9 @@ fn cmd_fixtures(dir: Option<PathBuf>) -> Result<()> {
         rows.push(json!({ "id": fixture.id, "kind": "classify", "result": value }));
     }
     for fixture in &set.conflict {
+        if only.as_deref() == Some("classify") {
+            continue;
+        }
         total += 1;
         let result = if let Some(checker) = &checker {
             checker
