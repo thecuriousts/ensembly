@@ -348,7 +348,7 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 | Adopt | Refuse |
 |-------|--------|
-| `ensembly pulse supersede OLD NEW` records source, event time, reason, and a public host alias, then sets `superseded_by` | Deleting the old row, or inventing `nat_key-2` with no link |
+| `ensembly pulse supersede OLD NEW` records source, event time, reason, and the configured writer identity, then sets `superseded_by` | Deleting the old row, or inventing `nat_key-2` with no link |
 | `pulse list` shows `kind = memory` and `superseded_by` empty; `pulse history` reads the chain | Treating a near snippet as the current fact |
 | `pulse conflict resolve` turns `open` or `not in the evidence` into `superseded by KEY` | A second writer retargeting a row that already has a successor |
 | CRDT `set_context` keeps the prior value with an explicit link; merge unions those links and stays order-independent | Last-writer-wins that drops the previous preference |

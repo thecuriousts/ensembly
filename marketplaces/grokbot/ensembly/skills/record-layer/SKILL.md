@@ -37,7 +37,7 @@ When the kernel is present:
 
 - Write: `ensembly record commit` (or MCP `record_commit`)
 - Read back: `ensembly record view snapshot` or `record view feed` (MCP `record_view_snapshot`, `record_view_feed`)
-- Replace a live pulse: `ensembly pulse supersede` / `admit` with source, time, reason, and a public host alias
+- Replace a live pulse: `ensembly pulse supersede` / `admit` with source, time, reason, and the configured writer identity
 
 When the kernel is absent, apply the same table to files, pulse-memory, or any other store. Do not stand up a new Model Context Protocol server.
 

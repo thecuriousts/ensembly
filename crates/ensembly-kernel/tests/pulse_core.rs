@@ -3,12 +3,22 @@
 
 use chrono::{DateTime, Utc};
 use ensembly_kernel::pulse_core as pc;
+use ensembly_kernel::KernelWriter;
 use rusqlite::Connection;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use tempfile::TempDir;
+
+static WRITER_ENV: Mutex<()> = Mutex::new(());
+
+fn setup_writer() -> MutexGuard<'static, ()> {
+    let guard = WRITER_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var(ensembly_schema::WRITER_ENV, "laptop-1");
+    guard
+}
 
 const SCHEMA: &str = "
 CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
@@ -711,6 +721,7 @@ fn check_warns_on_tool_verified_without_evidence() {
 #[test]
 fn check_warns_on_half_finished_supersession() {
     use ensembly_kernel::pulse_supersede as ps;
+    let _w = setup_writer();
     let fx = fixture();
     let mut cfg = fx.cfg.clone();
     cfg.now = now("2026-10-20");
@@ -727,14 +738,15 @@ fn check_warns_on_half_finished_supersession() {
         (ps::SupersedePhase::Applied, "intent"),
         (ps::SupersedePhase::Verified, "applied"),
     ] {
-        let got = ps::supersede(
-            &cfg.db,
-            &req,
-            &ps::SupersedeFault {
-                crash_entering: Some(stop),
-            },
-        )
-        .unwrap();
+        let got = KernelWriter::open_pulse(&cfg.db)
+            .unwrap()
+            .supersede(
+                &req,
+                &ps::SupersedeFault {
+                    crash_entering: Some(stop),
+                },
+            )
+            .unwrap();
         assert_eq!(got.phase, phase);
         let r = pc::run_check(&cfg);
         let f = finding(&r, "db.supersession").expect("db.supersession");
@@ -749,7 +761,10 @@ fn check_warns_on_half_finished_supersession() {
         let out = bin_at(&fx, "2026-10-20", &["check", "--json"]);
         assert_eq!(out.status.code(), Some(1));
     }
-    let done = ps::supersede(&cfg.db, &req, &ps::SupersedeFault::default()).unwrap();
+    let done = KernelWriter::open_pulse(&cfg.db)
+        .unwrap()
+        .supersede(&req, &ps::SupersedeFault::default())
+        .unwrap();
     assert_eq!(done.phase, "verified");
     let r = pc::run_check(&cfg);
     assert!(finding(&r, "db.supersession").is_none(), "{:?}", r.findings);

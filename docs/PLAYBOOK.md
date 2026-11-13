@@ -77,12 +77,12 @@ Memory flags: `--memory <path>` (explicit; open failure fatal) · `--no-memory`.
 | **T1 ops** | `ensembly-ops-bundle-v1` (still reads `peram-ops-bundle-v1`) | `backup` · `restore-*` · `ops-bundle` | **No** — canonical host only |
 | **Pulse** | `ensembly-pulse-pack-v1` (still reads `peram-pulse-pack-v1`) | `pulse-pack export\|import\|status` | **Yes** — memory CRDT merge only |
 
-**Topology:** Grok Bot = **canonical kernel host** (single writer on ops DB). Laptop = client — imports pulse packs, never dual-writes ops.
+**Topology:** Grok Bot is the canonical kernel host. For crate users, `KernelWriter` is the only published write API for the application ledger and the pulse store. The ops DB is operated on that host; a local process that can open the file is out of scope. Pulse pack import and export write a different store and are not gated by `KernelWriter`. Laptop is a client — it imports pulse packs and does not dual-write ops.
 
 **Supersession (freshness, not nearness).** A changed preference does not delete the old trace and does not rely on a similar snippet. Archive the old key, keep it readable, and hide it from the live list:
 
 ```bash
-cargo run -p ensembly-kernel -- pulse admit \
+ENSEMBLY_WRITER=laptop-1 cargo run -p ensembly-kernel -- pulse admit \
   --pulse-db "$PULSE_MEMORY_DB" \
   --key pref/drink-2 --snippet coffee --source operator \
   --time 2026-11-09T12:00:00+00:00 --status user-stated --kind memory \

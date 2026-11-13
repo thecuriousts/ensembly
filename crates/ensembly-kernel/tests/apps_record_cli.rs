@@ -14,6 +14,12 @@ fn ensembly(dir: &Path) -> Command {
     cmd
 }
 
+fn ensembly_as(dir: &Path, writer: &str) -> Command {
+    let mut cmd = ensembly(dir);
+    cmd.env(ensembly_schema::WRITER_ENV, writer);
+    cmd
+}
+
 fn run(cmd: &mut Command) -> Output {
     cmd.output().expect("run kernel bin")
 }
@@ -70,7 +76,7 @@ fn import_is_idempotent_and_leaves_ledger_bytes_unchanged() {
     let ledger = write_ledger(dir.path());
     let log = dir.path().join("data").join("events.jsonl");
     let before = fs::read(&ledger).unwrap();
-    let first = run(ensembly(dir.path()).args([
+    let first = run(ensembly_as(dir.path(), "laptop-1").args([
         "record",
         "apps",
         "import",
@@ -92,7 +98,7 @@ fn import_is_idempotent_and_leaves_ledger_bytes_unchanged() {
     let log_once = fs::read(&log).unwrap();
     assert_eq!(log_once.iter().filter(|b| **b == b'\n').count(), 6);
 
-    let second = run(ensembly(dir.path()).args([
+    let second = run(ensembly_as(dir.path(), "laptop-1").args([
         "record",
         "apps",
         "import",
@@ -123,7 +129,7 @@ fn unknown_status_writes_neither_ledger_nor_log() {
     let body = b"{\"company\":\"Birch Fictional\",\"role\":\"Ledger Clerk\",\"link\":\"https://jobs.example.test/birch/2\",\"status\":\"offered\",\"submit_time\":\"2026-10-26T18:59:00+01:00\",\"cv_version\":\"cv-sample-1\"}\n";
     fs::write(&ledger, body).unwrap();
     let log = data.join("events.jsonl");
-    let out = run(ensembly(dir.path()).args([
+    let out = run(ensembly_as(dir.path(), "laptop-1").args([
         "record",
         "apps",
         "import",
@@ -155,7 +161,7 @@ fn compare_is_read_only_and_exits_nonzero_on_mismatch() {
     let dir = tempfile::tempdir().unwrap();
     let ledger = write_ledger(dir.path());
     let log = dir.path().join("data").join("events.jsonl");
-    let imported = run(ensembly(dir.path()).args([
+    let imported = run(ensembly_as(dir.path(), "mac-mini").args([
         "record",
         "apps",
         "import",
@@ -250,7 +256,8 @@ fn reimport_without_at_appends_nothing() {
     let log = data.join("events.jsonl");
     let ledger_s = ledger.to_str().unwrap();
     let log_s = log.to_str().unwrap();
-    let first = run(ensembly(dir.path()).args(import_args(ledger_s, log_s, "laptop-1")));
+    let first =
+        run(ensembly_as(dir.path(), "laptop-1").args(import_args(ledger_s, log_s, "laptop-1")));
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&first.stdout),
@@ -259,7 +266,8 @@ fn reimport_without_at_appends_nothing() {
     assert!(first.status.success(), "{text}");
     let once = fs::read(&log).unwrap();
     std::thread::sleep(std::time::Duration::from_secs(2));
-    let second = run(ensembly(dir.path()).args(import_args(ledger_s, log_s, "laptop-1")));
+    let second =
+        run(ensembly_as(dir.path(), "laptop-1").args(import_args(ledger_s, log_s, "laptop-1")));
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&second.stdout),
@@ -281,7 +289,8 @@ fn reimport_with_another_writer_appends_nothing() {
     let log = data.join("events.jsonl");
     let ledger_s = ledger.to_str().unwrap();
     let log_s = log.to_str().unwrap();
-    let first = run(ensembly(dir.path()).args(import_args(ledger_s, log_s, "laptop-1")));
+    let first =
+        run(ensembly_as(dir.path(), "laptop-1").args(import_args(ledger_s, log_s, "laptop-1")));
     assert!(
         first.status.success(),
         "{}{}",
@@ -289,7 +298,8 @@ fn reimport_with_another_writer_appends_nothing() {
         String::from_utf8_lossy(&first.stderr)
     );
     let once = fs::read(&log).unwrap();
-    let second = run(ensembly(dir.path()).args(import_args(ledger_s, log_s, "laptop-2")));
+    let second =
+        run(ensembly_as(dir.path(), "laptop-2").args(import_args(ledger_s, log_s, "laptop-2")));
     let text = format!(
         "{}{}",
         String::from_utf8_lossy(&second.stdout),
@@ -316,7 +326,7 @@ fn return_to_an_earlier_stage_exits_nonzero_and_names_the_link() {
     let ledger_s = ledger.to_str().unwrap();
     let log_s = log.to_str().unwrap();
     let at = ["--at", "2026-11-01T12:00:00+01:00"];
-    let first = run(ensembly(dir.path())
+    let first = run(ensembly_as(dir.path(), "laptop-1")
         .args(import_args(ledger_s, log_s, "laptop-1"))
         .args(at));
     assert!(
@@ -325,7 +335,7 @@ fn return_to_an_earlier_stage_exits_nonzero_and_names_the_link() {
         String::from_utf8_lossy(&first.stderr)
     );
     fs::write(&ledger, format!("{submitted}{interview}")).unwrap();
-    let second = run(ensembly(dir.path())
+    let second = run(ensembly_as(dir.path(), "laptop-1")
         .args(import_args(ledger_s, log_s, "laptop-1"))
         .args(at));
     assert!(
@@ -336,7 +346,7 @@ fn return_to_an_earlier_stage_exits_nonzero_and_names_the_link() {
     let log_twice = fs::read(&log).unwrap();
     fs::write(&ledger, format!("{submitted}{interview}{submitted}")).unwrap();
     let ledger_bytes = fs::read(&ledger).unwrap();
-    let third = run(ensembly(dir.path())
+    let third = run(ensembly_as(dir.path(), "laptop-1")
         .args(import_args(ledger_s, log_s, "laptop-1"))
         .args(at));
     let text = format!(

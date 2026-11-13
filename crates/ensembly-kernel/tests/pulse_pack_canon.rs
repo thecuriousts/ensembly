@@ -3,11 +3,21 @@
 use ensembly_kernel::pulse_core as pc;
 use ensembly_kernel::pulse_pack::canonical as canon;
 use ensembly_kernel::pulse_supersede as ps;
+use ensembly_kernel::KernelWriter;
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::{Mutex, MutexGuard};
+
+static WRITER_ENV: Mutex<()> = Mutex::new(());
+
+fn setup_writer() -> MutexGuard<'static, ()> {
+    let guard = WRITER_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var(ensembly_schema::WRITER_ENV, "laptop-1");
+    guard
+}
 
 fn golden() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/pulse-pack")
@@ -616,23 +626,25 @@ fn admit_writes_the_content_hash_python_expects() {
         .unwrap()
         .execute_batch(&fs::read_to_string(fx).unwrap())
         .unwrap();
-    ps::admit(
-        &db,
-        &ps::AdmitRequest {
-            key: "demo/admitted".into(),
-            snippet: "checked by a tool".into(),
-            source: "fixture".into(),
-            time: "2026-11-13T12:00:00+00:00".into(),
-            status: "tool-verified".into(),
-            kind: "fact".into(),
-            lock: "open".into(),
-            supersedes: None,
-            reason: None,
-            writer: "laptop-1".into(),
-        },
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap();
+    let _w = setup_writer();
+    KernelWriter::open_pulse(&db)
+        .unwrap()
+        .admit(
+            &ps::AdmitRequest {
+                key: "demo/admitted".into(),
+                snippet: "checked by a tool".into(),
+                source: "fixture".into(),
+                time: "2026-11-13T12:00:00+00:00".into(),
+                status: "tool-verified".into(),
+                kind: "fact".into(),
+                lock: "open".into(),
+                supersedes: None,
+                reason: None,
+                writer: "laptop-1".into(),
+            },
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap();
     let conn = pc::open_ro(&db).unwrap();
     let h: String = conn
         .query_row(
