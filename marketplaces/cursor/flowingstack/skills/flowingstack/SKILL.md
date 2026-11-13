@@ -41,7 +41,7 @@ A4  route-rule shipped roles: engineering, review, docs, unknown
 A5  a user file adds a row or replaces one key
 A6  engineering PR: task-contract, grill-rubric, references/verify.md
 A7  craft and ub-mode load only when installed
-A8  tomato-loop, harvest, capture-*, pstack-map, aihero-map stay off the default path
+A8  tomato-loop, harvest, capture-*, pstack-map, aihero-map, record-view stay off the default path
 ```
 
 | Need | Load |
@@ -53,6 +53,7 @@ A8  tomato-loop, harvest, capture-*, pstack-map, aihero-map stay off the default
 | log a run or claim | `run-ledger` |
 | review before merge | `grill-rubric` |
 | setup or CI health | `doctor` |
+| read an export pack's runs | `record-view` |
 | engineering PR | `task-contract`, `grill-rubric`, `references/verify.md` |
 | optional focus block | `tomato-loop` |
 | optional evidence row | `harvest` |

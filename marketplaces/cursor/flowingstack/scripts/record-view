@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Record view of an evalbench export pack (evalbench-export-v1).
+
+    record-view EXPORT.json
+
+Prints one line per fact a reader needs to check a run: the export format, the commit,
+the pulse pack hash, each run with its dataset hash and first-pass score, and each task
+with its result, tokens and model. Reads only; writes nothing.
+
+Exit 0 shown, 1 the export disagrees with itself (stated first_pass is not the count of
+passing first attempts, or tasks is short), 2 unreadable or not an export.
+"""
+import json
+import re
+import sys
+
+FORMAT = "evalbench-export-v1"
+HEX40 = re.compile(r"^[0-9a-f]{40}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def bad(msg):
+    sys.stderr.write("record-view: %s\n" % msg)
+    return 2
+
+
+def main(argv):
+    if len(argv) != 2 or argv[1].startswith("-"):
+        return bad("usage: record-view EXPORT.json")
+    try:
+        with open(argv[1], encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError) as e:
+        return bad("cannot read %s: %s" % (argv[1], e))
+    if not isinstance(doc, dict) or doc.get("format") != FORMAT:
+        return bad("not an %s file" % FORMAT)
+    commit = doc.get("commit")
+    if not isinstance(commit, str) or not HEX40.match(commit):
+        return bad("commit is not 40 hex")
+    runs = doc.get("runs")
+    if not isinstance(runs, list) or not runs:
+        return bad("no runs")
+    out = ["export " + FORMAT, "commit " + commit]
+    pulse = doc.get("pulse")
+    if pulse is None:
+        out.append("pulse none")
+    elif isinstance(pulse, dict) and HEX64.match(str(pulse.get("pack_sha256", ""))):
+        out.append("pulse pack_sha256 %s traces %d" % (pulse["pack_sha256"], int(pulse.get("traces", 0))))
+    else:
+        return bad("pulse part is malformed")
+    status = 0
+    try:
+        for r in runs:
+            rows = r["rows"]
+            models = ",".join(r["model_ids"])
+            med = r["median_tokens_passing"]
+            out.append("run %s dataset %s tasks %d first_pass %d score %d median_tokens %s models %s" % (
+                r["run_id"], r["task_set_hash"], r["tasks"], r["first_pass"], r["score"],
+                "none" if med is None else med, models))
+            first = [x for x in rows if x["attempt"] == 1]
+            passed = sum(1 for x in first if x["pass"] is True)
+            if passed != r["first_pass"] or len({x["task_id"] for x in first}) + r["missing"] != r["tasks"]:
+                sys.stderr.write("record-view: run %s disagrees with its rows\n" % r["run_id"])
+                status = 1
+            for x in rows:
+                att = "" if x["attempt"] == 1 else " attempt %d" % x["attempt"]
+                out.append("task %s%s %s tokens %d in %d out %d model %s prompt %s" % (
+                    x["task_id"], att, "pass" if x["pass"] is True else "fail",
+                    x["tokens_in"] + x["tokens_out"], x["tokens_in"], x["tokens_out"],
+                    x["model_id"], x["prompt_id"]))
+    except (KeyError, TypeError) as e:
+        return bad("run is malformed: %s" % e)
+    sys.stdout.write("\n".join(out) + "\n")
+    return status
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
