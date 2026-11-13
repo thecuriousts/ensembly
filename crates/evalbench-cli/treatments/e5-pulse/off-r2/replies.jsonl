@@ -1,0 +1,12 @@
+{"task_id":"t01-full","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"LLM evals\"]}","tokens_in":287,"tokens_out":8,"cost_micro_usd":981}
+{"task_id":"t02-gappy","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"LLM evals\",\"RAG\",\"Observability\"]}","tokens_in":244,"tokens_out":13,"cost_micro_usd":927}
+{"task_id":"t03-stripped","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"Python\",\"RAG\",\"Observability\"]}","tokens_in":260,"tokens_out":13,"cost_micro_usd":975}
+{"task_id":"t04-empty-evidence","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"LLM evals\",\"Python\",\"RAG\",\"Observability\"]}","tokens_in":213,"tokens_out":16,"cost_micro_usd":879}
+{"task_id":"t05-case","model_id":"synthetic-replay-model","text":"Gaps: RAG, Observability","tokens_in":255,"tokens_out":8,"cost_micro_usd":885}
+{"task_id":"t06-substring-trap","model_id":"synthetic-replay-model","text":"Gaps: LLM evals, Python, Observability","tokens_in":232,"tokens_out":12,"cost_micro_usd":876}
+{"task_id":"t07-empty-proof","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"Python\",\"RAG\",\"Observability\"]}","tokens_in":227,"tokens_out":13,"cost_micro_usd":876}
+{"task_id":"t08-split-item","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"LLM evals\",\"Python\",\"RAG\",\"Observability\"]}","tokens_in":242,"tokens_out":16,"cost_micro_usd":966}
+{"task_id":"t09-data-full","model_id":"synthetic-replay-model","text":"{\"gaps\":[]}","tokens_in":262,"tokens_out":5,"cost_micro_usd":861}
+{"task_id":"t10-data-partial","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"Pipelines\",\"Cloud\"]}","tokens_in":235,"tokens_out":10,"cost_micro_usd":855}
+{"task_id":"t11-multi-hit","model_id":"synthetic-replay-model","text":"{\"gaps\":[]}","tokens_in":220,"tokens_out":5,"cost_micro_usd":735}
+{"task_id":"t12-no-proof-key","model_id":"synthetic-replay-model","text":"Gaps: SQL, Pipelines, Cloud","tokens_in":215,"tokens_out":9,"cost_micro_usd":780}

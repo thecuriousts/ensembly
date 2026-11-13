@@ -1,0 +1,69 @@
+#!/bin/sh
+# Regenerate the E5 pulse on/off treatment run (synthetic replies) and check it
+# against the committed files. Offline: no network, no API keys, synthetic tasks only.
+#
+#   scripts/evalbench-treatment           regenerate into a temp dir, compare, print the table
+#   scripts/evalbench-treatment --write   also overwrite traces, scores, summary.json and the table
+#
+# Exit 0 same numbers, 1 drift, 2 usage or build error.
+set -eu
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+TASKS=crates/evalbench-core/fixtures/tasks
+PULSE=crates/evalbench-core/fixtures/pulse/e5-pulse.json
+BASE=crates/evalbench-cli/treatments/e5-pulse
+
+write=0
+case "${1:-}" in
+  "") ;;
+  --write) write=1 ;;
+  *) echo "usage: $0 [--write]" >&2; exit 2 ;;
+esac
+
+cd "$ROOT"
+cargo build --locked -q -p evalbench-cli || exit 2
+EB=target/debug/evalbench
+commit=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+
+python3 -I scripts/e5/synthetic_replies.py --check || { echo "drift: replies differ from the generator" >&2; exit 1; }
+"$EB" hash "$TASKS" --verify crates/evalbench-core/fixtures/tasks.sha256 >/dev/null || exit 2
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+cp "$BASE/REPORT.md" "$tmp/REPORT.md"
+for arm in off on; do
+  for r in 1 2 3; do
+    run="$arm-r$r"
+    mkdir -p "$tmp/$run"
+    if [ "$arm" = on ]; then set -- --pulse-pack "$PULSE"; else set --; fi
+    "$EB" run --tasks "$TASKS" --run-id "e5-$run" --out "$tmp/$run/traces.jsonl" \
+      --replay "$BASE/$run/replies.jsonl" "$@" || exit 2
+    "$EB" score --tasks "$TASKS" "$tmp/$run/traces.jsonl" >"$tmp/$run/score.json" || exit 2
+    "$EB" score --tasks "$TASKS" "$tmp/$run/traces.jsonl" >"$tmp/$run/score2.json" || exit 2
+    cmp -s "$tmp/$run/score.json" "$tmp/$run/score2.json" || { echo "drift: two scorings differ ($run)" >&2; exit 1; }
+  done
+done
+
+status=0
+if [ "$write" = 1 ]; then
+  for arm in off on; do
+    for r in 1 2 3; do
+      cp "$tmp/$arm-r$r/traces.jsonl" "$tmp/$arm-r$r/score.json" "$BASE/$arm-r$r/"
+    done
+  done
+  python3 -I scripts/e5/report.py "$BASE" "$commit" --write || exit 2
+else
+  for arm in off on; do
+    for r in 1 2 3; do
+      for f in traces.jsonl score.json; do
+        cmp -s "$tmp/$arm-r$r/$f" "$BASE/$arm-r$r/$f" || { echo "drift: $BASE/$arm-r$r/$f" >&2; status=1; }
+      done
+    done
+  done
+  cp "$BASE/summary.json" "$tmp/summary.json" 2>/dev/null || true
+  python3 -I scripts/e5/report.py "$tmp" "$commit" --check || status=1
+  cmp -s "$tmp/summary.json" "$BASE/summary.json" || status=1
+fi
+python3 -I scripts/e5/report.py "$BASE" "$commit" | sed -n '3,$p'
+echo "commit $commit"
+exit $status

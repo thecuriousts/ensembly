@@ -9,6 +9,25 @@ use crate::trace::{jsonl_lines, valid_run_id, TraceRow, TRACE_SCHEMA_VERSION};
 
 pub const PROMPT_ID: &str = "gaps-v1";
 pub const PROMPT_TEMPLATE: &str = include_str!("../fixtures/prompts/gaps-v1.txt");
+/// E5 treatment arm: the E1 prompt, unchanged, with the pulse pack appended.
+pub const PULSE_PROMPT_ID: &str = "gaps-v1+pulse";
+/// Written between the E1 prompt and the pulse pack bytes. Nothing else changes.
+pub const PULSE_HEADER: &str =
+    "\nPulse (canonical pulse-pack-v1 from earlier sessions; context only):\n";
+
+/// The pulse pack the treatment arm puts in context: the file's bytes, verbatim.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PulseContext {
+    pub text: String,
+}
+
+impl PulseContext {
+    /// sha256 hex of the pack bytes, for the report.
+    pub fn sha256(&self) -> String {
+        use sha2::{Digest, Sha256};
+        hex::encode(Sha256::digest(self.text.as_bytes()))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -124,6 +143,16 @@ pub fn render_prompt(task: &Task) -> String {
     }
 }
 
+/// E1 prompt, then (treatment arm only) `PULSE_HEADER` and the pack bytes.
+pub fn render_prompt_with(task: &Task, pulse: Option<&PulseContext>) -> String {
+    let mut out = render_prompt(task);
+    if let Some(p) = pulse {
+        out.push_str(PULSE_HEADER);
+        out.push_str(&p.text);
+    }
+    out
+}
+
 /// `pass` = `check_answer(task.expected_gaps, reply.text)`; prompt_id = `PROMPT_ID`.
 pub fn trace_for(
     task: &Task,
@@ -132,13 +161,25 @@ pub fn trace_for(
     attempt: u32,
     reply: &ModelReply,
 ) -> TraceRow {
+    trace_for_prompt(task, task_set_hash, run_id, attempt, reply, PROMPT_ID)
+}
+
+/// As `trace_for`, with the prompt id of the arm that produced the reply.
+pub fn trace_for_prompt(
+    task: &Task,
+    task_set_hash: &str,
+    run_id: &str,
+    attempt: u32,
+    reply: &ModelReply,
+    prompt_id: &str,
+) -> TraceRow {
     TraceRow {
         schema_version: TRACE_SCHEMA_VERSION,
         run_id: run_id.to_string(),
         task_id: task.id.clone(),
         attempt,
         model_id: reply.model_id.clone(),
-        prompt_id: PROMPT_ID.to_string(),
+        prompt_id: prompt_id.to_string(),
         tokens_in: reply.tokens_in,
         tokens_out: reply.tokens_out,
         cost_micro_usd: reply.cost_micro_usd,
@@ -153,13 +194,29 @@ pub fn run_set(
     set: &TaskSet,
     run_id: &str,
 ) -> Result<Vec<TraceRow>, RunError> {
+    run_set_with(client, set, run_id, None)
+}
+
+/// `run_set`, with the pulse pack in context when `pulse` is set (E5 treatment arm,
+/// prompt id `PULSE_PROMPT_ID`). Same tasks, order, checker and attempt numbering.
+pub fn run_set_with(
+    client: &mut dyn ModelClient,
+    set: &TaskSet,
+    run_id: &str,
+    pulse: Option<&PulseContext>,
+) -> Result<Vec<TraceRow>, RunError> {
+    let prompt_id = if pulse.is_some() {
+        PULSE_PROMPT_ID
+    } else {
+        PROMPT_ID
+    };
     if !valid_run_id(run_id) {
         return Err(RunError::BadRunId(run_id.to_string()));
     }
     let mut rows = Vec::with_capacity(set.tasks.len());
     for task in &set.tasks {
         let reply = client
-            .complete(&task.id, &render_prompt(task))
+            .complete(&task.id, &render_prompt_with(task, pulse))
             .map_err(RunError::Client)?;
         if reply.task_id != task.id {
             return Err(RunError::ReplyTaskMismatch {
@@ -167,7 +224,9 @@ pub fn run_set(
                 got: reply.task_id,
             });
         }
-        rows.push(trace_for(task, &set.hash, run_id, 1, &reply));
+        rows.push(trace_for_prompt(
+            task, &set.hash, run_id, 1, &reply, prompt_id,
+        ));
     }
     Ok(rows)
 }

@@ -1,0 +1,12 @@
+{"task_id":"t01-full","model_id":"synthetic-replay-model","text":"Gaps: none","tokens_in":805,"tokens_out":5,"cost_micro_usd":2490}
+{"task_id":"t02-gappy","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"LLM evals\",\"RAG\",\"Observability\"]}","tokens_in":763,"tokens_out":13,"cost_micro_usd":2484}
+{"task_id":"t03-stripped","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"LLM evals\",\"Python\",\"RAG\",\"Observability\"]}","tokens_in":779,"tokens_out":16,"cost_micro_usd":2577}
+{"task_id":"t04-empty-evidence","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"Python\",\"RAG\",\"Observability\"]}","tokens_in":731,"tokens_out":13,"cost_micro_usd":2388}
+{"task_id":"t05-case","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"RAG\",\"Observability\"]}","tokens_in":774,"tokens_out":10,"cost_micro_usd":2472}
+{"task_id":"t06-substring-trap","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"LLM evals\",\"Python\",\"Observability\"]}","tokens_in":751,"tokens_out":14,"cost_micro_usd":2463}
+{"task_id":"t07-empty-proof","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"LLM evals\",\"Python\",\"RAG\",\"Observability\"]}","tokens_in":746,"tokens_out":16,"cost_micro_usd":2478}
+{"task_id":"t08-split-item","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"LLM evals\",\"Python\",\"RAG\",\"Observability\"]}","tokens_in":761,"tokens_out":16,"cost_micro_usd":2523}
+{"task_id":"t09-data-full","model_id":"synthetic-replay-model","text":"{\"gaps\":[]}","tokens_in":781,"tokens_out":5,"cost_micro_usd":2418}
+{"task_id":"t10-data-partial","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"Pipelines\",\"Cloud\"]}","tokens_in":753,"tokens_out":10,"cost_micro_usd":2409}
+{"task_id":"t11-multi-hit","model_id":"synthetic-replay-model","text":"{\"gaps\":[]}","tokens_in":739,"tokens_out":5,"cost_micro_usd":2292}
+{"task_id":"t12-no-proof-key","model_id":"synthetic-replay-model","text":"{\"gaps\":[\"Pipelines\",\"Cloud\"]}","tokens_in":734,"tokens_out":10,"cost_micro_usd":2352}
