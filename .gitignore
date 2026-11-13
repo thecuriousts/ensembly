@@ -42,3 +42,6 @@ prototype/crates/**/target/
 # Python
 __pycache__/
 *.py[cod]
+
+# Local model weights must never be committed
+*.gguf

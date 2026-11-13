@@ -1,0 +1,9 @@
+{
+  "id": "classify-stock-fact",
+  "statement": "The Northbridge depot of River Co. holds 12 teal crates.",
+  "recorded": {
+    "label": "fact",
+    "confidence": 0.94,
+    "rationale": "States a countable stock figure at a named depot."
+  }
+}

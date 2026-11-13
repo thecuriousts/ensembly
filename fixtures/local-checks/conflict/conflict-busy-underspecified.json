@@ -1,0 +1,10 @@
+{
+  "id": "conflict-busy-underspecified",
+  "left": "River Co. holds teal crates.",
+  "right": "A depot in Northbridge is busy today.",
+  "recorded": {
+    "relation": "underspecified",
+    "confidence": 0.8,
+    "rationale": "The two statements do not share enough detail to compare."
+  }
+}

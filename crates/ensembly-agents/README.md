@@ -8,9 +8,10 @@ Official Grok (xAI) docs:
 
 | Module | Role |
 |--------|------|
-| `inference` | `InferenceProvider` trait; `ENSEMBLY_INFERENCE` (alias `PERAM_INFERENCE`) `=deterministic\|grok-mcp\|…` |
-| `delegation` | `DelegationBackend`; `ENSEMBLY_DELEGATE` (alias `PERAM_DELEGATE`) `=none\|grok-acp\|…` |
+| `inference` | `InferenceProvider` trait; `ENSEMBLY_INFERENCE` `=deterministic\|grok-mcp\|local` (`ollama`, `llama.cpp`, `mlx` alias `local`) |
+| `delegation` | `DelegationBackend`; `ENSEMBLY_DELEGATE` `=none\|grok-acp\|…` |
 | `mcp_server` / `ensembly-mcp` | Memory tools plus record commit and view (sync NDJSON stdio) |
+| `local_checks` | Fact classify (4B) and conflict check (9B) via llama.cpp (MLX is experimental). Cloud fallback is off unless both `ENSEMBLY_CLOUD_CHECKS=1` and `ENSEMBLY_CLOUD_CHECK_CMD` are set, behind a fail-closed redaction gate. See [LOCAL-CHECKS.md](../../docs/LOCAL-CHECKS.md) |
 | `grok` | Official CLI argv helpers + project MCP TOML snippet |
 | `rpc` | Sync JSON-RPC 2.0 NDJSON |
 
@@ -45,6 +46,19 @@ grok --no-auto-update -p "Summarize this trajectory…" --output-format json
 ```
 
 Auth: `grok login` or `XAI_API_KEY`. Scripts: always `--no-auto-update`.
+
+## Local fact and conflict checks
+
+The former Ollama stub now resolves to the local checker. CI replays recorded
+synthetic fixtures and does not need model files. Live runs on mac-mini are
+opt-in (`ENSEMBLY_LOCAL_MODELS=1`). Cloud fallback stays off unless both
+`ENSEMBLY_CLOUD_CHECKS=1` and `ENSEMBLY_CLOUD_CHECK_CMD` are set. Details:
+[LOCAL-CHECKS.md](../../docs/LOCAL-CHECKS.md).
+
+```bash
+cargo run -p ensembly-agents --bin ensembly-local-check -- status
+cargo run -p ensembly-agents --bin ensembly-local-check -- fixtures
+```
 
 ## Tests
 

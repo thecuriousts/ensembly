@@ -1,0 +1,9 @@
+{
+  "id": "classify-ping-other",
+  "statement": "Hello, this is a test ping with no claim.",
+  "recorded": {
+    "label": "other",
+    "confidence": 0.9,
+    "rationale": "A greeting with no fact, opinion, or instruction."
+  }
+}
