@@ -3,8 +3,26 @@
 
 use ensembly_kernel::pulse_core as pc;
 use ensembly_kernel::pulse_supersede as ps;
+use ensembly_kernel::KernelWriter;
 use rusqlite::Connection;
 use std::path::Path;
+use std::sync::{Mutex, MutexGuard};
+
+static WRITER_ENV: Mutex<()> = Mutex::new(());
+
+fn with_writer(name: &str) -> MutexGuard<'static, ()> {
+    let guard = WRITER_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var(ensembly_schema::WRITER_ENV, name);
+    guard
+}
+
+fn setup_writer() -> MutexGuard<'static, ()> {
+    with_writer("laptop-1")
+}
+
+fn kernel(path: &Path) -> KernelWriter {
+    KernelWriter::open_pulse(path).unwrap()
+}
 
 const SCHEMA: &str = "
 CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
@@ -80,11 +98,14 @@ fn req(old: &str, new: &str) -> ps::SupersedeRequest {
 }
 
 fn supersede(path: &Path, old: &str, new: &str) -> ps::SupersedeReceipt {
-    ps::supersede(path, &req(old, new), &ps::SupersedeFault::default()).unwrap()
+    kernel(path)
+        .supersede(&req(old, new), &ps::SupersedeFault::default())
+        .unwrap()
 }
 
 #[test]
 fn supersede_archives_old_row_and_hides_it_from_list() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -149,6 +170,7 @@ fn supersede_archives_old_row_and_hides_it_from_list() {
 
 #[test]
 fn dangling_superseded_pointer_is_still_reported() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -164,7 +186,8 @@ fn dangling_superseded_pointer_is_still_reported() {
         "2026-11-09T00:00:00+00:00",
         "memory",
     );
-    supersede(&db.path, "pref/old", "pref/new");
+    // Plant the dangling pointer before the writer installs accident-guard
+    // triggers, which would refuse a raw rusqlite UPDATE.
     let c = Connection::open(&db.path).unwrap();
     c.execute(
         "UPDATE memory_traces SET superseded_by = 'pref/missing' WHERE nat_key = 'pref/old'",
@@ -179,6 +202,7 @@ fn dangling_superseded_pointer_is_still_reported() {
 
 #[test]
 fn supersede_is_idempotent_and_refuses_a_different_provenance() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -205,13 +229,16 @@ fn supersede_is_idempotent_and_refuses_a_different_provenance() {
 
     let mut other = req("pref/old", "pref/new");
     other.reason = "a different reason".into();
-    let err = ps::supersede(&db.path, &other, &ps::SupersedeFault::default()).unwrap_err();
+    let err = kernel(&db.path)
+        .supersede(&other, &ps::SupersedeFault::default())
+        .unwrap_err();
     assert!(err.to_string().contains("provenance"), "{err}");
     assert_eq!(pointer(&db.path, "pref/old").as_deref(), Some("pref/new"));
 }
 
 #[test]
 fn supersede_refuses_self_unknown_cycle_and_retarget() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -235,41 +262,31 @@ fn supersede_refuses_self_unknown_cycle_and_retarget() {
         "memory",
     );
 
-    let self_link = ps::supersede(
-        &db.path,
-        &req("pref/a", "pref/a"),
-        &ps::SupersedeFault::default(),
-    );
+    let self_link =
+        kernel(&db.path).supersede(&req("pref/a", "pref/a"), &ps::SupersedeFault::default());
     assert!(self_link
         .unwrap_err()
         .to_string()
         .contains("self-supersession"));
     assert!(pointer(&db.path, "pref/a").is_none());
 
-    let missing = ps::supersede(
-        &db.path,
+    let missing = kernel(&db.path).supersede(
         &req("pref/missing", "pref/a"),
         &ps::SupersedeFault::default(),
     );
     assert!(missing.unwrap_err().to_string().contains("unknown key"));
 
     supersede(&db.path, "pref/a", "pref/b");
-    let retarget = ps::supersede(
-        &db.path,
-        &req("pref/a", "pref/c"),
-        &ps::SupersedeFault::default(),
-    );
+    let retarget =
+        kernel(&db.path).supersede(&req("pref/a", "pref/c"), &ps::SupersedeFault::default());
     let retarget = retarget.unwrap_err().to_string();
     assert!(retarget.contains("already superseded"), "{retarget}");
     assert_eq!(pointer(&db.path, "pref/a").as_deref(), Some("pref/b"));
 
     supersede(&db.path, "pref/b", "pref/c");
     assert_eq!(pointer(&db.path, "pref/b").as_deref(), Some("pref/c"));
-    let cycle = ps::supersede(
-        &db.path,
-        &req("pref/c", "pref/a"),
-        &ps::SupersedeFault::default(),
-    );
+    let cycle =
+        kernel(&db.path).supersede(&req("pref/c", "pref/a"), &ps::SupersedeFault::default());
     let cycle = cycle.unwrap_err().to_string();
     assert!(cycle.contains("cycle"), "{cycle}");
     assert!(pointer(&db.path, "pref/c").is_none());
@@ -288,6 +305,7 @@ fn supersede_refuses_self_unknown_cycle_and_retarget() {
 
 #[test]
 fn bad_writer_is_refused_before_any_pointer_change() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -305,8 +323,10 @@ fn bad_writer_is_refused_before_any_pointer_change() {
     );
     let mut bad = req("pref/old", "pref/new");
     bad.writer = "office-box".into();
-    let err = ps::supersede(&db.path, &bad, &ps::SupersedeFault::default()).unwrap_err();
-    assert!(err.to_string().contains("public host alias"), "{err}");
+    let err = kernel(&db.path)
+        .supersede(&bad, &ps::SupersedeFault::default())
+        .unwrap_err();
+    assert!(err.to_string().contains("configured identity"), "{err}");
     assert!(pointer(&db.path, "pref/old").is_none());
     let conn = Connection::open(&db.path).unwrap();
     let n: i64 = conn
@@ -321,6 +341,7 @@ fn bad_writer_is_refused_before_any_pointer_change() {
 
 #[test]
 fn intent_then_retry_reaches_verified() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -336,14 +357,14 @@ fn intent_then_retry_reaches_verified() {
         "2026-11-09T00:00:00+00:00",
         "memory",
     );
-    let stopped = ps::supersede(
-        &db.path,
-        &req("pref/old", "pref/new"),
-        &ps::SupersedeFault {
-            crash_entering: Some(ps::SupersedePhase::Applied),
-        },
-    )
-    .unwrap();
+    let stopped = kernel(&db.path)
+        .supersede(
+            &req("pref/old", "pref/new"),
+            &ps::SupersedeFault {
+                crash_entering: Some(ps::SupersedePhase::Applied),
+            },
+        )
+        .unwrap();
     assert_eq!(stopped.phase, "intent");
     assert!(pointer(&db.path, "pref/old").is_none());
 
@@ -355,6 +376,7 @@ fn intent_then_retry_reaches_verified() {
 
 #[test]
 fn conflict_resolves_into_a_supersession() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -398,19 +420,19 @@ fn conflict_resolves_into_a_supersession() {
     drop(c);
 
     let open_id = 2;
-    let receipt = ps::resolve_conflict(
-        &db.path,
-        &ps::ResolveRequest {
-            conflict_id: open_id,
-            winner: "pref/right".into(),
-            source: "operator".into(),
-            event_time: "2026-11-09T12:30:00+00:00".into(),
-            reason: "the later preference stands".into(),
-            writer: "laptop-1".into(),
-        },
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap();
+    let receipt = kernel(&db.path)
+        .resolve_conflict(
+            &ps::ResolveRequest {
+                conflict_id: open_id,
+                winner: "pref/right".into(),
+                source: "operator".into(),
+                event_time: "2026-11-09T12:30:00+00:00".into(),
+                reason: "the later preference stands".into(),
+                writer: "laptop-1".into(),
+            },
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap();
     assert_eq!(receipt.new_key, "pref/right");
     assert_eq!(
         pointer(&db.path, "pref/left").as_deref(),
@@ -437,8 +459,7 @@ fn conflict_resolves_into_a_supersession() {
     assert_eq!(pc::db_stats(&conn).unwrap().unresolved_conflicts, 0);
     assert!(pc::db_stats(&conn).unwrap().dangling_superseded.is_empty());
 
-    let not_a_side = ps::resolve_conflict(
-        &db.path,
+    let not_a_side = kernel(&db.path).resolve_conflict(
         &ps::ResolveRequest {
             conflict_id: 1,
             winner: "pref/missing".into(),
@@ -462,6 +483,7 @@ fn conflict_resolves_into_a_supersession() {
 
 #[test]
 fn admit_supersedes_links_the_new_row_and_refuses_an_unlinked_fork() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -478,8 +500,7 @@ fn admit_supersedes_links_the_new_row_and_refuses_an_unlinked_fork() {
     .unwrap();
     drop(c);
 
-    let fork = ps::admit(
-        &db.path,
+    let fork = kernel(&db.path).admit(
         &ps::AdmitRequest {
             key: "pref/drink".into(),
             snippet: "coffee".into(),
@@ -510,23 +531,23 @@ fn admit_supersedes_links_the_new_row_and_refuses_an_unlinked_fork() {
     };
     assert_eq!(names, vec!["pref/drink".to_string()]);
 
-    let admitted = ps::admit(
-        &db.path,
-        &ps::AdmitRequest {
-            key: "pref/drink-2".into(),
-            snippet: "coffee".into(),
-            source: "operator".into(),
-            time: "2026-11-09T12:00:00+00:00".into(),
-            status: "user-stated".into(),
-            kind: "memory".into(),
-            lock: "locked".into(),
-            supersedes: Some("pref/drink".into()),
-            reason: Some("preference changed".into()),
-            writer: "laptop-2".into(),
-        },
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap();
+    let admitted = kernel(&db.path)
+        .admit(
+            &ps::AdmitRequest {
+                key: "pref/drink-2".into(),
+                snippet: "coffee".into(),
+                source: "operator".into(),
+                time: "2026-11-09T12:00:00+00:00".into(),
+                status: "user-stated".into(),
+                kind: "memory".into(),
+                lock: "locked".into(),
+                supersedes: Some("pref/drink".into()),
+                reason: Some("preference changed".into()),
+                writer: "laptop-1".into(),
+            },
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap();
     assert_eq!(admitted.nat_key, "pref/drink-2");
     assert_eq!(
         pointer(&db.path, "pref/drink").as_deref(),
@@ -537,23 +558,23 @@ fn admit_supersedes_links_the_new_row_and_refuses_an_unlinked_fork() {
     assert_eq!(live.len(), 1);
     assert_eq!(live[0].nat_key, "pref/drink-2");
     assert_eq!(live[0].snippet, "coffee");
-    let again = ps::admit(
-        &db.path,
-        &ps::AdmitRequest {
-            key: "pref/drink-2".into(),
-            snippet: "coffee".into(),
-            source: "operator".into(),
-            time: "2026-11-09T12:00:00+00:00".into(),
-            status: "user-stated".into(),
-            kind: "memory".into(),
-            lock: "locked".into(),
-            supersedes: Some("pref/drink".into()),
-            reason: Some("preference changed".into()),
-            writer: "laptop-2".into(),
-        },
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap();
+    let again = kernel(&db.path)
+        .admit(
+            &ps::AdmitRequest {
+                key: "pref/drink-2".into(),
+                snippet: "coffee".into(),
+                source: "operator".into(),
+                time: "2026-11-09T12:00:00+00:00".into(),
+                status: "user-stated".into(),
+                kind: "memory".into(),
+                lock: "locked".into(),
+                supersedes: Some("pref/drink".into()),
+                reason: Some("preference changed".into()),
+                writer: "laptop-1".into(),
+            },
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap();
     assert!(again.idempotent);
     assert_eq!(
         Connection::open(&db.path)
@@ -571,6 +592,7 @@ fn admit_supersedes_links_the_new_row_and_refuses_an_unlinked_fork() {
 
 #[test]
 fn cli_supersede_exits_ok_and_refused() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -587,6 +609,7 @@ fn cli_supersede_exits_ok_and_refused() {
         "memory",
     );
     let ok = std::process::Command::new(env!("CARGO_BIN_EXE_ensembly"))
+        .env(ensembly_schema::WRITER_ENV, "mac-mini")
         .args([
             "pulse",
             "--pulse-db",
@@ -617,6 +640,7 @@ fn cli_supersede_exits_ok_and_refused() {
     assert_eq!(body["old_key"], "pref/old");
 
     let refused = std::process::Command::new(env!("CARGO_BIN_EXE_ensembly"))
+        .env(ensembly_schema::WRITER_ENV, "mac-mini")
         .args([
             "pulse",
             "--pulse-db",
@@ -631,7 +655,7 @@ fn cli_supersede_exits_ok_and_refused() {
             "--reason",
             "no",
             "--writer",
-            "box",
+            "mac-mini",
         ])
         .output()
         .unwrap();
@@ -718,6 +742,7 @@ fn assert_unchanged(path: &Path, keys: &[String], events: i64) {
 
 #[test]
 fn refused_admit_leaves_no_row_and_no_event() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -726,39 +751,6 @@ fn refused_admit_leaves_no_row_and_no_event() {
         "2026-11-01T00:00:00+00:00",
         "memory",
     );
-    let keys = nat_keys(&db.path);
-    let events = event_count(&db.path);
-
-    let self_link = ps::admit(
-        &db.path,
-        &admit_req("pref/drink-X", "x", Some("pref/drink-X"), "laptop-1"),
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(self_link.contains("self-supersession"), "{self_link}");
-    assert_unchanged(&db.path, &keys, events);
-
-    let unknown = ps::admit(
-        &db.path,
-        &admit_req("pref/drink-X", "x", Some("pref/missing"), "laptop-1"),
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(unknown.contains("unknown key"), "{unknown}");
-    assert_unchanged(&db.path, &keys, events);
-
-    let writer = ps::admit(
-        &db.path,
-        &admit_req("pref/drink-X", "x", Some("pref/drink"), "office-box"),
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(writer.contains("public host alias"), "{writer}");
-    assert_unchanged(&db.path, &keys, events);
-
     add(
         &db.path,
         "pref/drink-2",
@@ -766,24 +758,6 @@ fn refused_admit_leaves_no_row_and_no_event() {
         "2026-11-09T00:00:00+00:00",
         "memory",
     );
-    supersede(&db.path, "pref/drink", "pref/drink-2");
-    let keys = nat_keys(&db.path);
-    let events = event_count(&db.path);
-    let already = ps::admit(
-        &db.path,
-        &admit_req("pref/drink-X", "x", Some("pref/drink"), "laptop-1"),
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap_err()
-    .to_string();
-    assert!(already.contains("already superseded"), "{already}");
-    assert_unchanged(&db.path, &keys, events);
-    assert_eq!(
-        pointer(&db.path, "pref/drink").as_deref(),
-        Some("pref/drink-2")
-    );
-
-    // a → b, and c → a, so admitting c over b closes c → a → b → c.
     add(
         &db.path,
         "pref/c",
@@ -800,14 +774,64 @@ fn refused_admit_leaves_no_row_and_no_event() {
     drop(c);
     let keys = nat_keys(&db.path);
     let events = event_count(&db.path);
+
+    let self_link = kernel(&db.path)
+        .admit(
+            &admit_req("pref/drink-X", "x", Some("pref/drink-X"), "laptop-1"),
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(self_link.contains("self-supersession"), "{self_link}");
+    assert_unchanged(&db.path, &keys, events);
+
+    let unknown = kernel(&db.path)
+        .admit(
+            &admit_req("pref/drink-X", "x", Some("pref/missing"), "laptop-1"),
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(unknown.contains("unknown key"), "{unknown}");
+    assert_unchanged(&db.path, &keys, events);
+
+    let writer = kernel(&db.path)
+        .admit(
+            &admit_req("pref/drink-X", "x", Some("pref/drink"), "office-box"),
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(writer.contains("configured identity"), "{writer}");
+    assert_unchanged(&db.path, &keys, events);
+
+    supersede(&db.path, "pref/drink", "pref/drink-2");
+    let keys = nat_keys(&db.path);
+    let events = event_count(&db.path);
+    let already = kernel(&db.path)
+        .admit(
+            &admit_req("pref/drink-X", "x", Some("pref/drink"), "laptop-1"),
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(already.contains("already superseded"), "{already}");
+    assert_unchanged(&db.path, &keys, events);
+    assert_eq!(
+        pointer(&db.path, "pref/drink").as_deref(),
+        Some("pref/drink-2")
+    );
+
+    let keys = nat_keys(&db.path);
+    let events = event_count(&db.path);
     // c → drink → drink-2. Admitting c over the live head closes that loop.
-    let cycle = ps::admit(
-        &db.path,
-        &admit_req("pref/c", "water", Some("pref/drink-2"), "laptop-2"),
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap_err()
-    .to_string();
+    let cycle = kernel(&db.path)
+        .admit(
+            &admit_req("pref/c", "water", Some("pref/drink-2"), "laptop-1"),
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap_err()
+        .to_string();
     assert!(cycle.contains("cycle"), "{cycle}");
     assert_unchanged(&db.path, &keys, events);
 
@@ -816,19 +840,20 @@ fn refused_admit_leaves_no_row_and_no_event() {
     // already names it, so the link would loop once that row is the successor.
     // Here the refusal is the cycle on `pref/c` above. A second new key that
     // supersedes an already-superseded ancestor must also leave nothing.
-    let looped = ps::admit(
-        &db.path,
-        &admit_req("pref/cycle-new", "juice", Some("pref/drink"), "mac-mini"),
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap_err()
-    .to_string();
+    let looped = kernel(&db.path)
+        .admit(
+            &admit_req("pref/cycle-new", "juice", Some("pref/drink"), "laptop-1"),
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap_err()
+        .to_string();
     assert!(looped.contains("already superseded"), "{looped}");
     assert_unchanged(&db.path, &keys, events);
 }
 
 #[test]
 fn open_row_snippet_change_does_not_say_locked() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -837,18 +862,18 @@ fn open_row_snippet_change_does_not_say_locked() {
         "2026-11-01T00:00:00+00:00",
         "memory",
     );
-    let err = ps::admit(
-        &db.path,
-        &ps::AdmitRequest {
-            snippet: "coffee".into(),
-            supersedes: None,
-            reason: None,
-            ..admit_req("pref/drink", "tea", None, "laptop-1")
-        },
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap_err()
-    .to_string();
+    let err = kernel(&db.path)
+        .admit(
+            &ps::AdmitRequest {
+                snippet: "coffee".into(),
+                supersedes: None,
+                reason: None,
+                ..admit_req("pref/drink", "tea", None, "laptop-1")
+            },
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("snippet changed"), "{err}");
     assert!(!err.contains("locked snippet"), "{err}");
     assert_eq!(nat_keys(&db.path), vec!["pref/drink".to_string()]);
@@ -856,6 +881,7 @@ fn open_row_snippet_change_does_not_say_locked() {
 
 #[test]
 fn admit_link_refusal_rolls_back_the_new_row() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -888,13 +914,13 @@ fn admit_link_refusal_rolls_back_the_new_row() {
     .unwrap();
     drop(conn);
     let keys = nat_keys(&db.path);
-    let err = ps::admit(
-        &db.path,
-        &admit_req("pref/drink-X", "x", Some("pref/drink"), "laptop-1"),
-        &ps::SupersedeFault::default(),
-    )
-    .unwrap_err()
-    .to_string();
+    let err = kernel(&db.path)
+        .admit(
+            &admit_req("pref/drink-X", "x", Some("pref/drink"), "laptop-1"),
+            &ps::SupersedeFault::default(),
+        )
+        .unwrap_err()
+        .to_string();
     assert!(err.contains("provenance"), "{err}");
     assert_eq!(nat_keys(&db.path), keys);
     assert_eq!(event_count(&db.path), 1);
@@ -902,6 +928,7 @@ fn admit_link_refusal_rolls_back_the_new_row() {
 
 #[test]
 fn concurrent_supersede_cannot_form_a_cycle() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -920,18 +947,10 @@ fn concurrent_supersede_cannot_form_a_cycle() {
     let left = db.path.clone();
     let right = db.path.clone();
     let h1 = std::thread::spawn(move || {
-        ps::supersede(
-            &left,
-            &req("pref/a", "pref/b"),
-            &ps::SupersedeFault::default(),
-        )
+        kernel(&left).supersede(&req("pref/a", "pref/b"), &ps::SupersedeFault::default())
     });
     let h2 = std::thread::spawn(move || {
-        ps::supersede(
-            &right,
-            &req("pref/b", "pref/a"),
-            &ps::SupersedeFault::default(),
-        )
+        kernel(&right).supersede(&req("pref/b", "pref/a"), &ps::SupersedeFault::default())
     });
     let r1 = h1.join().expect("thread");
     let r2 = h2.join().expect("thread");
@@ -959,6 +978,7 @@ fn concurrent_supersede_cannot_form_a_cycle() {
 
 #[test]
 fn cli_refused_admit_leaves_no_row() {
+    let _w = setup_writer();
     let db = db();
     add(
         &db.path,
@@ -976,6 +996,7 @@ fn cli_refused_admit_leaves_no_row() {
     );
     supersede(&db.path, "pref/drink", "pref/drink-2");
     let refused = std::process::Command::new(env!("CARGO_BIN_EXE_ensembly"))
+        .env(ensembly_schema::WRITER_ENV, "laptop-1")
         .args([
             "pulse",
             "--pulse-db",

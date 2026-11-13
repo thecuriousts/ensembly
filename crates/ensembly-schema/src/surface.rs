@@ -17,29 +17,67 @@ use std::path::{Path, PathBuf};
 #[serde(transparent)]
 pub struct JsonPayload(pub serde_json::Value);
 
-pub const PUBLIC_HOST_ALIASES: &[&str] = &["laptop-1", "laptop-2", "mac-mini"];
+/// Environment variable that holds the operator's writer identity.
+pub const WRITER_ENV: &str = "ENSEMBLY_WRITER";
 
-pub fn require_public_host_alias(writer: &str) -> Result<(), String> {
-    if PUBLIC_HOST_ALIASES.contains(&writer) {
-        Ok(())
+const WRITER_MAX_CHARS: usize = 64;
+
+/// A writer identity is non-empty, trimmed, length-limited, and free of
+/// path, home, and mailbox markers. It is not checked against a list of
+/// machine names.
+pub fn validate_writer_identity(writer: &str) -> Result<String, String> {
+    let writer = writer.trim();
+    if writer.is_empty() || writer.chars().count() > WRITER_MAX_CHARS {
+        return Err("writer is required".into());
+    }
+    let lower = writer.to_ascii_lowercase();
+    if writer.contains('@')
+        || writer.contains('/')
+        || writer.contains('\\')
+        || writer.contains('~')
+        || lower.contains("/home/")
+        || lower.contains("/users/")
+        || !writer
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    {
+        return Err("writer is not a safe identity".into());
+    }
+    Ok(writer.to_string())
+}
+
+/// The configured writer identity, from [`WRITER_ENV`].
+pub fn configured_writer() -> Result<String, String> {
+    let raw = std::env::var(WRITER_ENV).map_err(|_| format!("{WRITER_ENV} is not set"))?;
+    validate_writer_identity(&raw)
+}
+
+/// A new write must name the configured writer identity.
+pub fn require_configured_writer(writer: &str) -> Result<String, String> {
+    let writer = validate_writer_identity(writer)?;
+    let expected = configured_writer()?;
+    if writer != expected {
+        Err("writer does not match the configured identity".into())
     } else {
-        Err("writer must be a public host alias".into())
+        Ok(writer)
     }
 }
 
 impl Checked for JsonPayload {
     fn check(&self) -> Result<(), String> {
         let Some(obj) = self.0.as_object() else {
-            return Err("writer must be a public host alias".into());
+            return Err("writer is required".into());
         };
         match obj.get("writer") {
-            Some(serde_json::Value::String(writer)) => require_public_host_alias(writer)?,
+            Some(serde_json::Value::String(writer)) => {
+                validate_writer_identity(writer)?;
+            }
             Some(serde_json::Value::Number(_))
             | Some(serde_json::Value::Object(_))
             | Some(serde_json::Value::Array(_))
             | Some(serde_json::Value::Bool(_))
             | Some(serde_json::Value::Null)
-            | None => return Err("writer must be a public host alias".into()),
+            | None => return Err("writer is required".into()),
         }
         if value_has_private_path(&self.0) {
             return Err("payload contains a private path".into());
@@ -429,10 +467,10 @@ mod tests {
             "record_time": "2026-10-26T19:00:00+01:00",
             "source": "owner",
             "schema_v": 1,
-            "payload": {"writer": "office-box", "note": "no"}
+            "payload": {"writer": "not/safe", "note": "no"}
         }]"#;
         let err = commit_json(&log, unit, &CommitFault::default()).unwrap_err();
-        assert!(err.to_string().contains("public host alias"), "{err}");
+        assert!(err.to_string().contains("not a safe identity"), "{err}");
     }
 
     fn one_event(key: &str, id: &str, payload: &str) -> String {
@@ -467,7 +505,7 @@ mod tests {
             )
             .unwrap_err();
             assert!(
-                err.to_string().contains("public host alias"),
+                err.to_string().contains("writer is required"),
                 "{payload} {err}"
             );
         }

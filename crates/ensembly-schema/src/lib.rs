@@ -44,8 +44,9 @@ pub use replay::{
     MaterializedAggregate, ReplayError,
 };
 pub use surface::{
-    commit_json, feed_json, recover_json, require_public_host_alias, snapshot_json,
-    stockholm_record_now, JsonPayload, RecordSurfaceError, PUBLIC_HOST_ALIASES,
+    commit_json, configured_writer, feed_json, recover_json, require_configured_writer,
+    snapshot_json, stockholm_record_now, validate_writer_identity, JsonPayload, RecordSurfaceError,
+    WRITER_ENV,
 };
 pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};
 pub use view::{
