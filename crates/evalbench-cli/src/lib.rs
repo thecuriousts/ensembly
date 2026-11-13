@@ -1,6 +1,4 @@
 //! File and process side of evalbench. Core stays pure.
-//!
-//! E1 STATUS: types are declared; every function body is an `E1:` stub for the builder.
 
 use evalbench_core::runner::{ClientError, ModelClient, ModelReply};
 use evalbench_core::taskset::{FixtureFile, TaskSet, TaskSetError};

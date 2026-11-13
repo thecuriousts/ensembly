@@ -2,16 +2,15 @@
 //! item has a non-empty proof AND its lowercased claim contains one of the must-have's
 //! lowercased keywords. Extra JSON keys are ignored, as in Python.
 //!
-//! Parity with Python on every input Python accepts, except three documented cases
-//! where Rust is stricter and fails to parse (CLI exit 2) instead of giving a gap list.
-//! Python's `any()` short-circuits, so it never reads the field. Pinned in
-//! `tests/python_stricter.rs`:
-//! 1. An evidence item with no `claim` and no proof: Python reports the gap; Rust
-//!    rejects the pack (missing field `claim`).
-//! 2. Zero must-haves with a pack that has no `evidence` key: Python gives no gaps;
-//!    Rust rejects the pack (missing field `evidence`).
-//! 3. A truthy non-string `proof` (for example `true` or `1`): Python counts it as a
-//!    proof; Rust rejects the pack (`proof` must be a string or null).
+//! Parity with Python holds on well-formed input, which includes every frozen fixture
+//! (the differential test checks them all). Outside that, the general rule: Rust's
+//! schema is strict and requires every field with its type (posting:
+//! `must_haves[].name` string and `keywords` string list; pack: `evidence` list,
+//! `evidence[].claim` string, `proof` string or null). Python reads only the fields its
+//! short-circuiting `any()` reaches and treats any truthy `proof` as a proof. So any
+//! schema-invalid input Python tolerates makes Rust fail to parse (CLI exit 2) instead
+//! of giving a gap list. `tests/python_stricter.rs` pins examples of this class against
+//! the vendored `check.py`; they are examples, not a complete list.
 
 use serde::{Deserialize, Serialize};
 
