@@ -888,15 +888,26 @@ fn run_pulse(
     }
 }
 
-fn refuse_or<T>(result: Result<T, ps::SupersedeError>) -> Result<T> {
+fn refuse_writer<T>(result: Result<T, ensembly_kernel::WriterError>) -> Result<T> {
+    use ensembly_kernel::WriterError;
     match result {
         Ok(value) => Ok(value),
-        Err(err @ ps::SupersedeError::Refused(_)) => {
-            eprintln!("{err}");
-            std::process::exit(pc::REFUSED_WRITE_EXIT);
+        Err(err) => {
+            let refused = matches!(
+                err,
+                WriterError::Refused(_) | WriterError::Pulse(ps::SupersedeError::Refused(_))
+            );
+            if refused {
+                eprintln!("{err}");
+                std::process::exit(pc::REFUSED_WRITE_EXIT);
+            }
+            Err(anyhow::anyhow!("{err}"))
         }
-        Err(err) => Err(anyhow::anyhow!("{err}")),
     }
+}
+
+fn pulse_writer(cfg: &pc::PulseCfg) -> Result<ensembly_kernel::KernelWriter> {
+    ensembly_kernel::KernelWriter::open_pulse(&cfg.db).map_err(anyhow::Error::from)
 }
 
 fn print_supersede(receipt: &ps::SupersedeReceipt, json: bool) -> Result<()> {
@@ -947,12 +958,14 @@ fn pulse_history(cfg: &pc::PulseCfg, key: &str, json: bool) -> Result<()> {
 }
 
 fn pulse_supersede_cmd(cfg: &pc::PulseCfg, req: ps::SupersedeRequest, json: bool) -> Result<()> {
-    let receipt = refuse_or(ps::supersede(&cfg.db, &req, &ps::SupersedeFault::default()))?;
+    let writer = pulse_writer(cfg)?;
+    let receipt = refuse_writer(writer.supersede(&req, &ps::SupersedeFault::default()))?;
     print_supersede(&receipt, json)
 }
 
 fn pulse_admit_cmd(cfg: &pc::PulseCfg, req: ps::AdmitRequest, json: bool) -> Result<()> {
-    let receipt = refuse_or(ps::admit(&cfg.db, &req, &ps::SupersedeFault::default()))?;
+    let writer = pulse_writer(cfg)?;
+    let receipt = refuse_writer(writer.admit(&req, &ps::SupersedeFault::default()))?;
     if json {
         println!("{}", serde_json::to_string(&receipt)?);
     } else {
@@ -965,11 +978,8 @@ fn pulse_admit_cmd(cfg: &pc::PulseCfg, req: ps::AdmitRequest, json: bool) -> Res
 }
 
 fn pulse_resolve_cmd(cfg: &pc::PulseCfg, req: ps::ResolveRequest, json: bool) -> Result<()> {
-    let receipt = refuse_or(ps::resolve_conflict(
-        &cfg.db,
-        &req,
-        &ps::SupersedeFault::default(),
-    ))?;
+    let writer = pulse_writer(cfg)?;
+    let receipt = refuse_writer(writer.resolve_conflict(&req, &ps::SupersedeFault::default()))?;
     print_supersede(&receipt, json)
 }
 
@@ -1981,8 +1991,13 @@ fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
                 submit_time_unknown: submit_time_unknown.then_some(true),
                 cv_version,
             };
-            al::append_row(&ledger, &row)?;
-            println!("appended: {} ({})", row.link, row.status.as_str());
+            let receipt =
+                ensembly_kernel::KernelWriter::open_ledger(&ledger)?.append_ledger(&row)?;
+            if receipt.appended {
+                println!("appended: {} ({})", row.link, row.status.as_str());
+            } else {
+                println!("already present: {} ({})", row.link, row.status.as_str());
+            }
             Ok(())
         }
         AppsCmd::Export {

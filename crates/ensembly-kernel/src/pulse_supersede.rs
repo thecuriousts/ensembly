@@ -919,6 +919,7 @@ fn open_existing(path: &Path) -> Result<Connection, SupersedeError> {
     }
     let conn = Connection::open(path).map_err(store)?;
     conn.busy_timeout(Duration::from_secs(5)).map_err(store)?;
+    crate::write_guard::grant_session(&conn).map_err(store)?;
     Ok(conn)
 }
 

@@ -631,7 +631,7 @@ fn cli_supersede_exits_ok_and_refused() {
             "--reason",
             "no",
             "--writer",
-            "box",
+            "mac-mini",
         ])
         .output()
         .unwrap();

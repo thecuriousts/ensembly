@@ -33,8 +33,13 @@ needs them.
 ## Append-only
 
 Never edit a line. A status change is a new line with the same `link`; the
-last line per link is the current state. `ensembly apps append` refuses an
-row equal to one already in the ledger (ignoring surrounding whitespace and a trailing `/` or `/application` on the link): a re-run is refused with an error (exit 1) and writes nothing. There is no file lock; keep one writer at a time.
+last line per link is the current state. Bots and the CLI route appends
+through `KernelWriter` (`ensembly apps append`). A retry with the same
+idempotency key (`link_key` plus the record stage token) and the same
+payload writes nothing and exits 0. The same key with a different payload
+is refused and writes nothing. The writer marks the file read-only after
+each append so a direct edit is refused; it also refuses to append if an
+old line was rewritten.
 
 ### Correcting a row
 
