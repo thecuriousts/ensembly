@@ -2,8 +2,8 @@
 //! Fixtures are synthetic. Writer identity is configured via ENSEMBLY_WRITER.
 
 use ensembly_kernel::application_ledger::{LedgerRow, Status};
-use ensembly_kernel::writer::{KernelWriter, WriterError};
 use ensembly_kernel::idempotency_key;
+use ensembly_kernel::writer::{KernelWriter, WriterError};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
