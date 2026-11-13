@@ -14,7 +14,9 @@ pub enum InferenceBackend {
     GrokMcp,
     GrokAcp,
     OpencodeAcp,
-    Ollama,
+    /// Local llama.cpp / MLX checks (replaces the Ollama stub).
+    /// `ollama` remains an accepted alias for config compatibility.
+    Local,
 }
 
 impl InferenceBackend {
@@ -23,7 +25,7 @@ impl InferenceBackend {
             "grok-mcp" => Self::GrokMcp,
             "grok-acp" => Self::GrokAcp,
             "opencode-acp" => Self::OpencodeAcp,
-            "ollama" => Self::Ollama,
+            "ollama" | "local" | "llama.cpp" | "llamacpp" | "mlx" => Self::Local,
             _ => Self::Deterministic,
         }
     }
@@ -74,11 +76,11 @@ impl InferenceProvider for DeterministicProvider {
 pub fn resolve_provider(backend: InferenceBackend) -> Box<dyn InferenceProvider> {
     match backend {
         InferenceBackend::Deterministic => Box::new(DeterministicProvider),
-        // Stub adapters: log intent, stay deterministic until host wiring lands.
-        InferenceBackend::GrokMcp
-        | InferenceBackend::GrokAcp
-        | InferenceBackend::OpencodeAcp
-        | InferenceBackend::Ollama => Box::new(StubProvider { backend }),
+        InferenceBackend::Local => Box::new(crate::local_checks::LocalInferenceProvider::default()),
+        // Remaining adapters stay stubbed until their host wiring lands.
+        InferenceBackend::GrokMcp | InferenceBackend::GrokAcp | InferenceBackend::OpencodeAcp => {
+            Box::new(StubProvider { backend })
+        }
     }
 }
 
@@ -92,7 +94,7 @@ impl InferenceProvider for StubProvider {
             InferenceBackend::GrokMcp => "grok-mcp",
             InferenceBackend::GrokAcp => "grok-acp",
             InferenceBackend::OpencodeAcp => "opencode-acp",
-            InferenceBackend::Ollama => "ollama",
+            InferenceBackend::Local => "local",
             InferenceBackend::Deterministic => "deterministic",
         }
     }
@@ -127,6 +129,36 @@ mod tests {
             InferenceBackend::parse("nope"),
             InferenceBackend::Deterministic
         );
+        assert_eq!(InferenceBackend::parse("ollama"), InferenceBackend::Local);
+        assert_eq!(
+            InferenceBackend::parse("llama.cpp"),
+            InferenceBackend::Local
+        );
+        assert_eq!(InferenceBackend::parse("mlx"), InferenceBackend::Local);
+        assert_eq!(InferenceBackend::parse("local"), InferenceBackend::Local);
+    }
+
+    #[test]
+    fn local_backend_is_wired_not_stubbed() {
+        let p = resolve_provider(InferenceBackend::Local);
+        assert_eq!(p.name(), "local");
+        let keep = p
+            .enrich_summary(
+                &CrdtDocument::new("t"),
+                &Reflection {
+                    timestamp: chrono::Utc::now(),
+                    trajectory_length: 0,
+                    coherence: 0.5,
+                    active_goals: 0,
+                    known_skills: 0,
+                    new_patterns: 0,
+                    new_skills: vec![],
+                    goal_proposals: vec![],
+                    summary: "x".into(),
+                },
+            )
+            .unwrap();
+        assert_eq!(keep, None);
     }
 
     #[test]

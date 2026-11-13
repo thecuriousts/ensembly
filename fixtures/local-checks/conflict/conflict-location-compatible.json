@@ -1,0 +1,10 @@
+{
+  "id": "conflict-location-compatible",
+  "left": "River Co. holds 12 teal crates.",
+  "right": "The teal crates are stored at the Northbridge depot.",
+  "recorded": {
+    "relation": "compatible",
+    "confidence": 0.88,
+    "rationale": "A count and a storage place can both be true."
+  }
+}

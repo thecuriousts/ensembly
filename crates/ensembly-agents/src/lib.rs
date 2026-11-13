@@ -7,12 +7,14 @@
 //!
 //! Research bet (2026-07): official xAI docs — register MCP via `grok mcp add`
 //! / `.grok/config.toml`; ACP via `grok agent stdio`; fast inference via
-//! `grok -p --output-format json`. Export `ensembly-mcp`; never hard-dep Ollama.
+//! `grok -p --output-format json`. Export `ensembly-mcp`. Local fact and conflict
+//! checks use llama.cpp or MLX (the former Ollama slot); they are never a hard dependency.
 
 pub mod delegation;
 pub mod env_alias;
 pub mod grok;
 pub mod inference;
+pub mod local_checks;
 pub mod mcp_server;
 pub mod rpc;
 
@@ -22,8 +24,11 @@ pub use grok::{
     project_mcp_toml_snippet, register_mcp_shell_hint, GROK_ACP_ARGS, GROK_SCRIPT_FLAGS,
 };
 pub use inference::{resolve_provider, DeterministicProvider, InferenceBackend, InferenceProvider};
+pub use local_checks::{
+    resolve_checker, CheckFailure, CheckResult, CheckSuccess, LocalChecker, RecordedSet,
+};
 pub use mcp_server::{serve as serve_mcp, McpServeConfig, PROTOCOL_VERSION};
 
 pub fn agents_version() -> &'static str {
-    "ensembly-agents 0.1.0 inference-provider mcp-export grok-cli-official"
+    "ensembly-agents 0.1.0 inference-provider mcp-export grok-cli-official local-checks"
 }
