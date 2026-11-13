@@ -1,0 +1,1 @@
+{"archive":0,"canon":1,"content_sha256":null,"errors":[{"code":"E_EVIDENCE","path":"/traces/0/verify_hash"},{"code":"E_EVIDENCE","path":"/traces/1/verify_hash"}],"exit":2,"format":null,"pack_sha256":null,"source_format":"pulse-pack-v1","traces":2,"verdict":"fail","warnings":[]}

@@ -34,7 +34,7 @@ pub enum Severity {
     Fail,
 }
 
-/// A write the pulse core refuses to make; the CLI maps it to exit code 3.
+/// A write the pulse core refuses to make; the CLI maps it to exit code 7.
 #[derive(Debug)]
 pub struct RefusedWrite(pub String);
 
@@ -141,11 +141,32 @@ pub fn parse_ts(s: &str) -> Option<DateTime<Utc>> {
 
 // ---------------------------------------------------------------- read-only DB
 
-/// Open the pulse DB read-only. `query_only` is a second belt: any write errors.
+/// The read-only SQLite URI for a path: `file:` + percent-encoded path bytes (keeping
+/// `A-Z a-z 0-9 - . _ ~ /`, uppercase hex) + `?mode=ro`. Relative paths stay relative.
+/// The Python checker (`scripts/pulse/pulse_pack_check.py ro-uri`) builds the same string.
+pub fn ro_uri(path: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut out = String::from("file:");
+    for &b in path.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~' | b'/') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out.push_str("?mode=ro");
+    out
+}
+
+/// Open the pulse DB read-only: the `mode=ro` URI from [`ro_uri`] with
+/// `SQLITE_OPEN_READ_ONLY | SQLITE_OPEN_URI`, then `PRAGMA query_only = ON` as a
+/// second belt, so any write errors. A missing DB is an error and is not created.
 pub fn open_ro(path: &Path) -> Result<Connection> {
     let conn = Connection::open_with_flags(
-        path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        ro_uri(path),
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_URI
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
     .with_context(|| format!("open read-only {}", path.display()))?;
     conn.execute_batch("PRAGMA query_only = ON;")?;
