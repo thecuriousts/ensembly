@@ -29,8 +29,8 @@ class RecordView(unittest.TestCase):
         code, out, _ = view(EXPORT)
         self.assertEqual(code, 0)
         lines = out.splitlines()
-        self.assertEqual(lines[0], "export ensembly-export-v1")
-        self.assertEqual(lines[1], "commit 84707a3508767e62939e92bba89a0baa16479d06")
+        self.assertEqual(lines[0], "export evalbench-export-v1")
+        self.assertEqual(lines[1], "commit a0b5c4d16f377fd5ad05a357d213b1bb7cbe4e81")
         self.assertTrue(lines[2].startswith("pulse pack_sha256 "))
         self.assertIn("run replay-001 dataset 55faad2e303c22039226da1295312218c6f3b51af4d643d00ab5af8364b4b3df "
                       "tasks 12 first_pass 7 score 58 median_tokens 421 models synthetic-replay-model", lines)
@@ -47,7 +47,7 @@ class RecordView(unittest.TestCase):
         self.assertIn("disagrees", err)
 
     def test_not_an_export_exits_2(self):
-        for doc in ({"format": "pulse-pack-v1"}, {"format": "ensembly-export-v1", "commit": "abc", "runs": []}):
+        for doc in ({"format": "pulse-pack-v1"}, {"format": "evalbench-export-v1", "commit": "abc", "runs": []}):
             with self.subTest(doc):
                 self.assertEqual(view(tmp_json(doc))[0], 2)
         self.assertEqual(view(os.path.join(FIX, "record-view", "missing.json"))[0], 2)

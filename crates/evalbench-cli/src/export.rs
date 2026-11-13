@@ -1,5 +1,5 @@
 //! E4 export pack: the canonical pulse pack and the record view of evalbench runs in
-//! one file, `ensembly-export-v1`, written as canonical JSON (sorted keys, integers
+//! one file, `evalbench-export-v1`, written as canonical JSON (sorted keys, integers
 //! only, trailing newline) so the same inputs give the same bytes.
 //!
 //! The record view is what a reader needs to check a run: per task the result, the
@@ -17,7 +17,7 @@ use evalbench_core::taskset::TaskSet;
 use evalbench_core::trace::TraceRow;
 use serde_json::{json, Value};
 
-pub const EXPORT_FORMAT: &str = "ensembly-export-v1";
+pub const EXPORT_FORMAT: &str = "evalbench-export-v1";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
@@ -47,13 +47,21 @@ pub enum PulseSource<'a> {
 }
 
 fn valid_commit(s: &str) -> bool {
-    s.len() == 40 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    s.len() == 40
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 fn issues(v: &canon::Verdict) -> String {
     v.errors
         .iter()
-        .map(|i| format!("{} {}", i.code, if i.path.is_empty() { "/" } else { &i.path }))
+        .map(|i| {
+            format!(
+                "{} {}",
+                i.code,
+                if i.path.is_empty() { "/" } else { &i.path }
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }

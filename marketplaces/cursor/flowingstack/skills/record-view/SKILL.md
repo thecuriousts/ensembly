@@ -1,8 +1,8 @@
 ---
 name: record-view
-description: Use when reading an ensembly export pack, when checking a recorded evalbench run's tasks, results, tokens and commit, or when a claim cites a run and you need to see the rows behind it
+description: Use when reading an evalbench export pack, when checking a recorded evalbench run's tasks, results, tokens and commit, or when a claim cites a run and you need to see the rows behind it
 owner: flowingstack
-source: ensembly E4 export pack
+source: evalbench E4 export pack
 last-reviewed: 2026-11-13
 ---
 
@@ -30,7 +30,7 @@ flowchart LR
 
 ```text
 // Signature
-X        export pack, format ensembly-export-v1
+X        export pack, format evalbench-export-v1
 R        runs in X, each with rows
 r.first  rows of r with attempt 1
 

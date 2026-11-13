@@ -69,7 +69,7 @@ enum Cmd {
         #[arg(long)]
         answer: PathBuf,
     },
-    /// Export pack (ensembly-export-v1): the record view of the traces (task, result,
+    /// Export pack (evalbench-export-v1): the record view of the traces (task, result,
     /// tokens, model, score, dataset hash, commit) and the canonical pulse pack, if any.
     /// The pulse store is opened read-only. Refuses an existing --out.
     #[command(group(ArgGroup::new("pulse").args(["pulse_pack", "pulse_db"])))]
@@ -284,7 +284,10 @@ fn dispatch(cmd: Cmd) -> Result<Option<Finding>> {
             };
             let doc = build(&set, &rows, &commit, src)?;
             let bytes = to_bytes(&doc);
-            write_new(&out, std::str::from_utf8(&bytes).expect("canonical JSON is UTF-8"))?;
+            write_new(
+                &out,
+                std::str::from_utf8(&bytes).expect("canonical JSON is UTF-8"),
+            )?;
             Ok(None)
         }
         Cmd::Run {

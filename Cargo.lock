@@ -365,7 +365,9 @@ dependencies = [
  "clap",
  "ensembly-kernel",
  "evalbench-core",
+ "rusqlite",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
 ]
