@@ -17,7 +17,7 @@ Feature: Applications ledger record adapter
   Compare checks the stage, the submit time, and silent since.
   Exit 1 is a mismatch. Exit 2 is an error. A missing log, or a directory given as the log, is an error.
   A row with no submit time stores the import clock and marks that stamp synthetic.
-  Writers: laptop-1, laptop-2, mac-mini.
+  Writer identity is the configured ENSEMBLY_WRITER value. Fixtures use laptop-1, laptop-2, and mac-mini.
 
   Known limit: the key cannot record a return to an earlier stage.
   submitted -> interview -> submitted is refused.

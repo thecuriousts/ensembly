@@ -1,0 +1,45 @@
+{
+  "format": "pulse-pack-v1",
+  "exported_at": "2026-11-13T12:00:00+00:00",
+  "host": "laptop-1",
+  "traces": [
+    {
+      "nat_key": "demo/beta",
+      "snippet": "beta note",
+      "source": "fixture",
+      "time": "2026-11-02T11:30:00+02:00",
+      "status": "tool-verified",
+      "kind": "memory",
+      "lock": "open",
+      "verify_hash": "sha256:22788a4990a27df1feecb5a6b478aea0838a12b63cc9bb9833b130a5f388e63f",
+      "prefetch_key": null,
+      "seen_count": 3,
+      "superseded_by": null,
+      "first_seen": "2026-11-02T11:30:00+02:00",
+      "last_seen": "2026-11-03T08:00:00.123456+00:00"
+    },
+    {
+      "nat_key": "demo/alpha",
+      "snippet": "alpha note about invoices",
+      "source": "fixture",
+      "time": "2026-11-01T09:00:00Z",
+      "status": "user-stated",
+      "kind": "memory",
+      "lock": "open",
+      "verify_hash": null,
+      "prefetch_key": "demo/pf/alpha",
+      "seen_count": 1,
+      "superseded_by": null,
+      "first_seen": "2026-11-01T09:00:00Z",
+      "last_seen": "2026-11-01T09:00:00Z"
+    }
+  ],
+  "archive": [
+    {
+      "ts": "2026-11-02T10:00:00.500000+00:00",
+      "source": "fixture",
+      "payload": "{\"step\":1}",
+      "correlation_id": "demo/alpha"
+    }
+  ]
+}

@@ -3,12 +3,22 @@
 
 use chrono::{DateTime, Utc};
 use ensembly_kernel::pulse_core as pc;
+use ensembly_kernel::KernelWriter;
 use rusqlite::Connection;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 use tempfile::TempDir;
+
+static WRITER_ENV: Mutex<()> = Mutex::new(());
+
+fn setup_writer() -> MutexGuard<'static, ()> {
+    let guard = WRITER_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    std::env::set_var(ensembly_schema::WRITER_ENV, "laptop-1");
+    guard
+}
 
 const SCHEMA: &str = "
 CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
@@ -49,9 +59,15 @@ fn add_trace(
     superseded_by: Option<&str>,
 ) {
     c.execute(
-        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, superseded_by, first_seen, last_seen)
-         VALUES (?1, ?2, 'fixture', ?3, 'tool-verified', 'memory', ?4, ?3, ?3)",
-        rusqlite::params![key, snippet, last_seen, superseded_by],
+        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, verify_hash, superseded_by, first_seen, last_seen)
+         VALUES (?1, ?2, 'fixture', ?3, 'tool-verified', 'memory', ?4, ?5, ?3, ?3)",
+        rusqlite::params![
+            key,
+            snippet,
+            last_seen,
+            ensembly_kernel::pulse_pack::canonical::content_hash(snippet),
+            superseded_by
+        ],
     )
     .unwrap();
     let id = c.last_insert_rowid();
@@ -628,4 +644,129 @@ fn pulse_and_audit_exit_codes_do_not_clash() {
             "pulse exit {c} is also an audit status"
         );
     }
+}
+
+// ------------------------------------------------------------------ honest check (E2)
+
+/// TLA+ `CheckIsHonest`: a tool-verified row without a matching evidence pin is a warn.
+#[test]
+fn check_warns_on_tool_verified_without_evidence() {
+    let fx = fixture();
+    let r = pc::run_check(&{
+        let mut c = fx.cfg.clone();
+        c.now = now("2026-10-20");
+        c
+    });
+    assert!(finding(&r, "db.evidence").is_none(), "{:?}", r.findings);
+    assert_eq!(r.exit_code, 0);
+
+    let c = Connection::open(&fx.cfg.db).unwrap();
+    for (key, hash) in [
+        ("demo/no-pin", None),
+        ("demo/empty-pin", Some(String::new())),
+        (
+            "demo/wrong-pin",
+            Some(ensembly_kernel::pulse_pack::canonical::content_hash(
+                "other",
+            )),
+        ),
+    ] {
+        c.execute(
+            "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, verify_hash, first_seen, last_seen)
+             VALUES (?1, 'x', 'fixture', '2026-10-18', 'tool-verified', 'fact', ?2, '2026-10-18', '2026-10-18')",
+            rusqlite::params![key, hash],
+        )
+        .unwrap();
+    }
+    c.execute(
+        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, first_seen, last_seen)
+         VALUES ('demo/stated', 'x', 'fixture', '2026-10-18', 'user-stated', 'fact', '2026-10-18', '2026-10-18')",
+        [],
+    )
+    .unwrap();
+    drop(c);
+    let before = sha(&fx.cfg.db);
+    let mut cfg = fx.cfg.clone();
+    cfg.now = now("2026-10-20");
+    let r = pc::run_check(&cfg);
+    let f = finding(&r, "db.evidence").expect("db.evidence");
+    assert_eq!(f.severity, pc::Severity::Warn);
+    assert!(
+        f.message
+            .ends_with("demo/empty-pin, demo/no-pin, demo/wrong-pin"),
+        "{}",
+        f.message
+    );
+    assert_eq!((r.verdict.as_str(), r.exit_code), ("warn", 1));
+    let db = r.db.as_ref().unwrap();
+    assert_eq!(
+        db.unpinned_verified,
+        ["demo/empty-pin", "demo/no-pin", "demo/wrong-pin"]
+    );
+    assert_eq!(sha(&fx.cfg.db), before, "check never writes");
+
+    let out = bin_at(&fx, "2026-10-20", &["check", "--json"]);
+    assert_eq!(out.status.code(), Some(1));
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["verdict"], "warn");
+    assert!(v["findings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|f| f["id"] == "db.evidence"));
+}
+
+/// TLA+ `CheckIsHonest`: a supersession stopped at intent or applied is a warn,
+/// and the warn clears once the same supersede is rerun to verified.
+#[test]
+fn check_warns_on_half_finished_supersession() {
+    use ensembly_kernel::pulse_supersede as ps;
+    let _w = setup_writer();
+    let fx = fixture();
+    let mut cfg = fx.cfg.clone();
+    cfg.now = now("2026-10-20");
+    let req = ps::SupersedeRequest {
+        old_key: "demo/beta".into(),
+        new_key: "demo/alpha".into(),
+        source: "operator".into(),
+        event_time: "2026-10-19T12:00:00+00:00".into(),
+        reason: "synthetic".into(),
+        writer: "laptop-1".into(),
+        conflict_id: None,
+    };
+    for (stop, phase) in [
+        (ps::SupersedePhase::Applied, "intent"),
+        (ps::SupersedePhase::Verified, "applied"),
+    ] {
+        let got = KernelWriter::open_pulse(&cfg.db)
+            .unwrap()
+            .supersede(
+                &req,
+                &ps::SupersedeFault {
+                    crash_entering: Some(stop),
+                },
+            )
+            .unwrap();
+        assert_eq!(got.phase, phase);
+        let r = pc::run_check(&cfg);
+        let f = finding(&r, "db.supersession").expect("db.supersession");
+        assert_eq!(f.severity, pc::Severity::Warn);
+        assert!(
+            f.message
+                .ends_with(&format!("demo/beta -> demo/alpha ({phase})")),
+            "{}",
+            f.message
+        );
+        assert_eq!(r.exit_code, 1, "{:?}", r.findings);
+        let out = bin_at(&fx, "2026-10-20", &["check", "--json"]);
+        assert_eq!(out.status.code(), Some(1));
+    }
+    let done = KernelWriter::open_pulse(&cfg.db)
+        .unwrap()
+        .supersede(&req, &ps::SupersedeFault::default())
+        .unwrap();
+    assert_eq!(done.phase, "verified");
+    let r = pc::run_check(&cfg);
+    assert!(finding(&r, "db.supersession").is_none(), "{:?}", r.findings);
+    assert_eq!(r.exit_code, 0, "{:?}", r.findings);
 }

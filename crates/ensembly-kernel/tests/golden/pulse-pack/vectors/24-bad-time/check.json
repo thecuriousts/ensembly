@@ -1,0 +1,1 @@
+{"archive":0,"canon":1,"content_sha256":null,"errors":[{"code":"E_TIME","path":"/traces/0/time"},{"code":"E_TIME","path":"/traces/1/first_seen"},{"code":"E_TIME","path":"/traces/2/last_seen"},{"code":"E_TIME","path":"/traces/3/time"}],"exit":2,"format":null,"pack_sha256":null,"source_format":"pulse-pack-v1","traces":4,"verdict":"fail","warnings":[]}

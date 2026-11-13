@@ -348,10 +348,24 @@ Stolen **laptop + network** access: disk theft without unlock must not yield vau
 
 | Adopt | Refuse |
 |-------|--------|
-| `ensembly pulse supersede OLD NEW` records source, event time, reason, and a public host alias, then sets `superseded_by` | Deleting the old row, or inventing `nat_key-2` with no link |
+| `ensembly pulse supersede OLD NEW` records source, event time, reason, and the configured writer identity, then sets `superseded_by` | Deleting the old row, or inventing `nat_key-2` with no link |
 | `pulse list` shows `kind = memory` and `superseded_by` empty; `pulse history` reads the chain | Treating a near snippet as the current fact |
 | `pulse conflict resolve` turns `open` or `not in the evidence` into `superseded by KEY` | A second writer retargeting a row that already has a successor |
 | CRDT `set_context` keeps the prior value with an explicit link; merge unions those links and stays order-independent | Last-writer-wins that drops the previous preference |
 | Intent, then pointer, then read-back, with the check and the pointer in one transaction. A refused admit rolls the new row back. Same request again is idempotent | A cycle, a self-link, an unknown key, or a committed trace with no link |
 
 Essay: [Archive is not memory](https://captain.kingsparrow.space/articles/memory-issue/archive-not-memory). Pulse check and read stay read-only. One writer owns a given supersession.
+
+## Canonical pulse pack (2026-11-13)
+
+**Verdict:** One pulse pack format, `pulse-pack-v1` canon 1, checked the same way in Rust and Python. Spec: [spec/PULSE-PACK-SPEC.md](spec/PULSE-PACK-SPEC.md).
+
+| Adopt | Refuse |
+|-------|--------|
+| The Python 13-field trace shape as canonical; `ensembly-pulse-pack-v1` and `peram-pulse-pack-v1` mapped on read | A third format, or rewriting old packs in place |
+| Sorted keys, minimal escapes, integers only; `pack_sha256` and `content_sha256` over the canonical bytes | Floats in packs, last-wins duplicate keys |
+| Shared golden vectors with a frozen manifest; Python and Rust must match byte for byte | Goldens edited by hand to make a test pass |
+| Readers open `mode=ro` + `query_only`; tests prove every write fails | A read path that can create or migrate the store |
+| `pulse admit` pins `verify_hash` to the snippet | A `tool-verified` row with no evidence pin |
+| A small TLA+ model (`docs/spec/tla/`) checked with TLC; rules mapped to tests | Rules that live only in prose |
+| `pulse check` warns on an unpinned tool-verified row (`db.evidence`) and a half-finished supersession (`db.supersession`) | A check that says ok while the model says the store is not |

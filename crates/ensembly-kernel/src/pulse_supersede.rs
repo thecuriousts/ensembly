@@ -21,7 +21,6 @@ use std::path::Path;
 use std::time::Duration;
 use thiserror::Error;
 
-const HOST_ALIASES: &[&str] = &["laptop-1", "laptop-2", "mac-mini", "box"];
 const TRACE_COLS: &str =
     "nat_key, snippet, source, status, kind, lock, seen_count, superseded_by, first_seen, last_seen";
 
@@ -156,7 +155,7 @@ struct Prepared {
     old_snippet: String,
 }
 
-pub fn supersede(
+pub(crate) fn supersede(
     path: &Path,
     req: &SupersedeRequest,
     fault: &SupersedeFault,
@@ -171,7 +170,7 @@ pub fn supersede(
     advance(&mut conn, &prepared, fault)
 }
 
-pub fn admit(
+pub(crate) fn admit(
     path: &Path,
     req: &AdmitRequest,
     fault: &SupersedeFault,
@@ -276,7 +275,7 @@ pub fn admit(
     })
 }
 
-pub fn resolve_conflict(
+pub(crate) fn resolve_conflict(
     path: &Path,
     req: &ResolveRequest,
     fault: &SupersedeFault,
@@ -794,9 +793,19 @@ struct NewTrace<'a> {
 
 fn insert_trace_tx(conn: &Connection, row: &NewTrace<'_>) -> Result<(), SupersedeError> {
     conn.execute(
-        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, lock, seen_count, first_seen, last_seen)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?4, ?4)",
-        params![row.key, row.snippet, row.source, row.time, row.status, row.kind, row.lock],
+        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, lock, verify_hash, seen_count, first_seen, last_seen)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?4, ?4)",
+        // verify_hash pins the snippet bytes, as the Python admit writes it (D-E2-7).
+        params![
+            row.key,
+            row.snippet,
+            row.source,
+            row.time,
+            row.status,
+            row.kind,
+            row.lock,
+            crate::pulse_pack::canonical::content_hash(row.snippet)
+        ],
     )
     .map_err(store)?;
     let id = conn.last_insert_rowid();
@@ -919,18 +928,15 @@ fn open_existing(path: &Path) -> Result<Connection, SupersedeError> {
     }
     let conn = Connection::open(path).map_err(store)?;
     conn.busy_timeout(Duration::from_secs(5)).map_err(store)?;
+    // Accident guard only. A local process can still register the SQL
+    // function or drop the trigger; crate users must go through KernelWriter.
+    crate::write_guard::install_triggers(&conn).map_err(store)?;
+    crate::write_guard::grant_session(&conn).map_err(store)?;
     Ok(conn)
 }
 
 fn require_writer(writer: &str) -> Result<String, SupersedeError> {
-    let writer = writer.trim();
-    if HOST_ALIASES.contains(&writer) {
-        Ok(writer.to_string())
-    } else {
-        Err(refused(
-            "writer must be a public host alias (laptop-1, laptop-2, mac-mini, box)",
-        ))
-    }
+    ensembly_schema::require_configured_writer(writer).map_err(refused)
 }
 
 fn require_key(key: &str) -> Result<String, SupersedeError> {

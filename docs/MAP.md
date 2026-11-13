@@ -67,6 +67,7 @@ Memory is **auxiliary** — kernel never delegates control decisions to it.
 | **Score** | `evalbench score --tasks <dir> [--run-id ID] <traces.jsonl>` | First-pass score = floor(100 * tasks passing their frozen checker on attempt 1 / tasks), with the lower-median tokens per passing task beside it |
 | **Record / run** | `evalbench record ...`, `evalbench run --replay <replies> \| --exec <wrapper>` | Checker-judged trace rows (no `--pass`); live calls only through a wrapper, no keys in evalbench |
 | **Baseline** | `scripts/evalbench-baseline` | Replays `crates/evalbench-cli/baselines/replay-001` offline and checks the numbers did not move. Synthetic replies, not a model result |
+| **Treatment (E5)** | `scripts/evalbench-treatment [--write]` · `evalbench run --pulse-pack <pack>` | Pulse on vs off on the 12 frozen tasks: same tasks, model id and prompt, plus the canonical pulse pack in context (prompt id `gaps-v1+pulse`); 3 reruns per arm, spread, dataset hash. Synthetic replies from `scripts/e5/synthetic_replies.py`, so not a model result or CV number. Report and Minicharts chart (MIT, fonts bundled) in `crates/evalbench-cli/treatments/e5-pulse/`; `scripts/chart-license-guard.py` keeps banned chart-skill assets out |
 | **Tests** | `cargo test -p evalbench-core -p evalbench-cli` | Port, differential vs Python (needs `python3`), examples where Rust's strict schema rejects input Python tolerates, P1/P2 bounded proofs with broken variants |
 
 ---
@@ -116,6 +117,7 @@ cargo run -p ensembly-kernel -- pulse-pack import --pack ~/sync/pulse/bot.pulse.
 | **Pulse core** | `ensembly pulse check\|read\|list\|history\|supersede\|admit\|conflict resolve\|missions` | Check and read stay read-only. `list` is live memory (`kind = memory`, `superseded_by` empty). `history` reads the archive chain. `supersede`, `admit --supersedes`, and `conflict resolve` record supersession (source, time, reason, writer) and keep the old row. Exit 0 ok, 1 warn, 2 fail, 7 refused write (audit keeps 3 for flag) |
 | **Company audit** | `ensembly apps audit validate\|append\|export\|status` | Scam-risk gate before packs/applications; exit 0/3/4/5; see [COMPANY-AUDIT.md](COMPANY-AUDIT.md) |
 | Pulse pack | `pulse-pack export` | Portable memory + archive events |
+| **Pulse canon** | `ensembly pulse canon [PACK \| --from-db]` · `pulse pack-check PACK` | One canonical pack (`pulse-pack-v1`, canon 1); reads Python and Rust packs; store opened `mode=ro` + `query_only`. Spec: [spec/PULSE-PACK-SPEC.md](spec/PULSE-PACK-SPEC.md) |
 | Ops bundle | `ops-bundle` | Full ops snapshot (canonical host only) |
 
 Legacy Node turn/graph IR lives in `prototype/` — not maintained at root.
