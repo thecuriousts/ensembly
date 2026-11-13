@@ -369,3 +369,16 @@ Essay: [Archive is not memory](https://captain.kingsparrow.space/articles/memory
 | `pulse admit` pins `verify_hash` to the snippet | A `tool-verified` row with no evidence pin |
 | A small TLA+ model (`docs/spec/tla/`) checked with TLC; rules mapped to tests | Rules that live only in prose |
 | `pulse check` warns on an unpinned tool-verified row (`db.evidence`) and a half-finished supersession (`db.supersession`) | A check that says ok while the model says the store is not |
+
+## Export pack (2026-11-13)
+
+**Verdict:** `evalbench export` writes one canonical-JSON file, `evalbench-export-v1`, holding the record view of the runs and the canonical pulse pack. flowingstack's `record-view` reads it.
+
+| Adopt | Refuse |
+|-------|--------|
+| Export takes the commit the traces were recorded at, 40 lowercase hex, and refuses anything else | A commit taken from the working tree at export time |
+| Pulse part goes through the E2 canonical checker; a store is opened `mode=ro` + `query_only` | An export that can write to, create or migrate a pulse store |
+| A committed golden export; the CLI must reproduce it byte for byte | Golden exports edited by hand |
+| `record-view` re-counts first passes from the rows and exits 1 on a mismatch | A viewer that trusts the stated score |
+| Plugin manifest (`.claude-plugin/plugin.json`) in the flowingstack folder; the repo-root Claude marketplace file kept off the default branch until the owner says yes | Publishing a marketplace from the default branch without that yes |
+

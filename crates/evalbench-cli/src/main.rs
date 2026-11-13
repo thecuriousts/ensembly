@@ -69,6 +69,30 @@ enum Cmd {
         #[arg(long)]
         answer: PathBuf,
     },
+    /// Export pack (evalbench-export-v1): the record view of the traces (task, result,
+    /// tokens, model, score, dataset hash, commit) and the canonical pulse pack, if any.
+    /// The pulse store is opened read-only. Refuses an existing --out.
+    #[command(group(ArgGroup::new("pulse").args(["pulse_pack", "pulse_db"])))]
+    Export {
+        #[arg(long)]
+        tasks: PathBuf,
+        /// Trace files (JSONL); repeat for more. Each run id becomes one run.
+        #[arg(long = "traces", required = true)]
+        traces: Vec<PathBuf>,
+        /// Commit the traces were recorded at (40 hex).
+        #[arg(long)]
+        commit: String,
+        #[arg(long)]
+        pulse_pack: Option<PathBuf>,
+        #[arg(long, requires_all = ["exported_at", "host"])]
+        pulse_db: Option<PathBuf>,
+        #[arg(long)]
+        exported_at: Option<String>,
+        #[arg(long)]
+        host: Option<String>,
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Run every task once (attempt 1) and write traces. Refuses an existing --out.
     #[command(group(ArgGroup::new("client").required(true).args(["replay", "exec"])))]
     Run {
@@ -224,6 +248,46 @@ fn dispatch(cmd: Cmd) -> Result<Option<Finding>> {
                 .with_context(|| format!("open {}", out.display()))?;
             f.write_all(row.to_line().as_bytes())
                 .with_context(|| format!("append {}", out.display()))?;
+            Ok(None)
+        }
+        Cmd::Export {
+            tasks,
+            traces,
+            commit,
+            pulse_pack,
+            pulse_db,
+            exported_at,
+            host,
+            out,
+        } => {
+            use evalbench_cli::export::{build, to_bytes, PulseSource};
+            if out.exists() {
+                bail!("refusing to overwrite {}", out.display());
+            }
+            let set = load_task_set(&tasks).map_err(|e| anyhow!("{e}"))?;
+            let mut rows = Vec::new();
+            for t in &traces {
+                rows.extend(parse_traces(&read_text(t)?)?);
+            }
+            let pack_bytes = pulse_pack
+                .as_ref()
+                .map(|p| fs::read(p).with_context(|| format!("read {}", p.display())))
+                .transpose()?;
+            let src = match (&pack_bytes, &pulse_db) {
+                (Some(b), _) => PulseSource::Pack(b),
+                (None, Some(db)) => PulseSource::Store {
+                    path: db,
+                    exported_at: exported_at.as_deref().expect("clap requires it"),
+                    host: host.as_deref().expect("clap requires it"),
+                },
+                (None, None) => PulseSource::None,
+            };
+            let doc = build(&set, &rows, &commit, src)?;
+            let bytes = to_bytes(&doc);
+            write_new(
+                &out,
+                std::str::from_utf8(&bytes).expect("canonical JSON is UTF-8"),
+            )?;
             Ok(None)
         }
         Cmd::Run {

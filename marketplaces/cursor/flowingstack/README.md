@@ -126,6 +126,7 @@ For one change: `intelli-route` picks at most four skills, `task-contract` write
 
 Kernel: `task-contract`, `grill-rubric`, `run-ledger`, `eval-freeze`, `doctor`, `intelli-route`, `route-rule`.
 Capture: `capture-sweep`, `capture-mail`, `capture-calendar`, `capture-chat`, `capture-pr`.
+Records: `record-view` reads an evalbench export pack (`bin/record-view`): task, result, tokens, commit.
 Shipped from the pin for matching house maps: `aihero-map`, `pstack-map`, `harvest`, `tomato-loop`. They stay so sync matches the pin. Skip them when those maps are unused.
 
 

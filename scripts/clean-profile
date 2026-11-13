@@ -62,6 +62,12 @@ expect "$out" "flowingstack $version" "harness claude-code flowingstack@ensembly
 out=$(FLOWINGSTACK_DOCTOR_REMOTE=https://127.0.0.1:9/none.git "$path/bin/flowingstack-doctor") || fail "flowingstack doctor offline exit $?"
 expect "$out" "latest offline"
 
+step "record view from the installed plugin"
+out=$("$path/bin/record-view" "$path/test/fixtures/record-view/e1-replay-001.export.json") || fail "record-view exit $?"
+printf '%s\n' "$out" | head -4
+expect "$out" "export evalbench-export-v1" "commit a0b5c4d16f377fd5ad05a357d213b1bb7cbe4e81"
+grep -qE '^task [a-z0-9-]+ (pass|fail) tokens [0-9]+ in [0-9]+ out [0-9]+ model ' <<<"$out" || fail "record-view shows no task rows"
+
 step "ensembly doctor"
 cd "$work"
 out=$(ensembly --no-memory doctor) || fail "ensembly doctor exit $?"
