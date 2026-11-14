@@ -53,7 +53,7 @@ flowchart TB
 
 Then: `ensembly init` (writes `${XDG_CONFIG_HOME:-~/.config}/ensembly/config.toml`; see [docs/CONFIG.md](docs/CONFIG.md)).  
 
-**Paths:** After `init`, the CLI and `ensembly-mcp` resolve ops DB and memory together from `paths.data_dir` when you omit `--db` and `--memory`. Existing files under `data/local/` or `private/state/` in the working directory still win (nothing is moved). Override either path only when you intend to — one flag pairs the other from the same layer so the pair does not split.
+**Paths:** After `init`, the CLI and `ensembly-mcp` resolve ops DB and memory together from `paths.data_dir` when you omit `--db` and `--memory`. Existing files under `data/local/` or `private/state/` in the working directory still win (nothing is moved). A single `--db` or `--memory` keeps the other file beside that path (same folder); it does not reach into `data_dir` or cwd peers unless that peer already sits next to the flagged file.
 
 Verify like a stranger: `sh scripts/stranger-test.sh` (temp `HOME`, synthetic fixture, full workspace tests).  
 Update an existing checkout: `sh scripts/install.sh --update --harness …`.

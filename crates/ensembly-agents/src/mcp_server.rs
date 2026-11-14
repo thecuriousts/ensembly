@@ -151,7 +151,7 @@ impl McpServeConfig {
         };
         Ok(Self {
             memory_path,
-            agent_id: crate::env_alias::resolve_agent_id(None),
+            agent_id: crate::agent_id::resolve_agent_id(None),
         })
     }
 }

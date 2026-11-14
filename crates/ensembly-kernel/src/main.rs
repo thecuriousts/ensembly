@@ -35,7 +35,7 @@ use ensembly_kernel::turn::{
     actions_from_fixture_path, build_channel_ir, context_at, rank_now, Action,
 };
 use ensembly_kernel::{kernel_version, private_path_patterns};
-use ensembly_paths::load_paths_data_dir;
+use ensembly_paths::{load_paths_data_dir, ConfigError};
 use ensembly_schema::{commit_json, feed_json, recover_json, snapshot_json, CommitFault};
 #[cfg(feature = "opportunity-finder")]
 use opportunity_cli::{AppsCmd, RecordAppsCmd};
@@ -1000,15 +1000,31 @@ fn pulse_resolve_cmd(cfg: &pc::PulseCfg, req: ps::ResolveRequest, json: bool) ->
     print_supersede(&receipt, json)
 }
 
+fn should_skip_eager_config(cli: &Cli) -> bool {
+    matches!(cli.cmd, Commands::Version | Commands::Init { .. })
+        || (cli.db.is_some() && cli.memory.is_some())
+}
+
+fn load_operator_config(cli: &Cli) -> (Option<PathBuf>, Option<ConfigError>) {
+    if should_skip_eager_config(cli) {
+        return (None, None);
+    }
+    match load_paths_data_dir() {
+        Ok(v) => (v, None),
+        Err(e) => {
+            if matches!(cli.cmd, Commands::Doctor { .. }) {
+                (None, Some(e))
+            } else {
+                eprintln!("{e}");
+                std::process::exit(2);
+            }
+        }
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let config_data_dir = match load_paths_data_dir() {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("{e}");
-            std::process::exit(2);
-        }
-    };
+    let (config_data_dir, config_problem) = load_operator_config(&cli);
     let data_paths = resolve_data_paths(
         Path::new(""),
         cli.db.clone(),
@@ -1023,6 +1039,7 @@ fn main() -> Result<()> {
             no_memory: cli.no_memory,
         },
         memory_cli: cli.memory.clone(),
+        config_problem,
     };
     dispatch(&ctx, cli.cmd)
 }
@@ -1033,6 +1050,7 @@ struct Ctx {
     data_paths: DataPaths,
     memory_flags: MemoryFlags,
     memory_cli: Option<PathBuf>,
+    config_problem: Option<ConfigError>,
 }
 
 impl Ctx {
@@ -1047,7 +1065,9 @@ impl Ctx {
 fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
     match cmd {
         Commands::Version => cmd_version(),
-        Commands::Doctor { offline, json } => cmd_doctor(&ctx.db_path, offline, json),
+        Commands::Doctor { offline, json } => {
+            cmd_doctor(&ctx.db_path, offline, json, ctx.config_problem.as_ref())
+        }
         Commands::Init { force } => cmd_init(force),
         Commands::MigrateLocalPaths {
             dry_run,
@@ -1221,8 +1241,17 @@ fn cmd_init(force: bool) -> Result<()> {
     Ok(())
 }
 
-fn cmd_doctor(db: &std::path::Path, offline: bool, json: bool) -> Result<()> {
-    let report = doctor::run(&doctor::Opts::from_env(db.to_path_buf(), offline));
+fn cmd_doctor(
+    db: &std::path::Path,
+    offline: bool,
+    json: bool,
+    config_problem: Option<&ConfigError>,
+) -> Result<()> {
+    let config_msg = config_problem.map(|e| e.to_string());
+    let report = doctor::run(
+        &doctor::Opts::from_env(db.to_path_buf(), offline),
+        config_msg.as_deref(),
+    );
     if json {
         print_json(&report)?;
     } else {

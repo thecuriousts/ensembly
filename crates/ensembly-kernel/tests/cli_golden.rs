@@ -15,7 +15,11 @@ const SPEC: &str = "\
 
 fn cmd(dir: &Path) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_ensembly"));
-    c.arg("--no-memory").arg("--db").arg(dir.join("ops.sqlite"));
+    c.arg("--no-memory")
+        .arg("--db")
+        .arg(dir.join("ops.sqlite"))
+        .arg("--memory")
+        .arg(dir.join("ensembly-memory.json"));
     c
 }
 

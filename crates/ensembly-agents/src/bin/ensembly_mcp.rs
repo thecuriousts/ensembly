@@ -24,15 +24,24 @@ struct Cli {
     agent_id: Option<String>,
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() {
     let cli = Cli::parse();
-    let mut config = McpServeConfig::from_env(cli.memory)?;
+    let mut config = match McpServeConfig::from_env(cli.memory) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }
+    };
     if let Some(id) = cli.agent_id {
-        config.agent_id = ensembly_agents::env_alias::resolve_agent_id(Some(id));
+        config.agent_id = ensembly_agents::resolve_agent_id(Some(id));
     }
     eprintln!(
         "ensembly-mcp listening stdio memory={:?} agent={}",
         config.memory_path, config.agent_id
     );
-    serve_mcp(config)
+    if let Err(e) = serve_mcp(config) {
+        eprintln!("{e}");
+        std::process::exit(1);
+    }
 }
