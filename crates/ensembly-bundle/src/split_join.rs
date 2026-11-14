@@ -110,18 +110,6 @@ fn bundle_base_name(bundle_dir: &Path) -> Result<String, String> {
     Ok(name.to_string())
 }
 
-fn validate_tar_relpath(path: &Path) -> Result<String, String> {
-    if path.is_absolute() {
-        return Err("tar entry path is absolute".into());
-    }
-    let s = path
-        .to_str()
-        .ok_or_else(|| "tar entry path is not UTF-8".to_string())?
-        .replace('\\', "/");
-    validate_manifest_relpath(&s)?;
-    Ok(s)
-}
-
 enum TarItem {
     Dir(String),
     File(String, PathBuf),
@@ -179,14 +167,8 @@ fn collect_tar_items(bundle_root: &Path) -> Result<Vec<TarItem>, String> {
     Ok(items)
 }
 
-fn append_deterministic_header(
-    path: &str,
-    size: u64,
-    _mode: u32,
-    is_dir: bool,
-) -> Result<Header, String> {
-    let mut header = Header::new_ustar();
-    header.set_path(path).map_err(|e| e.to_string())?;
+fn prepare_deterministic_header(size: u64, is_dir: bool) -> Header {
+    let mut header = Header::new_gnu();
     if is_dir {
         header.set_entry_type(EntryType::Directory);
         header.set_size(0);
@@ -199,8 +181,28 @@ fn append_deterministic_header(
     header.set_mtime(TAR_MTIME);
     header.set_uid(0);
     header.set_gid(0);
-    header.set_cksum();
-    Ok(header)
+    header
+}
+
+fn refuse_stray_tar_metadata(header: &Header) -> Result<(), String> {
+    let entry_type = header.entry_type();
+    if entry_type.is_gnu_longname()
+        || entry_type.is_gnu_longlink()
+        || entry_type.is_pax_local_extensions()
+        || entry_type.is_pax_global_extensions()
+    {
+        return Err("refusing stray tar metadata entry".into());
+    }
+    Ok(())
+}
+
+fn validate_resolved_tar_path(path: &Path) -> Result<String, String> {
+    let rel = path
+        .to_str()
+        .ok_or_else(|| "tar entry path is not UTF-8".to_string())?
+        .replace('\\', "/");
+    validate_manifest_relpath(&rel)?;
+    Ok(rel)
 }
 
 pub fn build_bundle_tar(bundle_root: &Path, tar_out: &Path) -> Result<HashResult, String> {
@@ -213,17 +215,17 @@ pub fn build_bundle_tar(bundle_root: &Path, tar_out: &Path) -> Result<HashResult
     for item in items {
         match item {
             TarItem::Dir(rel) => {
-                let header = append_deterministic_header(&rel, 0, 0o755, true)?;
+                let mut header = prepare_deterministic_header(0, true);
                 builder
-                    .append(&header, &mut std::io::empty())
+                    .append_data(&mut header, rel.as_str(), &mut std::io::empty())
                     .map_err(|e| e.to_string())?;
             }
             TarItem::File(rel, path) => {
                 let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
-                let header = append_deterministic_header(&rel, meta.len(), 0o644, false)?;
+                let mut header = prepare_deterministic_header(meta.len(), false);
                 let mut file = File::open(&path).map_err(|e| e.to_string())?;
                 builder
-                    .append(&header, &mut file)
+                    .append_data(&mut header, rel.as_str(), &mut file)
                     .map_err(|e| e.to_string())?;
             }
         }
@@ -411,8 +413,13 @@ pub fn unpack_tar_to_bundle(tar_path: &Path, out: &Path) -> Result<(), String> {
     let mut archive = tar::Archive::new(file);
     for entry in archive.entries().map_err(|e| e.to_string())? {
         let mut entry = entry.map_err(|e| e.to_string())?;
+        refuse_stray_tar_metadata(entry.header())?;
         let path = entry.path().map_err(|e| e.to_string())?.into_owned();
-        let rel = validate_tar_relpath(&path)?;
+        let rel = validate_resolved_tar_path(&path)?;
+        if let Ok(Some(link)) = entry.link_name() {
+            let link_path = link.into_owned();
+            validate_resolved_tar_path(&link_path)?;
+        }
         refuse_symlink_in_target(&root, &root.join(&rel))?;
         let dest = root.join(&rel);
         if !dest.starts_with(&root) {
@@ -478,6 +485,34 @@ fn tar_set_checksum(block: &mut [u8; 512]) {
 }
 
 #[doc(hidden)]
+/// Craft a tar with a GNU long-name extension whose payload is `../escape`.
+#[doc(hidden)]
+pub fn build_evil_gnu_longname_tar(writer: &mut Vec<u8>) -> Result<(), String> {
+    let mut builder = Builder::new(writer);
+    let mut long_header = Header::new_gnu();
+    long_header
+        .set_path("././@LongLink")
+        .map_err(|e| e.to_string())?;
+    const EVIL: &[u8] = b"../escape\0";
+    long_header.set_size(EVIL.len() as u64);
+    long_header.set_entry_type(EntryType::GNULongName);
+    long_header.set_cksum();
+    builder
+        .append(&long_header, EVIL)
+        .map_err(|e| e.to_string())?;
+    let mut file_header = Header::new_gnu();
+    file_header.set_path("x").map_err(|e| e.to_string())?;
+    file_header.set_size(4);
+    file_header.set_entry_type(EntryType::Regular);
+    file_header.set_cksum();
+    builder
+        .append(&file_header, &b"evil"[..])
+        .map_err(|e| e.to_string())?;
+    builder.into_inner().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[doc(hidden)]
 pub fn build_evil_tar(writer: &mut Vec<u8>) -> Result<(), String> {
     let mut block = [0u8; 512];
     block[..9].copy_from_slice(b"../escape");
@@ -497,7 +532,7 @@ pub fn build_evil_tar(writer: &mut Vec<u8>) -> Result<(), String> {
 
 #[doc(hidden)]
 pub fn build_symlink_tar(writer: &mut Vec<u8>) -> Result<(), String> {
-    let mut header = Header::new_ustar();
+    let mut header = Header::new_gnu();
     header.set_path("link.txt").map_err(|e| e.to_string())?;
     header.set_size(0);
     header.set_entry_type(EntryType::Symlink);
