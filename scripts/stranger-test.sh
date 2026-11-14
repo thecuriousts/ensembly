@@ -61,12 +61,8 @@ run sh "$REPO/scripts/install.sh" --harness all --prefix "$WORK/prefix"
 [ -x "$WORK/prefix/bin/ensembly" ] || fail "ensembly not installed under $WORK/prefix/bin"
 run ensembly version
 
-step "generic CLI surface (job-hunt pack must be gated — needs master with #74)"
-printf '+ ensembly --help\n'
-help=$(ensembly --help) || fail "ensembly --help exit $?"
-printf '%s\n' "$help"
-printf '%s\n' "$help" | grep -qE '^  apps[[:space:]]' && \
-  fail "ensembly --help lists apps (merge #74 into master, then merge master here)"
+step "default CLI surface (no opportunity-finder in default build)"
+run sh "$REPO/scripts/assert-default-cli-surface.sh" "$WORK/prefix/bin/ensembly"
 
 step "init"
 printf '+ ensembly init\n'

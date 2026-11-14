@@ -38,7 +38,7 @@ use ensembly_kernel::{kernel_version, private_path_patterns};
 use ensembly_schema::{commit_json, feed_json, recover_json, snapshot_json, CommitFault};
 #[cfg(feature = "opportunity-finder")]
 use opportunity_cli::{AppsCmd, RecordAppsCmd};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = env!("CARGO_BIN_NAME"), about = "ensembly operator kernel (Rust)")]

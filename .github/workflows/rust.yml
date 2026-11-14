@@ -35,20 +35,7 @@ jobs:
           cargo build --locked -p ensembly-kernel
           cargo check --locked -p ensembly-schema --lib
       - name: default CLI surface
-        run: |
-          set -euo pipefail
-          leak() {
-            ! grep -E '^\s+(decision|apps)\b' "$1"
-            ! grep -Ei '(job hunt|recruiter|verdict.*triage)' "$1" || true
-          }
-          run_help() {
-            cargo run --locked -p ensembly-kernel --quiet -- "$@" > /tmp/ensembly-help.txt
-            leak /tmp/ensembly-help.txt
-          }
-          run_help --help
-          for cmd in record pulse runtime doctor turn digital-flow backup ops-bundle pulse-pack channel-pulse migrate-local-paths version; do
-            run_help "$cmd" --help
-          done
+        run: sh scripts/assert-default-cli-surface.sh target/debug/ensembly
       - name: clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: clippy opportunity-finder
