@@ -77,7 +77,6 @@ fn fixture_lines_round_trip() {
     }
 }
 
-#[cfg(feature = "opportunity-finder")]
 #[test]
 fn missing_v_reads_as_zero_on_pack() {
     assert!(serde_json::from_str::<serde_json::Value>(&first(PACK))
@@ -122,13 +121,18 @@ fn unsupported_version_names_the_value() {
     assert!(zero.contains("explicit v 0 is refused"), "{zero}");
 }
 
+#[test]
+fn unknown_field_rejected_on_pack_ref() {
+    let extra = json!(1);
+    assert!(decode_line::<PackRef>(&set(PACK, "extra", extra)).is_err());
+}
+
 #[cfg(feature = "opportunity-finder")]
 #[test]
-fn unknown_field_rejected() {
+fn unknown_field_rejected_on_opportunity_types() {
     let extra = json!(1);
     assert!(decode_line::<LedgerRow>(&set(LEDGER, "extra", extra.clone())).is_err());
-    assert!(decode_line::<Audit>(&set(AUDIT, "extra", extra.clone())).is_err());
-    assert!(decode_line::<PackRef>(&set(PACK, "extra", extra)).is_err());
+    assert!(decode_line::<Audit>(&set(AUDIT, "extra", extra)).is_err());
 }
 
 #[cfg(feature = "opportunity-finder")]
@@ -223,7 +227,7 @@ fn submit_time_is_known_or_unknown_or_not_sent() {
 fn legacy_read_still_refuses_a_bad_time() {
     let err = decode_line::<LedgerRow>(&legacy("submitted", Some("\"2026-10-26T18:59:00Z\"")))
         .unwrap_err();
-    assert!(err.contains("Europe/Stockholm"), "{err}");
+    assert!(err.contains("numeric offset"), "{err}");
 }
 
 #[cfg(feature = "opportunity-finder")]
@@ -240,12 +244,12 @@ fn watch_status_maps_onto_ledger_status() {
 
 #[test]
 fn submit_time_and_link_key_helpers() {
-    assert_eq!(
-        check_submit_time("2026-10-26T18:59:00Z").unwrap_err(),
-        "submit_time \"2026-10-26T18:59:00Z\" must carry the Europe/Stockholm offset (+01:00 or +02:00)"
-    );
+    assert!(check_submit_time("2026-10-26T18:59:00Z")
+        .unwrap_err()
+        .contains("numeric offset"));
     assert!(check_submit_time("2026-10-26T18:59:00+01:00").is_ok());
     assert!(check_submit_time("2026-07-01T10:00:00+02:00").is_ok());
+    assert!(check_submit_time("2026-03-15T12:00:00-05:00").is_ok());
     assert_eq!(
         link_key("https://t.example/j/application/"),
         "https://t.example/j"
@@ -296,48 +300,75 @@ fn exit_code_reverse_map() {
     }
 }
 
-#[test]
-fn fixtures_exclude_personal_markers() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures");
+fn scan_fixture_dir(dir: &Path) -> usize {
     let mut n = 0;
     for ent in std::fs::read_dir(dir).unwrap().map(|e| e.unwrap()) {
-        if ent.path().is_dir() {
+        let path = ent.path();
+        if path.is_dir() {
+            n += scan_fixture_dir(&path);
             continue;
         }
-        let body = std::fs::read_to_string(ent.path()).unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
         assert!(!body.is_empty());
         for bad in ["@", "+46", "/home/"] {
-            assert!(!body.contains(bad), "{bad}");
+            assert!(!body.contains(bad), "{}: {bad}", path.display());
         }
         n += 1;
     }
+    n
+}
+
+#[test]
+fn fixtures_exclude_personal_markers() {
+    let schema_fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures");
+    let pack_fixtures =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../ensembly-opportunity-finder/fixtures");
+    let n = scan_fixture_dir(&schema_fixtures) + scan_fixture_dir(&pack_fixtures);
     assert!(n >= 2);
 }
 
-#[cfg(feature = "opportunity-finder")]
 #[test]
-fn checked_in_schema_matches_types() {
-    match_schema(
-        "schemas/ledger-row.v1.json",
-        schemars::schema_for!(LedgerRowLine),
-    );
-    match_schema(
-        "schemas/company-audit.v1.json",
-        schemars::schema_for!(AuditLine),
-    );
+fn checked_in_pack_schema_matches_types() {
     match_schema(
         "schemas/pack-ref.v1.json",
         schemars::schema_for!(PackRefLine),
     );
 }
 
+#[cfg(feature = "opportunity-finder")]
+#[test]
+fn checked_in_opportunity_schema_matches_types() {
+    let root = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../ensembly-opportunity-finder"
+    );
+    match_schema_at(
+        &format!("{root}/schemas/ledger-row.v1.json"),
+        schemars::schema_for!(LedgerRowLine),
+    );
+    match_schema_at(
+        &format!("{root}/schemas/company-audit.v1.json"),
+        schemars::schema_for!(AuditLine),
+    );
+}
+
 fn match_schema(rel: &str, schema: schemars::schema::RootSchema) {
-    let generated = serde_json::to_string_pretty(&schema).unwrap() + "\n";
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
+    match_schema_at(&path.to_string_lossy(), schema);
+}
+
+fn match_schema_at(path: &str, schema: schemars::schema::RootSchema) {
+    let generated = serde_json::to_string_pretty(&schema).unwrap() + "\n";
+    let path = Path::new(path);
     if std::env::var("WRITE_SCHEMA").ok().as_deref() == Some("1") {
-        std::fs::write(&path, &generated).unwrap();
+        std::fs::write(path, &generated).unwrap();
     }
-    assert_eq!(text(rel), generated, "{rel}");
+    assert_eq!(
+        std::fs::read_to_string(path).unwrap(),
+        generated,
+        "{}",
+        path.display()
+    );
 }
 
 #[cfg(feature = "opportunity-finder")]
@@ -406,8 +437,12 @@ fn byte_order_mark_is_named() {
 #[cfg(feature = "opportunity-finder")]
 #[test]
 fn v1_fixtures_match_checked_in_schema() {
-    check_lines::<LedgerRow>(LEDGER_V1, "schemas/ledger-row.v1.json");
-    check_lines::<Audit>(AUDIT_V1, "schemas/company-audit.v1.json");
+    let root = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../ensembly-opportunity-finder/schemas"
+    );
+    check_lines::<LedgerRow>(LEDGER_V1, &format!("{root}/ledger-row.v1.json"));
+    check_lines::<Audit>(AUDIT_V1, &format!("{root}/company-audit.v1.json"));
     check_lines::<PackRef>(PACK_V1, "schemas/pack-ref.v1.json");
 }
 

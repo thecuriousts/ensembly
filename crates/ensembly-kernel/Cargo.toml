@@ -43,7 +43,7 @@ unicode-normalization = "0.1.26"
 
 [dev-dependencies]
 tempfile = "3"
-ensembly-schema = { path = "../ensembly-schema", features = ["opportunity-finder"] }
+ensembly-schema = { path = "../ensembly-schema" }
 
 [[test]]
 name = "single_writer_ledger"
@@ -60,4 +60,12 @@ required-features = ["opportunity-finder"]
 [[test]]
 name = "opportunity_cli_golden"
 path = "tests/opportunity_cli_golden.rs"
+required-features = ["opportunity-finder"]
+
+[[test]]
+name = "decision_model"
+required-features = ["opportunity-finder"]
+
+[[test]]
+name = "decision_gate_adversarial"
 required-features = ["opportunity-finder"]

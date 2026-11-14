@@ -1,4 +1,6 @@
-//! Versioned shapes for record events, decisions, pulse packs, and (optionally) job applications.
+//! Versioned shapes for record events, pulse packs, and (optionally) job applications / decision model.
+//!
+//! Job-hunt ledger, audit, and E3 decision types need feature **`opportunity-finder`**.
 //!
 //! A missing `v` means the v0 shape: the same fields, with no version member.
 //! `"v": 1.0` passes the JSON Schema const for [`SCHEMA_VERSION`] and the reader refuses it.
@@ -11,6 +13,7 @@
 pub const SCHEMA_VERSION: u32 = 1;
 
 mod commit;
+#[cfg(feature = "opportunity-finder")]
 mod decision;
 mod exit;
 mod pack;
@@ -39,6 +42,7 @@ pub use apps_record::{
 #[cfg(feature = "opportunity-finder")]
 pub use audit::*;
 pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
+#[cfg(feature = "opportunity-finder")]
 pub use decision::{
     assign_split, proposal_rid, snapshot_hash, DecisionEvent, DecisionEventType, FitLabel,
     GateVerdict, LabelRow, ModelDecision, SplitBucket, DEFAULT_TIMEOUT_HOURS, MODEL_VERSION,

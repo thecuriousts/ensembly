@@ -1,5 +1,6 @@
 //! ensembly-kernel — Game of Peram life control plane (Rust iron-peak).
 //!
+//!
 //! Operator CLI (`bin/swarm.js` + `src/*`) is the live day/turn/graph host.
 //! Control-plane features expand here.
 //!
@@ -12,6 +13,7 @@ pub mod approvals;
 pub mod backup;
 pub mod channel_pulse;
 pub mod critical_path;
+#[cfg(feature = "opportunity-finder")]
 pub mod decision;
 pub mod digital_flow;
 pub mod doctor;
@@ -34,6 +36,8 @@ pub mod vault;
 mod write_guard;
 pub mod writer;
 #[cfg(feature = "opportunity-finder")]
+mod writer_decision;
+#[cfg(feature = "opportunity-finder")]
 pub mod writer_ledger;
 
 pub use approvals::{
@@ -49,6 +53,7 @@ pub use channel_pulse::{
     seed_live_channel_actions, write_channel_pulse, ReconcileReport, DEFAULT_CHANNEL_PULSE_PATH,
 };
 pub use critical_path::{compute_critical_path, explain_node, CriticalPathReport};
+#[cfg(feature = "opportunity-finder")]
 pub use decision::{AnsweredMetrics, Band, FittedModel, FlagList, Phase, Score};
 pub use digital_flow::{
     activate, decide, execute_dry_run, flow_to_approval_record, map_flow_status_to_approval,
@@ -87,7 +92,9 @@ pub use turn::{
 };
 pub use uncertainty_dive::{plan_dive, DiveReport, DEFAULT_PROBE_BUDGET, DIVE_IR_VERSION};
 pub use vault::{export_denied_for_class, seal, unseal, SealedBlob, VAULT_SUITE};
-pub use writer::{DecisionWriteReceipt, KernelWriter, WriterError};
+pub use writer::{KernelWriter, WriterError};
+#[cfg(feature = "opportunity-finder")]
+pub use writer_decision::DecisionWriteReceipt;
 
 #[cfg(feature = "opportunity-finder")]
 pub use ensembly_opportunity_finder::{

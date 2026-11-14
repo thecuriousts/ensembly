@@ -399,7 +399,7 @@ pub fn write_exports(rows: &[Audit], dir: &Path) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
-    const SAMPLE: &str = include_str!("../../../fixtures/company-audits-sample.jsonl");
+    const SAMPLE: &str = include_str!("../fixtures/company-audits-sample.jsonl");
     const SCHEMA: &str = include_str!("../schemas/company-audit-row.schema.json");
 
     fn sample() -> Vec<Audit> {

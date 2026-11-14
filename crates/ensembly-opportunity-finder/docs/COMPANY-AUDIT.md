@@ -6,7 +6,7 @@ stores the audits; other tools gate on `ensembly apps audit status`.
 
 Code: `crates/ensembly-opportunity-finder/src/company_audit.rs`. Schema:
 [`schemas/company-audit-row.schema.json`](../schemas/company-audit-row.schema.json).
-Sample (fictional): `fixtures/company-audits-sample.jsonl`.
+Sample (fictional): `crates/ensembly-opportunity-finder/fixtures/company-audits-sample.jsonl`.
 
 ## Row
 

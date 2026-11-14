@@ -36,6 +36,12 @@ impl LedgerWriter {
         })
     }
 
+    /// Used only from `ensembly-kernel` `KernelWriter::open_ledger`; not a public writer API.
+    #[doc(hidden)]
+    pub fn attach_for_kernel(path: impl AsRef<Path>) -> Result<Self, LedgerWriterError> {
+        Self::open(path)
+    }
+
     /// Seal an empty or missing ledger. Refuses a non-empty ledger or an existing seal.
     pub fn init_ledger(&self) -> Result<(), LedgerWriterError> {
         let path = &self.path;

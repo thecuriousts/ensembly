@@ -30,6 +30,14 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: fmt
         run: cargo fmt --all --check
+      - name: default core build (no features)
+        run: |
+          cargo build --locked -p ensembly-kernel
+          cargo check --locked -p ensembly-schema --lib
+      - name: default CLI surface
+        run: |
+          cargo run --locked -p ensembly-kernel -- --help > /tmp/ensembly-help.txt
+          ! grep -E '^\s+(decision|apps)\b' /tmp/ensembly-help.txt
       - name: clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - name: clippy opportunity-finder

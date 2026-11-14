@@ -380,6 +380,13 @@ pub fn transition(
 impl From<crate::ledger::Status> for Status {
     fn from(s: crate::ledger::Status) -> Self {
         use crate::ledger::Status as L;
+        fn ledger_map_evidence(label: &str) -> Evidence {
+            Evidence {
+                source: Source::LegacyUnknown,
+                at: StockholmTime::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
+                text: TextForm(format!("from-ledger-{label}")),
+            }
+        }
         match s {
             L::Prepared => Status::Intended,
             L::Submitted => Status::Submitted {
@@ -397,14 +404,6 @@ impl From<crate::ledger::Status> for Status {
                 since: StockholmTime::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
             },
         }
-    }
-}
-
-fn ledger_map_evidence(label: &str) -> Evidence {
-    Evidence {
-        source: Source::LegacyUnknown,
-        at: StockholmTime::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
-        text: TextForm(format!("from-ledger-{label}")),
     }
 }
 

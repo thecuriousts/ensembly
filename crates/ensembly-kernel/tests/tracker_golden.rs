@@ -3,9 +3,12 @@
 use ensembly_kernel::application_ledger as al;
 use ensembly_kernel::tracker;
 
-const LEDGER: &str = include_str!("../../../fixtures/tracker/ledger.jsonl");
-const HAND: &str = include_str!("../../../fixtures/tracker/hand-tracker.md");
-const EXPECTED: &str = include_str!("../../../fixtures/tracker/TRACKER.expected.md");
+const LEDGER: &str =
+    include_str!("../../ensembly-opportunity-finder/fixtures/tracker/ledger.jsonl");
+const HAND: &str =
+    include_str!("../../ensembly-opportunity-finder/fixtures/tracker/hand-tracker.md");
+const EXPECTED: &str =
+    include_str!("../../ensembly-opportunity-finder/fixtures/tracker/TRACKER.expected.md");
 const STAMP: &str = "2026-10-29 21:30";
 
 #[test]
