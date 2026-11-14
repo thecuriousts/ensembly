@@ -41,7 +41,11 @@ jobs:
       - name: install.sh release checksums
         run: python3 -m unittest scripts.test_install_release
       - name: release-resolve
-        run: python3 -m unittest scripts.test_release_resolve
+        run: python3 -m unittest scripts.test_release_resolve scripts.test_check_action_pins
+      - name: workflow action pin SHAs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/check-action-pins
       - name: grokbot ensembly
         working-directory: marketplaces/grokbot/ensembly/test
         run: |

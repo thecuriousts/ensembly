@@ -100,6 +100,8 @@ case $HARNESS in
   *) printf 'error: --harness must be cursor, claude, grok, cli or all (got %s)\n' "$HARNESS" >&2; exit 2 ;;
 esac
 REPO=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+# shellcheck disable=SC1091
+. "$REPO/scripts/resolve_release_location.sh"
 PLUGIN=$REPO/marketplaces/grokbot/ensembly
 [ -f "$REPO/crates/ensembly-kernel/Cargo.toml" ] || die "not an ensembly checkout: $REPO"
 [ -d "$PLUGIN/skills" ] || die "plugin folder missing: $PLUGIN"
@@ -170,7 +172,7 @@ resolve_latest_release_tag() {
     return 1
   fi
   tag=""
-  tag=$(sh "$(dirname "$0")/resolve_release_location.sh" "$root" "$loc") || return 1
+  tag=$(resolve_release_location "$root" "$loc") || return 1
   printf '%s' "$tag"
 }
 
