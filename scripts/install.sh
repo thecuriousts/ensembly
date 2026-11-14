@@ -52,11 +52,13 @@ install_root_from_toml() {
 
 expand_tilde() {
   p=$1
-  case $p in
-    "~") printf '%s' "$HOME" ;;
-    "~/"*) printf '%s' "$HOME/${p#\~/}" ;;
-    *) printf '%s' "$p" ;;
-  esac
+  if [ "$p" = "~" ]; then
+    printf '%s' "$HOME"
+  elif [ "${p#\~/}" != "$p" ]; then
+    printf '%s' "$HOME/${p#\~/}"
+  else
+    printf '%s' "$p"
+  fi
 }
 
 cargo_install_root() {
@@ -123,6 +125,98 @@ release_target() {
   esac
 }
 
+release_repo_root() {
+  printf '%s' "${ENSEMBLY_RELEASE_REPO:-https://github.com/thecuriousts/ensembly}"
+}
+
+# Verify one asset using its line from SHA256SUMS. Fail closed on missing file or bad digest.
+verify_release_checksum() {
+  sums_file=$1
+  asset_name=$2
+  if [ ! -f "$sums_file" ]; then
+    die "release checksum file missing: $sums_file"
+  fi
+  dir=$(CDPATH='' cd -- "$(dirname -- "$sums_file")" && pwd)
+  # shellcheck disable=SC2155
+  line=$(grep -F " ${asset_name}" "$sums_file" || true)
+  if [ -z "$line" ]; then
+    die "no SHA256SUMS entry for ${asset_name}"
+  fi
+  if [ ! -f "${dir}/${asset_name}" ]; then
+    die "release asset missing for checksum: ${asset_name}"
+  fi
+  if ! (cd "$dir" && printf '%s\n' "$line" | checksum_from_sums -); then
+    die "checksum verification failed for ${asset_name}"
+  fi
+}
+
+checksum_from_sums() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -c "$@"
+  else
+    shasum -a 256 -c "$@"
+  fi
+}
+
+resolve_latest_release_tag() {
+  root=$1
+  loc=""
+  loc=$(curl -sS -D - -o /dev/null "${root}/releases/latest" 2>/dev/null | awk '/^[Ll]ocation:/ {sub(/\r$/,"",$2); print $2; exit}') || loc=
+  if [ -z "$loc" ]; then
+  return 1
+  fi
+  case $loc in
+    http://*|https://*) ;;
+    /*) loc="${root}${loc}" ;;
+    *) loc="${root}/${loc#./}" ;;
+  esac
+  tag="${loc##*/}"
+  if ! printf '%s' "$tag" | grep -Eq '^ensembly-cli--v[0-9]+\.[0-9]+\.[0-9]+$'; then
+    return 1
+  fi
+  printf '%s' "$tag"
+}
+
+try_install_from_release() {
+  root=$(release_repo_root)
+  tgt=$1
+  tag=""
+  tag=$(resolve_latest_release_tag "$root") || return 1
+  ver=${tag#ensembly-cli--v}
+  asset="ensembly-${ver}-${tgt}.tar.gz"
+  base="${root}/releases/download/${tag}"
+  say "release asset $asset"
+  if ! curl -fsSL -o "$2/$asset" "${base}/${asset}"; then
+    return 1
+  fi
+  if ! curl -fsSL -o "$2/SHA256SUMS" "${base}/SHA256SUMS"; then
+    die "failed to download SHA256SUMS for ${tag}"
+  fi
+  verify_release_checksum "$2/SHA256SUMS" "$asset"
+  run tar -xzf "$2/$asset" -C "$2"
+  unpacked="$2/ensembly-${ver}-${tgt}/ensembly"
+  [ -f "$unpacked" ] || die "release archive missing binary: $unpacked"
+  if [ -n "$PREFIX" ]; then
+    run mkdir -p "$PREFIX/bin"
+    run cp "$unpacked" "$PREFIX/bin/ensembly"
+    run chmod +x "$PREFIX/bin/ensembly"
+    BIN_DIR=$PREFIX/bin
+  else
+    root_bin=$(cargo_install_root)
+    run mkdir -p "${root_bin}/bin"
+    run cp "$unpacked" "${root_bin}/bin/ensembly"
+    run chmod +x "${root_bin}/bin/ensembly"
+    BIN_DIR=$(CDPATH='' cd -- "${root_bin}" && pwd)/bin
+  fi
+  case $(uname -s) in
+    Darwin)
+      quarantine_path="${BIN_DIR}/ensembly"
+      warn "If macOS blocks the binary, run: xattr -d com.apple.quarantine ${quarantine_path:?}"
+      ;;
+  esac
+  return 0
+}
+
 # --- prerequisites: report, never install ---
 need_cargo=1
 missing=0
@@ -131,7 +225,7 @@ if ! command -v git >/dev/null 2>&1; then
   warn "git not found. Install it from your OS packages (macOS: xcode-select --install; Debian/Ubuntu: apt install git; Fedora: dnf install git)."
 fi
 target=$(release_target 2>/dev/null || true)
-if [ "$FROM_SOURCE" = 0 ] && [ -n "$target" ] && command -v curl >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+if [ "$FROM_SOURCE" = 0 ] && [ -n "$target" ] && command -v curl >/dev/null 2>&1; then
   need_cargo=0
 fi
 if [ "$need_cargo" = 1 ]; then
@@ -160,53 +254,14 @@ fi
 RELEASE_OK=0
 if [ "$FROM_SOURCE" = 0 ] && [ -n "$target" ] && command -v curl >/dev/null 2>&1; then
   if [ "$DRY_RUN" = 1 ]; then
-    say "+ try GitHub release asset for target $target (https://github.com/thecuriousts/ensembly/releases/latest)"
+    say "+ try GitHub release asset for target $target ($(release_repo_root)/releases/latest redirect)"
   else
     tmp=$(mktemp -d) || die "mktemp failed"
-    trap 'rm -rf "$tmp"' EXIT
-    api=$(curl -fsSL "https://api.github.com/repos/thecuriousts/ensembly/releases/latest" 2>/dev/null) || api=
-    if [ -n "$api" ]; then
-      asset=$(export T="$target"; printf '%s' "$api" | python3 -c '
-import json, os, sys
-t = os.environ["T"]
-data = json.load(sys.stdin)
-for a in data.get("assets", []):
-    n = a.get("name", "")
-    if n.startswith("ensembly-") and n.endswith("-" + t + ".tar.gz"):
-        print(n)
-        break
-' 2>/dev/null) || asset=
-      if [ -n "$asset" ]; then
-        base="https://github.com/thecuriousts/ensembly/releases/latest/download"
-        say "release asset $asset"
-        run curl -fsSL -o "$tmp/$asset" "$base/$asset"
-        run curl -fsSL -o "$tmp/SHA256SUMS" "$base/SHA256SUMS"
-        (cd "$tmp" && printf '%s\n' "$asset" | shasum -a 256 -c -) || die "checksum mismatch for $asset"
-        run tar -xzf "$tmp/$asset" -C "$tmp"
-        ver=${asset#ensembly-}
-        ver=${ver%-${target}.tar.gz}
-        unpacked="$tmp/ensembly-${ver}-${target}/ensembly"
-        if [ -n "$PREFIX" ]; then
-          run mkdir -p "$PREFIX/bin"
-          run cp "$unpacked" "$PREFIX/bin/ensembly"
-          run chmod +x "$PREFIX/bin/ensembly"
-          BIN_DIR=$PREFIX/bin
-        else
-          root=$(cargo_install_root)
-          run mkdir -p "$root/bin"
-          run cp "$unpacked" "$root/bin/ensembly"
-          run chmod +x "$root/bin/ensembly"
-          BIN_DIR=$(CDPATH='' cd -- "$root" && pwd)/bin
-        fi
-        case $(uname -s) in
-          Darwin)
-            warn "If macOS blocks the binary, run: xattr -d com.apple.quarantine \"$BIN_DIR/ensembly\""
-            ;;
-        esac
-        RELEASE_OK=1
-      fi
+    trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+    if try_install_from_release "$target" "$tmp"; then
+      RELEASE_OK=1
     fi
-    trap - EXIT
+    trap - EXIT HUP INT TERM
     rm -rf "$tmp"
   fi
 fi

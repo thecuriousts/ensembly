@@ -66,8 +66,8 @@ Workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) bui
 
 | Target | Runner |
 |--------|--------|
-| `aarch64-apple-darwin` | `macos-latest` |
-| `x86_64-apple-darwin` | `macos-15-intel` |
+| `aarch64-apple-darwin` | `macos-latest` (native) |
+| `x86_64-apple-darwin` | `macos-latest` (`rustup target add x86_64-apple-darwin`; `file` / `lipo -info` in CI) |
 | `x86_64-unknown-linux-gnu` | `ubuntu-latest` |
 | `aarch64-unknown-linux-gnu` | `ubuntu-latest` (cross-linked) |
 
