@@ -106,15 +106,23 @@ Every script and how they connect: [docs/flow.md](docs/flow.md).
 
 ## Install
 
-Clone the public repo and load this folder as a local Cursor plugin:
+From the Cursor Marketplace, once the listing is live: open **Customize** in Cursor, search `flowingstack`, select **Install**.
+
+Until then, load this folder as a local plugin. Cursor skips a symlink in `~/.cursor/plugins/local` that points outside that folder, so copy it:
 
 ```text
-git clone https://github.com/thecuriousts/ensembly/
-ln -s "$PWD/ensembly/marketplaces/cursor/flowingstack" ~/.cursor/plugins/local/flowingstack
+git clone https://github.com/thecuriousts/ensembly.git
+mkdir -p ~/.cursor/plugins/local
+cp -R ensembly/marketplaces/cursor/flowingstack ~/.cursor/plugins/local/flowingstack
 ```
 
-Reload Cursor so the skills appear. Then run `scripts/doctor --project <project>`.
-After a marketplace listing exists, install `flowingstack` from there instead.
+Restart Cursor, or run **Developer: Reload Window**. Open **Customize**: the flowingstack skills are listed, and `/task-contract` works in chat. To update, delete the copy and copy again. Then run `scripts/doctor --project <project>` from the copied folder (needs `python3`).
+
+## Part of thecuriousts/ensembly
+
+flowingstack ships in the [thecuriousts/ensembly](https://github.com/thecuriousts/ensembly) repo and works on its own. The repo's main piece is a separate command-line tool: it records which tasks are approved, claimed and completed in one local SQLite file, and moves memory between machines with pulse packs. To install that tool, follow [START-HERE](https://github.com/thecuriousts/ensembly/blob/master/docs/START-HERE.md) in the repo.
+
+The job-search pack (opportunity-finder) is off by default. It is built only with `--features opportunity-finder` and is not part of this plugin.
 
 ## Usage
 
