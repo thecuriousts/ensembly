@@ -27,6 +27,7 @@ fn roundtrip_sources_to_preserves_section_layout() {
             kind: BackupSourceKind::Dir,
             include: vec!["**/*".into()],
             exclude: vec![],
+            force_include: vec![],
             line: 1,
         }],
     })
@@ -42,6 +43,7 @@ fn roundtrip_sources_to_preserves_section_layout() {
             sources_to: Some(dest.clone()),
             merge: false,
             dry_run: false,
+            assume_verified: false,
         },
     )
     .unwrap();

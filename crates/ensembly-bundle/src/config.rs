@@ -23,6 +23,8 @@ pub struct BackupSourceRaw {
     pub include: Vec<String>,
     #[serde(default)]
     pub exclude: Vec<String>,
+    #[serde(default)]
+    pub force_include: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -33,6 +35,7 @@ pub struct BackupSource {
     pub kind: BackupSourceKind,
     pub include: Vec<String>,
     pub exclude: Vec<String>,
+    pub force_include: Vec<String>,
     /// 1-based line in config.toml for error messages.
     pub line: usize,
 }
@@ -202,6 +205,7 @@ pub fn load_backup_sources(config_path: &Path) -> Result<Vec<BackupSource>, Conf
             kind: entry.kind,
             include,
             exclude: entry.exclude,
+            force_include: entry.force_include,
             line,
         });
     }

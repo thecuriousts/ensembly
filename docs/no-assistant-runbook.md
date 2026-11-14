@@ -41,7 +41,7 @@ ensembly bundle join /tmp/chunks/bundle-fixture.parts.json --out /tmp/rejoined
 ensembly verify /tmp/rejoined
 ```
 
-Pack does not edit the source bundle. Join checks every part hash and the total tar hash, refuses extra/missing parts and a non-empty `--out`, unpacks with the same path-safety rules as restore, then runs **verify** on the result.
+Pack does not edit the source bundle. Join checks every part hash and the total tar hash, refuses extra/missing parts and a non-empty `--out` (or an `--out` path that is a file), unpacks with the same path-safety rules as restore, then runs **verify** on the result. Part order in `parts.json` does not matter; join uses each part’s `index`.
 
 ## Import / restore
 

@@ -28,6 +28,7 @@ fn tampered_file_fails_verify() {
             kind: BackupSourceKind::Dir,
             include: vec!["**/*".into()],
             exclude: vec![],
+            force_include: vec![],
             line: 1,
         }],
     })
@@ -71,6 +72,7 @@ fn oversize_file_skipped_in_manifest() {
             kind: BackupSourceKind::Dir,
             include: vec!["**/*".into()],
             exclude: vec![],
+            force_include: vec![],
             line: 1,
         }],
     })

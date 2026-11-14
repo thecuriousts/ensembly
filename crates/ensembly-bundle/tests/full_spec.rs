@@ -74,6 +74,7 @@ fn export_fixture(
                 kind: BackupSourceKind::Dir,
                 include: vec!["**/*".into()],
                 exclude: vec![],
+                force_include: vec![],
                 line: 1,
             },
             BackupSource {
@@ -83,6 +84,7 @@ fn export_fixture(
                 kind: BackupSourceKind::Dir,
                 include: vec!["**/*".into()],
                 exclude: vec![],
+                force_include: vec![],
                 line: 2,
             },
             BackupSource {
@@ -92,6 +94,7 @@ fn export_fixture(
                 kind: BackupSourceKind::Dir,
                 include: vec!["**/*".into()],
                 exclude: vec![],
+                force_include: vec![],
                 line: 3,
             },
         ],
@@ -197,6 +200,7 @@ fn restore_no_overwrite() {
             sources_to: Some(dest),
             merge: false,
             dry_run: false,
+            assume_verified: false,
         },
     )
     .unwrap_err();
