@@ -59,6 +59,7 @@ Troubleshoot:
 - Command not found: check whether ~/.cargo/bin (or the folder the installer named) is on PATH.
 - Config error: the message names the file and line. Show it and explain it. Do not edit or replace the config without a yes.
 - Build error: check `cargo --version` and `rustup --version` against ~/ensembly/rust-toolchain.toml.
+- "linker cc not found" or a missing C compiler: the build needs one (it compiles SQLite). Tell the user how to get it (Mac: `xcode-select --install`; Linux: the system's build tools package). Do not use sudo.
 - A skipped link: something already sits where the installer wanted a link. Explain what it is and leave it.
 - If you cannot fix it, say exactly what failed and what you tried.
 

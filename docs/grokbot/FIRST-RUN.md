@@ -45,7 +45,7 @@ Paths used below:
 
 ## Step 1. Detect an earlier install
 
-- Read the state file if it exists. If it cannot be read, or its `schema` is not 1, do not overwrite it: copy it to `grokbot-install.json.bak` (only if no `.bak` exists yet; otherwise ask with a question card) and treat this run as an earlier install without a state file.
+- Read the state file if it exists. If it cannot be read, or its `schema` is not 1, do not overwrite it: copy it to `grokbot-install.json.bak-<YYYYMMDD-HHMMSS>` (a new name, so nothing is overwritten), say so in one line, and treat this run as an earlier install without a state file. Step 7 then writes a fresh one.
 - Check whether the config file exists.
 - Check whether `ensembly version` runs. If not, try `~/.cargo/bin/ensembly version`.
 - Say one line: "New install", or "Found an earlier install: <version>, <harnesses>, Page <link or none>, bot <name or none>. I will update it in place."
@@ -68,13 +68,14 @@ Paths used below:
 - This builds the `ensembly` command. The first build takes several minutes. Success: the last line is `done`.
 - If it warns that a folder is not on PATH, run the `export PATH=...` line it prints before every later ensembly command in this run.
 - The `grok` harness writes nothing else. It prints a hint about adding a local plugin; follow step 6 instead.
+- If the error mentions "linker cc not found" or a missing C compiler: the build needs one (it compiles SQLite). Tell the user plainly: on a Mac, `xcode-select --install`; on Linux, the system's build tools package. Do not use sudo to install it yourself.
 - If it fails, show the last 20 lines, explain them in plain words, skip to step 12, and report the failure.
 
 ## Step 4. Write the config
 
 - Run `ensembly init`.
 - Exit 0 prints the path of the new config file.
-- Exit 7 means the config file already exists. It is untouched; keep it. That is success.
+- Exit 7, with the message `init: <path> exists; refused without --force`, means the config file already exists. It is untouched; keep it. That is success.
 - Read the `data_dir` line from the config file for the Page.
 
 ## Step 5. Fast check
@@ -135,14 +136,17 @@ Write the state file now, creating its folder only if it is missing. It belongs 
 
 - Ask with a question card, multi-select: "Which of these do you also use on your own computer?" Choices: "Cursor", "Claude Code", "Plain command line", "None of these". Preselect nothing.
 - These run on the user's computer, not yours. For each choice, give one block of commands to paste into a terminal there, and say what success looks like. Say how to open a terminal: on a Mac, the Terminal app; on Linux, the terminal app. git and cargo are needed there too; the installer says how to get them.
-- Start every block with these two lines, so each block works in a new terminal:
-  `[ -d ~/ensembly ] || git clone https://github.com/thecuriousts/ensembly ~/ensembly`
-  `cd ~/ensembly`
-  - Cursor: `sh scripts/install.sh --update --harness cursor`, then restart Cursor. Success: the last line is `done`, and the ensembly skill shows in Cursor.
-  - Claude Code: `sh scripts/install.sh --update --harness claude`, then start a new Claude Code session. Success: the last line is `done`, and the skills ensembly, record-layer and verified-retrieve show.
-  - Plain command line: `sh scripts/install.sh --update --harness cli`. Success: the last line is `done`.
-- End every block with `ensembly init` (exit 7 is fine) and `ensembly doctor --offline`. Join the install line and these two with `&&` so a failed install stops the block.
-- If the installer warns that a folder is not on PATH, tell the user to run the `export PATH=...` line it prints.
+- Each block is three lines, with `HARNESS` replaced by `cursor`, `claude` or `cli`. It works in a new terminal and on a computer that already has ensembly:
+  ```sh
+  [ -d ~/ensembly ] || git clone https://github.com/thecuriousts/ensembly ~/ensembly
+  cd ~/ensembly
+  sh scripts/install.sh --update --harness HARNESS && { ensembly init; ensembly doctor --offline; }
+  ```
+- Success for every block: the installer prints `done`; `ensembly init` prints the config path or says the config already exists ("refused without --force" is fine); `ensembly doctor --offline` shows no line starting with `fail`.
+  - Cursor: then restart Cursor. The ensembly skill shows in Cursor.
+  - Claude Code: then start a new Claude Code session. The skills ensembly, record-layer and verified-retrieve show.
+  - Plain command line: nothing more.
+- If the installer warns that a folder is not on PATH, or `ensembly` is not found, tell the user to run the `export PATH=...` line it prints, then run the last two commands again: `ensembly init` and `ensembly doctor --offline`.
 - If the installer skips a link because something is already there, tell the user to leave it and ask you. Never tell them to delete it.
 - Record each choice as `"commands given"` under `harnesses` in the state file. On "None of these" or a dismissed card, go on.
 
