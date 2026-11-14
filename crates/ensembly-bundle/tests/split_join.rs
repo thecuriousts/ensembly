@@ -1,7 +1,7 @@
 use chrono::{TimeZone, Utc};
 use ensembly_bundle::{
-    build_evil_tar, build_symlink_tar, join_bundle, pack_bundle, unpack_tar_to_bundle, JoinOpts,
-    PackOpts,
+    build_bundle_tar, build_evil_gnu_longname_tar, build_evil_tar, build_symlink_tar, join_bundle,
+    pack_bundle, unpack_tar_to_bundle, HashResult, JoinOpts, PackOpts,
 };
 use ensembly_bundle::{
     export_bundle, verify_bundle, BackupSource, BackupSourceKind, EnsemblyStorePaths, ExportOpts,
@@ -279,6 +279,84 @@ fn unpack_refuses_dotdot_tar() {
     let out = dir.path().join("out");
     let err = unpack_tar_to_bundle(&tar, &out).unwrap_err();
     assert!(err.contains("..") || err.contains("forbidden"), "{err}");
+}
+
+#[test]
+fn long_filename_pack_join_roundtrip() {
+    let dir = tempdir().unwrap();
+    let bundle = export_min_bundle(dir.path(), "longname-bundle", |shared| {
+        let long150 = "a".repeat(150);
+        fs::create_dir_all(shared.join("flat")).unwrap();
+        fs::write(shared.join("flat").join(&long150), b"one-fifty").unwrap();
+        let mut acc = shared.to_path_buf();
+        for seg in (0..6).map(|_| "b".repeat(50)) {
+            acc = acc.join(&seg);
+            fs::create_dir_all(&acc).unwrap();
+        }
+        assert!(acc.strip_prefix(shared).unwrap().to_string_lossy().len() >= 300);
+        fs::write(acc.join("deep.bin"), b"three-hundred").unwrap();
+    });
+    let manifest_path = bundle.join("MANIFEST.json");
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(manifest_path).unwrap()).unwrap();
+    let files: Vec<String> = manifest["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|f| f["path"].as_str().map(str::to_string))
+        .collect();
+    assert!(files.iter().any(|p| p.len() > 150));
+    assert!(files.iter().any(|p| p.len() > 300));
+    let parts_dir = dir.path().join("parts");
+    let joined = dir.path().join("joined");
+    pack_bundle(PackOpts {
+        bundle_dir: bundle.clone(),
+        out: parts_dir.clone(),
+        split_mb: 32,
+    })
+    .unwrap();
+    join_bundle(JoinOpts {
+        parts_json: parts_dir.join("longname-bundle.parts.json"),
+        out: joined.clone(),
+    })
+    .unwrap();
+    assert!(verify_bundle(&joined).ok);
+    for p in &files {
+        let orig = bundle.join(p);
+        if orig.is_file() {
+            assert_eq!(fs::read(&orig).unwrap(), fs::read(joined.join(p)).unwrap());
+        }
+    }
+}
+
+#[test]
+fn pack_deterministic_with_long_names() {
+    let dir = tempdir().unwrap();
+    let bundle = export_min_bundle(dir.path(), "det-long", |shared| {
+        fs::create_dir_all(shared.join("deep")).unwrap();
+        let name = "f".repeat(150);
+        fs::write(shared.join("deep").join(&name), b"payload").unwrap();
+    });
+    let tar_a = dir.path().join("a.tar");
+    let tar_b = dir.path().join("b.tar");
+    let ha: HashResult = build_bundle_tar(&bundle, &tar_a).unwrap();
+    let hb: HashResult = build_bundle_tar(&bundle, &tar_b).unwrap();
+    assert_eq!(ha.sha256, hb.sha256);
+    assert_eq!(ha.bytes, hb.bytes);
+}
+
+#[test]
+fn unpack_refuses_gnu_longname_dotdot() {
+    let dir = tempdir().unwrap();
+    let mut raw = Vec::new();
+    build_evil_gnu_longname_tar(&mut raw).expect("craft gnu longname tar");
+    let tar = dir.path().join("evil-gnu.tar");
+    fs::write(&tar, raw).unwrap();
+    let err = unpack_tar_to_bundle(&tar, &dir.path().join("out")).unwrap_err();
+    assert!(
+        err.contains("..") || err.contains("forbidden") || err.contains("manifest"),
+        "{err}"
+    );
 }
 
 #[test]
