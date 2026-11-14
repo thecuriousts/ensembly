@@ -131,14 +131,28 @@ pub struct McpServeConfig {
     pub agent_id: String,
 }
 
-impl Default for McpServeConfig {
-    fn default() -> Self {
-        Self {
-            memory_path: crate::env_alias::env_alias("ENSEMBLY_MEMORY", "PERAM_MEMORY")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| crate::env_alias::resolve_memory_path(None)),
+impl McpServeConfig {
+    /// Memory-only resolution: explicit `--memory` / `ENSEMBLY_MEMORY` skips config load.
+    pub fn from_env(cli_memory: Option<PathBuf>) -> anyhow::Result<Self> {
+        let explicit = cli_memory.or_else(|| {
+            ensembly_paths::env_alias("ENSEMBLY_MEMORY", "PERAM_MEMORY").map(PathBuf::from)
+        });
+        let memory_path = if let Some(p) = explicit {
+            p
+        } else {
+            let config_data = ensembly_paths::load_paths_data_dir()?;
+            ensembly_paths::resolve_data_paths(
+                std::path::Path::new(""),
+                None,
+                None,
+                config_data.as_deref(),
+            )
+            .memory
+        };
+        Ok(Self {
+            memory_path,
             agent_id: crate::env_alias::resolve_agent_id(None),
-        }
+        })
     }
 }
 

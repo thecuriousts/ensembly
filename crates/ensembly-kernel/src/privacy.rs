@@ -111,7 +111,8 @@ pub fn classify_item(item: &Classifiable) -> Classification {
         let financey = Regex::new(r"(?i)finance|transfer|bank")
             .unwrap()
             .is_match(&text)
-            || kind == "finance_transfer";
+            || kind == "finance_transfer"
+            || kind == "bill_pay";
         let visibility = if financey || item.public == Some(false) {
             Visibility::Private
         } else if item.public == Some(true) {

@@ -1,0 +1,20 @@
+[package]
+name = "ensembly-paths"
+version = "0.1.0"
+edition = "2021"
+description = "Operator data path resolution and config (shared by kernel CLI and MCP)"
+license = "MIT"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+toml = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+serial_test = "3"
+
+[[test]]
+name = "layout_matrix"
+path = "tests/layout_matrix.rs"

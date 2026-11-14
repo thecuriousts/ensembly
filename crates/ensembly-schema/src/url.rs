@@ -8,6 +8,11 @@ pub fn link_key(link: &str) -> &str {
 
 /// RFC 3339 timestamp (`Z`/`z` accepted as UTC).
 pub fn check_submit_time(t: &str) -> Result<(), String> {
+    if !t.contains('T') {
+        return Err(format!(
+            "submit_time {t:?} must use an uppercase T date-time separator (RFC 3339)"
+        ));
+    }
     chrono::DateTime::parse_from_rfc3339(t)
         .map_err(|e| format!("submit_time {t:?} is not RFC 3339: {e}"))?;
     Ok(())

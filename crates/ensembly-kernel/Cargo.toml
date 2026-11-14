@@ -36,7 +36,7 @@ hex = "0.4"
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 regex = "1"
-toml = "0.8"
+ensembly-paths = { path = "../ensembly-paths" }
 ensembly-memory = { path = "../ensembly-memory" }
 ensembly-agents = { path = "../ensembly-agents" }
 ensembly-schema = { path = "../ensembly-schema" }
@@ -45,6 +45,7 @@ unicode-normalization = "0.1.26"
 
 [dev-dependencies]
 tempfile = "3"
+serial_test = "3"
 ensembly-schema = { path = "../ensembly-schema" }
 
 [[test]]

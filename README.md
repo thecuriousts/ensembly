@@ -53,7 +53,7 @@ flowchart TB
 
 Then: `ensembly init` (writes `${XDG_CONFIG_HOME:-~/.config}/ensembly/config.toml`; see [docs/CONFIG.md](docs/CONFIG.md)).  
 
-**Config caveat:** `init` records `paths.data_dir` under XDG, but the runtime still defaults to `data/local/` under your working directory until it reads that key — pass explicit paths, e.g. `ensembly --db "$DATA/ensembly-ops.sqlite" --memory "$DATA/ensembly-memory.json" runtime …` (same as `scripts/stranger-test.sh`).
+**Paths:** After `init`, the CLI and `ensembly-mcp` resolve ops DB and memory together from `paths.data_dir` when you omit `--db` and `--memory`. Existing files under `data/local/` or `private/state/` in the working directory still win (nothing is moved). Override either path only when you intend to — one flag pairs the other from the same layer so the pair does not split.
 
 Verify like a stranger: `sh scripts/stranger-test.sh` (temp `HOME`, synthetic fixture, full workspace tests).  
 Update an existing checkout: `sh scripts/install.sh --update --harness …`.

@@ -11,7 +11,6 @@ pub mod agent;
 pub mod approvals;
 pub mod backup;
 pub mod channel_pulse;
-pub mod config;
 pub mod critical_path;
 #[cfg(feature = "opportunity-finder")]
 pub mod decision;
