@@ -2,14 +2,14 @@
 
 use crate::hash::{hash_file, HashResult};
 use crate::path_safety::{refuse_symlink_in_target, validate_manifest_relpath};
-use crate::safe_io::write_nofollow;
+use crate::safe_io::copy_reader_nofollow;
 use crate::section::validate_safe_segment;
 use crate::verify::verify_bundle;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::{copy, BufReader, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use tar::{Builder, EntryType, Header};
 use walkdir::WalkDir;
@@ -91,6 +91,12 @@ fn refuse_non_empty_dir(dir: &Path, label: &str) -> Result<(), String> {
     if !dir.exists() {
         return Ok(());
     }
+    if dir.is_file() {
+        return Err(format!(
+            "--out must be a directory, not an existing file: {}",
+            dir.display()
+        ));
+    }
     let mut entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
     if entries.next().is_some() {
         return Err(format!(
@@ -167,6 +173,8 @@ fn collect_tar_items(bundle_root: &Path) -> Result<Vec<TarItem>, String> {
     Ok(items)
 }
 
+/// Fixed metadata for pack tar entries. GNU (not ustar) so `append_data` can emit
+/// `././@LongLink` extension records for paths longer than the 100-byte ustar name field.
 fn prepare_deterministic_header(size: u64, is_dir: bool) -> Header {
     let mut header = Header::new_gnu();
     if is_dir {
@@ -411,11 +419,15 @@ pub fn unpack_tar_to_bundle(tar_path: &Path, out: &Path) -> Result<(), String> {
     let root = out.canonicalize().map_err(|e| e.to_string())?;
     let file = File::open(tar_path).map_err(|e| e.to_string())?;
     let mut archive = tar::Archive::new(file);
+    let mut seen_paths: HashSet<String> = HashSet::new();
     for entry in archive.entries().map_err(|e| e.to_string())? {
         let mut entry = entry.map_err(|e| e.to_string())?;
         refuse_stray_tar_metadata(entry.header())?;
         let path = entry.path().map_err(|e| e.to_string())?.into_owned();
         let rel = validate_resolved_tar_path(&path)?;
+        if !seen_paths.insert(rel.clone()) {
+            return Err(format!("duplicate tar path in bundle join: {rel}"));
+        }
         if let Ok(Some(link)) = entry.link_name() {
             let link_path = link.into_owned();
             validate_resolved_tar_path(&link_path)?;
@@ -441,9 +453,7 @@ pub fn unpack_tar_to_bundle(tar_path: &Path, out: &Path) -> Result<(), String> {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
                 refuse_symlink_in_target(&root, dest.as_path())?;
             }
-            let mut data = Vec::new();
-            copy(&mut entry, &mut data).map_err(|e| e.to_string())?;
-            write_nofollow(&dest, &data, false)?;
+            copy_reader_nofollow(&dest, &mut entry, false)?;
         } else if entry_type.is_symlink() || entry_type == EntryType::Link {
             return Err(format!("refusing tar symlink/hardlink entry: {rel}"));
         } else {
@@ -484,7 +494,6 @@ fn tar_set_checksum(block: &mut [u8; 512]) {
     block[148..148 + chk.len()].copy_from_slice(chk.as_bytes());
 }
 
-#[doc(hidden)]
 /// Craft a tar with a GNU long-name extension whose payload is `../escape`.
 #[doc(hidden)]
 pub fn build_evil_gnu_longname_tar(writer: &mut Vec<u8>) -> Result<(), String> {

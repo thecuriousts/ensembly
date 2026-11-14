@@ -7,6 +7,7 @@ use walkdir::WalkDir;
 use crate::hash::hash_file;
 use crate::manifest::BundleManifest;
 use crate::path_safety::{bundle_file_path, validate_manifest_paths};
+use crate::verify_ics::verify_ics_file;
 
 #[derive(Debug, Clone, Default)]
 pub struct VerifyReport {
@@ -73,7 +74,7 @@ pub fn verify_bundle(bundle_root: &Path) -> VerifyReport {
             }
         }
         if entry.path.ends_with(".ics") {
-            if let Err(e) = verify_ics(&path) {
+            if let Err(e) = verify_ics_file(&path) {
                 report.ok = false;
                 report.errors.push(format!("ics {}: {e}", entry.path));
             }
@@ -121,14 +122,6 @@ fn verify_jsonl(path: &Path) -> Result<(), String> {
         }
         serde_json::from_str::<serde_json::Value>(line)
             .map_err(|e| format!("line {}: {e}", i + 1))?;
-    }
-    Ok(())
-}
-
-fn verify_ics(path: &Path) -> Result<(), String> {
-    let raw = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    if !raw.contains("BEGIN:VCALENDAR") || !raw.contains("END:VCALENDAR") {
-        return Err("missing VCALENDAR envelope".into());
     }
     Ok(())
 }

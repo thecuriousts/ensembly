@@ -9,11 +9,11 @@ use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ensembly_bundle::{
-    export_bundle, import_bundle, join_bundle, load_backup_sources, manifest_file_path,
-    merge_json_objects, merge_jsonl_records, merge_ops_preserve_existing, pack_bundle,
-    restore_bundle, verify_bundle, BundleManifest, ConfigSourcesError, EnsemblyStorePaths,
-    ExportOpts, ImportOpts, JoinOpts, OpsBundleMerge, PackOpts, RestoreOpts, MANIFEST_LEDGER_PATH,
-    MANIFEST_MEMORY_PATH, MANIFEST_OPS_PATH,
+    copy_nofollow, export_bundle, import_bundle, join_bundle, load_backup_sources,
+    manifest_file_path, merge_json_objects, merge_jsonl_records, merge_ops_preserve_existing,
+    pack_bundle, restore_bundle, verify_bundle, BundleManifest, ConfigSourcesError,
+    EnsemblyStorePaths, ExportOpts, ImportOpts, JoinOpts, OpsBundleMerge, PackOpts, RestoreOpts,
+    MANIFEST_LEDGER_PATH, MANIFEST_MEMORY_PATH, MANIFEST_OPS_PATH,
 };
 use ensembly_kernel::approvals::{list_pending, Snapshot};
 use ensembly_kernel::backup::{
@@ -1917,7 +1917,7 @@ fn restore_memory_from_bundle(
     if merge && mem_path.is_file() {
         merge_json_objects(&src, mem_path).map_err(|e| anyhow::anyhow!(e))?;
     } else {
-        std::fs::copy(&src, mem_path)?;
+        copy_nofollow(&src, mem_path).map_err(|e| anyhow::anyhow!(e))?;
     }
     Ok(())
 }
@@ -1970,7 +1970,15 @@ fn cmd_portable_import(
     portable_verify_or_exit(bundle);
     let manifest = BundleManifest::read(bundle).map_err(|e| anyhow::anyhow!(e))?;
     if !dry_run {
-        import_bundle(bundle, &ImportOpts { merge, dry_run }).map_err(|e| anyhow::anyhow!(e))?;
+        import_bundle(
+            bundle,
+            &ImportOpts {
+                merge,
+                dry_run,
+                assume_verified: true,
+            },
+        )
+        .map_err(|e| anyhow::anyhow!(e))?;
     }
     if let Some(dir) = into {
         let (ops, mem) = resolve_into_data_dir(Some(dir), None, None);
@@ -2028,6 +2036,7 @@ fn cmd_portable_restore(
                 sources_to: Some(base),
                 merge,
                 dry_run,
+                assume_verified: true,
             },
         )
         .map_err(|e| anyhow::anyhow!(e))?;
