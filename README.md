@@ -18,7 +18,9 @@ Bots and harnesses **propose**. ensembly **authorizes, claims, and completes**. 
 
 **New to the terminal?** Follow [docs/START-HERE.md](docs/START-HERE.md): numbered steps for macOS, Linux and Windows, what to install first, what success looks like, and what to do when a step fails.
 
-Prereqs: `git` and `cargo` on `PATH` (the installer tells you how to get them; it never installs toolchains or uses `sudo`). The first `cargo build` or `install.sh` run may download the pinned toolchain from `rust-toolchain.toml` via rustup — install-time network use is `git clone` (plus `git pull` on `--update`) and rustup/cargo, not ensembly telemetry.
+**Prebuilt CLI:** [releases/latest](https://github.com/thecuriousts/ensembly/releases/latest) — pick your file, `shasum -a 256 -c SHA256SUMS`, unpack, move `ensembly` onto `PATH` (macOS quarantine: `xattr -d com.apple.quarantine …`). Full steps: [docs/START-HERE.md](docs/START-HERE.md) Path A.
+
+Prereqs for `scripts/install.sh` from a git checkout: `git` on `PATH`; `cargo` only when no matching release exists or you pass `--from-source`. The installer never uses `sudo`. Network use is GitHub (clone, optional release assets, `doctor` tag check) and rustup/cargo when building — not ensembly telemetry.
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1e3a5f","primaryTextColor":"#ffffff","lineColor":"#f59e0b","fontFamily":"Inter"}}}%%

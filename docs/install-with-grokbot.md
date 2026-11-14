@@ -2,6 +2,8 @@
 
 Paste one short prompt into Grok Bot. It installs ensembly on its own computer, checks it, and leaves you a Page that explains what it did. Extra tools and a dedicated bot are offered one card at a time, and you can skip them.
 
+**On your own Mac or Linux (not Grok Bot’s cloud):** you can install the `ensembly` command from [prebuilt releases](https://github.com/thecuriousts/ensembly/releases/latest) first — see [START-HERE.md](START-HERE.md) Path A — and only clone the repo if you want Cursor, Claude, or local plugin files.
+
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1e3a5f","primaryTextColor":"#ffffff","lineColor":"#f59e0b","fontFamily":"Inter"}}}%%
 flowchart TB
