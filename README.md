@@ -14,6 +14,8 @@ Bots and harnesses **propose**. ensembly **authorizes, claims, and completes**. 
 
 ## Quickstart
 
+**New to the terminal?** Follow [docs/START-HERE.md](docs/START-HERE.md): numbered steps for macOS, Linux and Windows, what to install first, what success looks like, and what to do when a step fails.
+
 Prereqs: `git` and `cargo` on `PATH` (the installer tells you how to get them; it never installs toolchains or uses `sudo`). The first `cargo build` or `install.sh` run may download the pinned toolchain from `rust-toolchain.toml` via rustup — network use is cargo/rustup only, not ensembly telemetry.
 
 ```mermaid
@@ -46,7 +48,7 @@ flowchart TB
 | Harness | One install command (from repo root) |
 |---------|--------------------------------------|
 | **CLI** | `sh scripts/install.sh --harness cli` |
-| **Cursor** | `sh scripts/install.sh --harness cursor` |
+| **Cursor** | `sh scripts/install.sh --harness cursor` (copies the plugin; Cursor skips symlinks there) |
 | **Claude Code** | `sh scripts/install.sh --harness claude` |
 | **Grok Bot** | `sh scripts/install.sh --harness grok` |
 | **All** | `sh scripts/install.sh --harness all` |
