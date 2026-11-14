@@ -42,6 +42,7 @@ def build_tarball_bytes(body: bytes) -> bytes:
 class ReleaseHandler(BaseHTTPRequestHandler):
     asset_body: bytes = b""
     sums_body: bytes | None = b""
+    latest_location = f"/releases/tag/{TAG}"
 
     def log_message(self, _format, *_args):
         return
@@ -50,7 +51,7 @@ class ReleaseHandler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/releases/latest":
             self.send_response(302)
-            self.send_header("Location", f"/releases/tag/{TAG}")
+            self.send_header("Location", ReleaseHandler.latest_location)
             self.end_headers()
             return
         if path == f"/releases/tag/{TAG}":
@@ -131,6 +132,27 @@ class InstallRelease(unittest.TestCase):
         proc = self.invoke(asset, None)
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
         self.assertIn("SHA256SUMS", proc.stderr + proc.stdout)
+
+    def test_external_location_refuses_release(self):
+        old = ReleaseHandler.latest_location
+        ReleaseHandler.latest_location = "https://evil.example/releases/tag/ensembly-cli--v9.9.9"
+        self.addCleanup(setattr, ReleaseHandler, "latest_location", old)
+        asset = build_tarball_bytes(b"#!/bin/sh\necho evil\n")
+        sums = f"{sha256_bytes(asset)}  {ASSET}\n".encode()
+        proc = self.invoke(asset, sums)
+        combined = proc.stdout + proc.stderr
+        self.assertNotIn("release asset", proc.stdout)
+        self.assertIn("building from source", combined)
+
+    def test_bad_tag_refuses_release(self):
+        old = ReleaseHandler.latest_location
+        ReleaseHandler.latest_location = "/releases/tag/flowingstack--v1.0.0"
+        self.addCleanup(setattr, ReleaseHandler, "latest_location", old)
+        asset = build_tarball_bytes(b"#!/bin/sh\necho nope\n")
+        sums = f"{sha256_bytes(asset)}  {ASSET}\n".encode()
+        proc = self.invoke(asset, sums)
+        self.assertNotIn("release asset", proc.stdout)
+        self.assertIn("building from source", proc.stdout + proc.stderr)
 
 
 if __name__ == "__main__":

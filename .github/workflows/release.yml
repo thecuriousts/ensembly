@@ -40,17 +40,8 @@ jobs:
             echo "tag input required for workflow_dispatch" >&2
             exit 2
           fi
-          if ! printf '%s' "$tag" | grep -Eq '^ensembly-cli--v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "tag must match ^ensembly-cli--v[0-9]+\\.[0-9]+\\.[0-9]+$ (got $tag)" >&2
-            exit 2
-          fi
-          tag_ver="${tag#ensembly-cli--v}"
+          scripts/version-check --product ensembly-cli --tag "$tag"
           cargo_ver=$(python3 -c 'import tomllib, pathlib; print(tomllib.loads(pathlib.Path("crates/ensembly-kernel/Cargo.toml").read_bytes())["package"]["version"])')
-          if [ "$tag_ver" != "$cargo_ver" ]; then
-            echo "tag version $tag_ver != crates/ensembly-kernel/Cargo.toml version $cargo_ver" >&2
-            exit 2
-          fi
-          scripts/version-check --tag "$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$cargo_ver" >> "$GITHUB_OUTPUT"
 
@@ -99,12 +90,44 @@ jobs:
           cargo build --locked -p ensembly-kernel --release --target "$MATRIX_TARGET"
           bin="target/${MATRIX_TARGET}/release/ensembly"
           strip "$bin" 2>/dev/null || true
-          file "$bin"
+          file_out=$(file "$bin")
+          printf '%s\n' "$file_out"
           case "$MATRIX_TARGET" in
-            *-apple-darwin)
-              if command -v lipo >/dev/null 2>&1; then
-                lipo -info "$bin" || true
-              fi
+            aarch64-apple-darwin)
+              printf '%s\n' "$file_out" | grep -Fq 'arm64' || {
+                echo "expected arm64 Mach-O, got: $file_out" >&2
+                exit 1
+              }
+              lipo -archs "$bin" | grep -qw arm64 || {
+                echo "lipo -archs expected arm64, got: $(lipo -archs "$bin")" >&2
+                exit 1
+              }
+              ;;
+            x86_64-apple-darwin)
+              printf '%s\n' "$file_out" | grep -Fq 'x86_64' || {
+                echo "expected x86_64 Mach-O, got: $file_out" >&2
+                exit 1
+              }
+              lipo -archs "$bin" | grep -qw x86_64 || {
+                echo "lipo -archs expected x86_64, got: $(lipo -archs "$bin")" >&2
+                exit 1
+              }
+              ;;
+            x86_64-unknown-linux-gnu)
+              printf '%s\n' "$file_out" | grep -Eq 'x86-64|Intel 80386' || {
+                echo "expected x86_64 ELF, got: $file_out" >&2
+                exit 1
+              }
+              ;;
+            aarch64-unknown-linux-gnu)
+              printf '%s\n' "$file_out" | grep -Fq 'aarch64' || {
+                echo "expected aarch64 ELF, got: $file_out" >&2
+                exit 1
+              }
+              ;;
+            *)
+              echo "unknown MATRIX_TARGET: $MATRIX_TARGET" >&2
+              exit 1
               ;;
           esac
           name="ensembly-${RELEASE_VERSION}-${MATRIX_TARGET}"

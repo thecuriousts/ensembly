@@ -56,6 +56,17 @@ class VersionCheck(unittest.TestCase):
             code, out = self.run_check("--tag", tag)
             self.assertEqual(code, 0, f"{tag}: {out}")
 
+    def test_product_cli_rejects_other_prefix(self):
+        code, out = self.run_check("--product", "ensembly-cli", "--tag", "flowingstack--v1.2.3")
+        self.assertEqual(code, 1, out)
+        self.assertIn("not a ensembly-cli tag", out)
+
+    def test_product_cli_tag_passes(self):
+        code, out = self.run_check("--product", "ensembly-cli", "--tag", "ensembly-cli--v0.5.1")
+        self.assertEqual(code, 0, out)
+        self.assertIn("ensembly-cli 0.5.1", out)
+        self.assertNotIn("flowingstack", out)
+
     def test_tag_differs_from_version_fails(self):
         code, out = self.run_check("--tag", "flowingstack--v1.2.4")
         self.assertEqual(code, 1, out)
