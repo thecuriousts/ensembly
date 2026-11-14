@@ -19,6 +19,7 @@ kind = "dir"
     )
     .unwrap();
     let o = Command::new(env!("CARGO_BIN_EXE_ensembly"))
+        .current_dir(dir.path())
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join("config"))
         .args(["export", "--out", dir.path().join("out").to_str().unwrap()])
@@ -57,6 +58,7 @@ fn restore_into_refuses_unverified_bundle() {
     let sentinel = target.join("ensembly-ops.sqlite");
     fs::write(&sentinel, b"untouched").unwrap();
     let o = Command::new(env!("CARGO_BIN_EXE_ensembly"))
+        .current_dir(dir.path())
         .args([
             "restore",
             bundle.to_str().unwrap(),

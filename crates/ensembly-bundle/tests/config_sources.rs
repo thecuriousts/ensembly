@@ -12,13 +12,13 @@ fn duplicate_name_same_section_exits_config_error() {
 [[backup.sources]]
 name = "vault"
 section = "work"
-path = "~/fixture-a"
+path = "fixture-a"
 kind = "dir"
 
 [[backup.sources]]
 name = "vault"
 section = "work"
-path = "~/fixture-b"
+path = "fixture-b"
 kind = "dir"
 "#,
     )
