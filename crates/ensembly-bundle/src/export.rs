@@ -10,6 +10,7 @@ use crate::hash::{hash_bytes, hash_file};
 use crate::manifest::{BundleManifest, FileEntry, SourceRef, BUNDLE_FORMAT};
 use crate::scan::{default_excluded, scan_secrets, file_matches_glob};
 use crate::section::RESERVED_SECTION_ENSEMBLY;
+use crate::views::derive_views_from_ops_bundle;
 use crate::DEFAULT_MAX_FILE_MB;
 
 #[derive(Debug, Clone)]
@@ -69,12 +70,22 @@ fn rel_bundle_path(section: &str, source: &str, rel: &str) -> String {
     format!("{section}/{source}/{rel}")
 }
 
+fn empty_derived_views() -> crate::views::DerivedViews {
+    crate::views::DerivedViews {
+        todos_csv: b"id,title,status,kind,deadline_at\n".to_vec(),
+        chores_csv: b"id,title,status,kind,deadline_at\n".to_vec(),
+        deadlines_ics: b"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ensembly//portable-bundle//EN\r\nEND:VCALENDAR\r\n"
+            .to_vec(),
+    }
+}
+
 fn add_plain_file(
     bundle_root: &Path,
     section: &str,
     source: &str,
     rel_name: &str,
     content: &[u8],
+    view: bool,
     files: &mut Vec<FileEntry>,
 ) -> Result<(), String> {
     let rel = rel_bundle_path(section, source, rel_name);
@@ -93,6 +104,7 @@ fn add_plain_file(
         source: source.to_string(),
         excluded: None,
         exclude_reason: None,
+        view: view.then_some(true),
     });
     Ok(())
 }
@@ -134,6 +146,7 @@ fn copy_or_hash_file(
             source: source.to_string(),
             excluded: Some(true),
             exclude_reason: Some(format!("oversize>{max_file_mb}mb")),
+            view: None,
         });
         return Ok(());
     }
@@ -149,6 +162,7 @@ fn copy_or_hash_file(
             source: source.to_string(),
             excluded: Some(true),
             exclude_reason: Some(reason),
+            view: None,
         });
         return Ok(());
     }
@@ -167,6 +181,7 @@ fn copy_or_hash_file(
         source: source.to_string(),
         excluded: None,
         exclude_reason: None,
+        view: None,
     });
     Ok(())
 }
@@ -219,6 +234,17 @@ fn export_user_source(
                     .to_string_lossy()
                     .replace('\\', "/");
                 if default_excluded(&rel) {
+                    files.push(FileEntry {
+                        path: rel_bundle_path(&src.section, &src.name, &rel),
+                        sha256: String::new(),
+                        bytes: fs::metadata(full).map(|m| m.len()).unwrap_or(0),
+                        row_count: None,
+                        section: src.section.clone(),
+                        source: src.name.clone(),
+                        excluded: Some(true),
+                        exclude_reason: Some("default-exclude-glob".into()),
+                        view: None,
+                    });
                     continue;
                 }
                 let included = src.include.iter().any(|g| file_matches_glob(&rel, g));
@@ -264,7 +290,37 @@ pub fn export_bundle(opts: ExportOpts) -> Result<ExportReport, String> {
             kind: "json".into(),
         });
         let raw = fs::read(ops).map_err(|e| e.to_string())?;
-        add_plain_file(&bundle_root, section, "ops", "ops-bundle.json", &raw, &mut files)?;
+        add_plain_file(
+            &bundle_root,
+            section,
+            "ops",
+            "ops-bundle.json",
+            &raw,
+            false,
+            &mut files,
+        )?;
+        let views =
+            derive_views_from_ops_bundle(&raw, opts.created_at).unwrap_or_else(|_| empty_derived_views());
+        sources.push(SourceRef {
+            name: "views".into(),
+            section: section.into(),
+            kind: "view".into(),
+        });
+        for (rel, bytes) in [
+            ("todos.csv", views.todos_csv.as_slice()),
+            ("chores.csv", views.chores_csv.as_slice()),
+            ("deadlines.ics", views.deadlines_ics.as_slice()),
+        ] {
+            add_plain_file(
+                &bundle_root,
+                section,
+                "views",
+                rel,
+                bytes,
+                true,
+                &mut files,
+            )?;
+        }
     }
     if let Some(ref mem) = opts.stores.memory_json {
         if mem.is_file() {

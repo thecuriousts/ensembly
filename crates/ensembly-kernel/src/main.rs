@@ -36,9 +36,12 @@ use ensembly_kernel::turn::{
 };
 use ensembly_kernel::{kernel_version, private_path_patterns};
 use ensembly_bundle::{
-    export_bundle, import_bundle, load_backup_sources, restore_bundle, verify_bundle,
-    ConfigSourcesError, EnsemblyStorePaths, ExportOpts, ImportOpts, RestoreOpts,
+    export_bundle, import_bundle, load_backup_sources, merge_jsonl_text, merge_ops_bundles,
+    restore_bundle, verify_bundle, ConfigSourcesError, EnsemblyStorePaths, ExportOpts, ImportOpts,
+    OpsBundleMerge, RestoreOpts,
 };
+use ensembly_kernel::store::OpsBundle;
+use ensembly_paths::DEFAULT_OPS_PATH;
 use ensembly_paths::{config_file_path, load_paths_data_dir, ConfigError};
 use ensembly_schema::{commit_json, feed_json, recover_json, snapshot_json, CommitFault};
 #[cfg(feature = "opportunity-finder")]
@@ -259,7 +262,8 @@ enum Commands {
         sub: DfCmd,
     },
     /// Create sealed backup pack of T1 ops (uses OpsBundle inside BackupPack)
-    Backup {
+    #[command(name = "sealed-backup", visible_alias = "ops-backup-pack")]
+    SealedBackup {
         #[arg(long)]
         out: PathBuf,
         /// Unlock material (demo CLI; production → keyring). Env ENSEMBLY_UNLOCK / PERAM_UNLOCK overrides.
@@ -302,9 +306,8 @@ enum Commands {
         #[arg(long, default_value_t = 200)]
         max_file_mb: u64,
     },
-    /// Portable plain-text backup into timestamped dir under data_dir/backups or --out (not sealed T1 backup)
-    #[command(name = "data-backup", visible_alias = "portable-backup")]
-    DataBackup {
+    /// Portable plain-text backup into timestamped dir under data_dir/backups or --out
+    Backup {
         #[arg(long)]
         out: Option<PathBuf>,
         #[arg(long)]
@@ -320,13 +323,18 @@ enum Commands {
     Import {
         bundle: PathBuf,
         #[arg(long)]
+        into: Option<PathBuf>,
+        #[arg(long)]
         dry_run: bool,
         #[arg(long)]
         merge: bool,
     },
-    /// Verify then copy bundle files into explicit destinations (`--sources-to` keeps section/name layout)
+    /// Verify then restore into explicit destinations (`--into` sets ops + memory under one data dir)
     Restore {
         bundle: PathBuf,
+        /// Data directory: writes ops sqlite + memory JSON using standard filenames
+        #[arg(long)]
+        into: Option<PathBuf>,
         #[arg(long)]
         into_ops: Option<PathBuf>,
         #[arg(long)]
@@ -1151,7 +1159,7 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
             &id,
         ),
         Commands::DigitalFlow { sub } => cmd_digital_flow(&ctx.db_path, sub),
-        Commands::Backup { out, unlock } => cmd_backup(&ctx.db_path, &out, &unlock),
+        Commands::SealedBackup { out, unlock } => cmd_backup(&ctx.db_path, &out, &unlock),
         Commands::RestoreDryRun { pack, unlock } => cmd_restore_dry_run(&pack, &unlock),
         Commands::RestoreApply {
             pack,
@@ -1164,7 +1172,7 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
             force_new_subdir,
             max_file_mb,
         } => cmd_portable_export(ctx, &out, force_new_subdir, max_file_mb, false),
-        Commands::DataBackup {
+        Commands::Backup {
             out,
             force_new_subdir,
             max_file_mb,
@@ -1175,18 +1183,22 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
         Commands::Verify { bundle } => cmd_portable_verify(&bundle),
         Commands::Import {
             bundle,
+            into,
             dry_run,
             merge,
-        } => cmd_portable_import(&bundle, dry_run, merge),
+        } => cmd_portable_import(ctx, &bundle, into, dry_run, merge),
         Commands::Restore {
             bundle,
+            into,
             into_ops,
             into_memory,
             sources_to,
             dry_run,
             merge,
         } => cmd_portable_restore(
+            ctx,
             &bundle,
+            into,
             into_ops,
             into_memory,
             sources_to,
@@ -1727,7 +1739,124 @@ fn cmd_portable_verify(bundle: &PathBuf) -> Result<()> {
     }
 }
 
-fn cmd_portable_import(bundle: &PathBuf, dry_run: bool, merge: bool) -> Result<()> {
+fn resolve_into_data_dir(
+    into: Option<PathBuf>,
+    into_ops: Option<PathBuf>,
+    into_memory: Option<PathBuf>,
+) -> (Option<PathBuf>, Option<PathBuf>) {
+    if let Some(dir) = into {
+        let ops = dir.join(
+            Path::new(DEFAULT_OPS_PATH)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("ensembly-ops.sqlite"),
+        );
+        let mem = dir.join(
+            Path::new(DEFAULT_MEMORY_PATH)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("ensembly-memory.json"),
+        );
+        return (
+            into_ops.or(Some(ops)),
+            into_memory.or(Some(mem)),
+        );
+    }
+    (into_ops, into_memory)
+}
+
+fn merge_bundle_structs(a: &OpsBundle, b: &OpsBundle) -> Result<OpsBundle> {
+    let ea: OpsBundleMerge = serde_json::from_value(serde_json::to_value(a)?)?;
+    let eb: OpsBundleMerge = serde_json::from_value(serde_json::to_value(b)?)?;
+    let merged = merge_ops_bundles(&ea, &eb);
+    Ok(serde_json::from_value(serde_json::to_value(merged)?)?)
+}
+
+fn restore_ops_from_bundle(
+    bundle: &Path,
+    ops_db: &Path,
+    merge: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let ops_json = bundle.join("ensembly/ops/ops-bundle.json");
+    let incoming = OpsStore::read_bundle_file(&ops_json)?;
+    if dry_run {
+        return Ok(());
+    }
+    if ops_db.exists() && !merge {
+        bail!("refusing overwrite {}; pass --merge", ops_db.display());
+    }
+    let store = OpsStore::open(ops_db)?;
+    if merge && ops_db.exists() {
+        let existing = store.export_bundle()?;
+        let merged = merge_bundle_structs(&existing, &incoming)?;
+        store.import_bundle(&merged)?;
+    } else {
+        store.import_bundle(&incoming)?;
+    }
+    Ok(())
+}
+
+fn restore_memory_from_bundle(
+    bundle: &Path,
+    mem_path: &Path,
+    merge: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let src = bundle.join("ensembly/memory/ensembly-memory.json");
+    if !src.is_file() {
+        return Ok(());
+    }
+    if dry_run {
+        return Ok(());
+    }
+    if mem_path.exists() && !merge {
+        bail!("refusing overwrite {}; pass --merge", mem_path.display());
+    }
+    if let Some(parent) = mem_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::copy(&src, mem_path)?;
+    Ok(())
+}
+
+fn restore_ledger_from_bundle(
+    bundle: &Path,
+    ledger_path: &Path,
+    merge: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let src = bundle.join("ensembly/ledger/ledger.jsonl");
+    if !src.is_file() {
+        return Ok(());
+    }
+    let incoming = std::fs::read_to_string(&src)?;
+    if dry_run {
+        return Ok(());
+    }
+    let merged = if merge && ledger_path.is_file() {
+        let existing = std::fs::read_to_string(ledger_path)?;
+        merge_jsonl_text(&existing, &incoming)
+    } else {
+        if ledger_path.exists() && !merge {
+            bail!("refusing overwrite {}; pass --merge", ledger_path.display());
+        }
+        incoming
+    };
+    if let Some(parent) = ledger_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(ledger_path, merged)?;
+    Ok(())
+}
+
+fn cmd_portable_import(
+    ctx: &Ctx,
+    bundle: &PathBuf,
+    into: Option<PathBuf>,
+    dry_run: bool,
+    merge: bool,
+) -> Result<()> {
     import_bundle(
         bundle,
         &ImportOpts {
@@ -1736,6 +1865,22 @@ fn cmd_portable_import(bundle: &PathBuf, dry_run: bool, merge: bool) -> Result<(
         },
     )
     .map_err(|e| anyhow::anyhow!(e))?;
+    if let Some(dir) = into {
+        let (ops, mem) = resolve_into_data_dir(Some(dir), None, None);
+        if let Some(ops) = ops {
+            restore_ops_from_bundle(bundle, &ops, merge, dry_run)?;
+        }
+        if let Some(mem) = mem {
+            restore_memory_from_bundle(bundle, &mem, merge, dry_run)?;
+        }
+        let ledger = ctx
+            .db_path
+            .parent()
+            .map(|p| p.join("applications/ledger.jsonl"));
+        if let Some(led) = ledger {
+            restore_ledger_from_bundle(bundle, &led, merge, dry_run)?;
+        }
+    }
     println!(
         "PORTABLE_IMPORT_OK bundle={} dry_run={dry_run} merge={merge}",
         bundle.display()
@@ -1744,31 +1889,44 @@ fn cmd_portable_import(bundle: &PathBuf, dry_run: bool, merge: bool) -> Result<(
 }
 
 fn cmd_portable_restore(
+    _ctx: &Ctx,
     bundle: &PathBuf,
+    into: Option<PathBuf>,
     into_ops: Option<PathBuf>,
     into_memory: Option<PathBuf>,
     sources_to: Option<PathBuf>,
     dry_run: bool,
     merge: bool,
 ) -> Result<()> {
+    let (into_ops, into_memory) = resolve_into_data_dir(into, into_ops, into_memory);
     if into_ops.is_none() && into_memory.is_none() && sources_to.is_none() {
-        bail!("restore needs at least one of --into-ops, --into-memory, or --sources-to");
+        bail!("restore needs --into, --into-ops, --into-memory, or --sources-to");
     }
-    let plan = restore_bundle(
-        bundle,
-        &RestoreOpts {
-            into_ops,
-            into_memory,
-            sources_to,
-            merge,
-            dry_run,
-        },
-    )
-    .map_err(|e| anyhow::anyhow!(e))?;
+    if let Some(ref ops) = into_ops {
+        restore_ops_from_bundle(bundle, ops, merge, dry_run)?;
+    }
+    if let Some(ref mem) = into_memory {
+        restore_memory_from_bundle(bundle, mem, merge, dry_run)?;
+    }
+    let mut copies = 0usize;
+    if let Some(base) = sources_to {
+        let plan = restore_bundle(
+            bundle,
+            &RestoreOpts {
+                into_ops: None,
+                into_memory: None,
+                sources_to: Some(base),
+                merge,
+                dry_run,
+            },
+        )
+        .map_err(|e| anyhow::anyhow!(e))?;
+        copies = plan.copies.len();
+    }
     println!(
-        "PORTABLE_RESTORE_OK bundle={} copies={} dry_run={dry_run}",
+        "PORTABLE_RESTORE_OK bundle={} source_copies={} dry_run={dry_run}",
         bundle.display(),
-        plan.copies.len()
+        copies
     );
     Ok(())
 }

@@ -23,6 +23,9 @@ pub struct FileEntry {
     pub excluded: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exclude_reason: Option<String>,
+    /// Read-only derived file; restore never writes these (SoT is ops JSON).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub view: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

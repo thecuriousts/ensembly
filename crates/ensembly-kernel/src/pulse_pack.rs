@@ -1,7 +1,7 @@
 //! Portable **pulse** pack — memory_traces + archive_events layer.
 //!
 //! This is **not** T1 ops backup. For the ops sqlite use existing
-//! `OpsStore::export_bundle` / `BackupPack` (`ensembly backup`, `ensembly ops-bundle`).
+//! `OpsStore::export_bundle` / `BackupPack` (`ensembly sealed-backup`, `ensembly ops-bundle`).
 //!
 //! Law: **one writer** on the ops sqlite (canonical kernel host). Pulse packs
 //! carry episodic learning + archive slices only. Import merges into

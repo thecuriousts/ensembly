@@ -57,7 +57,8 @@ See [../ensembly-memory/README.md](../ensembly-memory/README.md) for the learnin
 |---------|--------------|
 | `ensembly turn [--fixture f]` | FocusPlan: next physical beacon + next auth gate, coached from the critical path |
 | `ensembly digital-flow cycle` | bill_pay dry-run through a Human-In-The-Loop finance gate |
-| `ensembly backup --out pack.bin --unlock …` | Sealed Tier-2 backup pack (or `ENSEMBLY_UNLOCK` / `PERAM_UNLOCK` env) |
+| `ensembly sealed-backup --out pack.bin --unlock …` | Sealed Tier-2 backup pack (or `ENSEMBLY_UNLOCK` / `PERAM_UNLOCK` env) |
+| `ensembly export` / `backup` / `verify` / `restore` | Portable plain-text bundle — [docs/portable-bundle.md](../../docs/portable-bundle.md) |
 | `ensembly restore-dry-run --pack pack.bin --unlock …` | Verify a pack without touching the primary database |
 
 Default database: `data/local/ensembly-ops.sqlite` (gitignored). Existing `peram-ops.sqlite` is opened in place. Override with `--db`.

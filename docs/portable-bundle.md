@@ -1,6 +1,6 @@
 # Portable plain-text bundle
 
-Operator-readable exports for kernel stores plus configured `[[backup.sources]]` trees. Sealed `ensembly backup` (T2 ops pack) is unchanged; use **`ensembly export`**, **`ensembly data-backup`**, **`verify`**, **`import`**, and **`restore`** for portable bundles.
+Operator-readable exports for kernel stores plus configured `[[backup.sources]]` trees. Sealed T1 pack: **`ensembly sealed-backup`**. Portable path: **`ensembly export`**, **`backup`**, **`verify`**, **`import`**, **`restore`**. Operator checklist: [no-assistant-runbook.md](no-assistant-runbook.md).
 
 ## Layout
 
@@ -11,6 +11,9 @@ bundle/
     ops/ops-bundle.json
     memory/ensembly-memory.json
     ledger/ledger.jsonl        # when opportunity-finder ledger exists
+    views/todos.csv            # read-only; from life_state
+    views/chores.csv
+    views/deadlines.ics        # chore due dates only
   <section>/
     <source-name>/…            # from config; default section `shared`
 ```
@@ -48,7 +51,7 @@ exclude = ["*.pem"]
 | Command | Role |
 |---------|------|
 | `ensembly export --out DIR` | Write bundle; refuses non-empty `DIR` unless `--force-new-subdir` |
-| `ensembly data-backup [--out DIR]` | Timestamped dir under `data_dir/backups` or `--out` |
+| `ensembly backup [--out DIR]` | Timestamped dir under `data_dir/backups` or `--out` |
 | `ensembly verify BUNDLE` | Checksums + jsonl/ics parse |
 | `ensembly import BUNDLE [--dry-run]` | Verify-first ack |
 | `ensembly restore BUNDLE --sources-to DIR` | Restore config sources under `DIR/<section>/<name>/…` |

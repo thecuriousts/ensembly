@@ -47,7 +47,10 @@ pub fn plan_restore(bundle_root: &Path, opts: &RestoreOpts) -> Result<RestorePla
     let manifest = BundleManifest::read(bundle_root)?;
     let mut plan = RestorePlan::default();
     for entry in &manifest.files {
-        if entry.excluded == Some(true) {
+        if entry.excluded == Some(true) || entry.view == Some(true) {
+            continue;
+        }
+        if entry.section == "ensembly" {
             continue;
         }
         let src = bundle_root.join(&entry.path);
@@ -63,18 +66,6 @@ pub fn plan_restore(bundle_root: &Path, opts: &RestoreOpts) -> Result<RestorePla
                     .next()
                     .unwrap_or("file")
             });
-        if entry.section == "ensembly" {
-            if entry.source == "ops" {
-                if let Some(dest) = &opts.into_ops {
-                    plan.copies.push((src.clone(), dest.clone()));
-                }
-            } else if entry.source == "memory" {
-                if let Some(dest) = &opts.into_memory {
-                    plan.copies.push((src.clone(), dest.clone()));
-                }
-            }
-            continue;
-        }
         if let Some(base) = &opts.sources_to {
             let dest = base
                 .join(entry.section.as_str())
