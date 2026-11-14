@@ -131,15 +131,6 @@ pub struct McpServeConfig {
     pub agent_id: String,
 }
 
-impl Default for McpServeConfig {
-    fn default() -> Self {
-        Self::from_env(None).unwrap_or_else(|e| {
-            eprintln!("{e}");
-            std::process::exit(2);
-        })
-    }
-}
-
 impl McpServeConfig {
     /// Same paired path resolution as the `ensembly` CLI (`paths.data_dir` + cwd discover).
     pub fn from_env(cli_memory: Option<PathBuf>) -> anyhow::Result<Self> {
@@ -152,7 +143,8 @@ impl McpServeConfig {
             None,
             explicit,
             config_data.as_deref(),
-        );
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
         Ok(Self {
             memory_path: paths.memory,
             agent_id: crate::env_alias::resolve_agent_id(None),

@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn fresh_default_creates_ensembly_ops_and_memory() {
         let dir = tempfile::tempdir().unwrap();
-        let paired = resolve_data_paths(dir.path(), None, None, None);
+        let paired = resolve_data_paths(dir.path(), None, None, None).unwrap();
         assert_eq!(paired.ops_db, dir.path().join(DEFAULT_OPS_PATH));
         assert_eq!(paired.memory, dir.path().join(DEFAULT_MEMORY_PATH));
         assert!(

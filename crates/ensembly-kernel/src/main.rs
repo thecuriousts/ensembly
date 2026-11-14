@@ -586,7 +586,9 @@ fn attach_memory(rt: &mut Runtime, flags: &MemoryFlags, paired: &DataPaths) {
     }
     let explicit = flags.memory.is_some();
     let path = if explicit {
-        resolve_data_paths(Path::new(""), None, flags.memory.clone(), None).memory
+        resolve_data_paths(Path::new(""), None, flags.memory.clone(), None)
+            .expect("resolve memory with explicit flag")
+            .memory
     } else {
         paired.memory.clone()
     };
@@ -1009,12 +1011,18 @@ fn main() -> Result<()> {
             std::process::exit(2);
         }
     };
-    let data_paths = resolve_data_paths(
+    let data_paths = match resolve_data_paths(
         Path::new(""),
         cli.db.clone(),
         cli.memory.clone(),
         config_data_dir.as_deref(),
-    );
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }
+    };
     let ctx = Ctx {
         db_path: data_paths.ops_db.clone(),
         data_paths,
@@ -1046,6 +1054,7 @@ impl Ctx {
                 self.memory_cli.clone(),
                 self.config_data_dir.as_deref(),
             )
+            .expect("resolve memory with explicit flag")
             .memory;
         }
         self.data_paths.memory.clone()

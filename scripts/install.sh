@@ -37,9 +37,10 @@ install_root_from_toml() {
   awk '
     /^\[install\]/ { in_install=1; next }
     /^\[/ { in_install=0 }
-    in_install && $1 == "root" {
-      gsub(/"/, "", $3)
-      print $3
+    in_install && /^[[:space:]]*root[[:space:]]*=/ {
+      sub(/^[^=]*=[[:space:]]*/, "", $0)
+      gsub(/"/, "", $0)
+      print $0
       exit 0
     }
   ' "$file"
@@ -49,7 +50,7 @@ expand_tilde() {
   p=$1
   case $p in
     "~") printf '%s' "$HOME" ;;
-    "~/"*) printf '%s' "$HOME/${p#~/}" ;;
+    "~/"*) printf '%s' "$HOME/${p#\\~/}" ;;
     *) printf '%s' "$p" ;;
   esac
 }

@@ -7,8 +7,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error("config: HOME is unset")]
-    NoHome,
     #[error("config: cannot read {}: {message}", path.display())]
     Io { path: PathBuf, message: String },
     #[error("config: {}:{line}: invalid TOML: {detail}", path.display())]
@@ -32,16 +30,14 @@ struct PathsSection {
 }
 
 /// `${XDG_CONFIG_HOME:-$HOME/.config}/ensembly/config.toml`
-pub fn config_file_path() -> Result<PathBuf, ConfigError> {
-    let home = std::env::var("HOME")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .ok_or(ConfigError::NoHome)?;
+/// Returns `None` when `HOME` is unset (no config lookup, not an error).
+pub fn config_file_path() -> Option<PathBuf> {
+    let home = std::env::var("HOME").ok().filter(|s| !s.is_empty())?;
     let base = std::env::var("XDG_CONFIG_HOME")
         .ok()
         .filter(|s| !s.is_empty() && Path::new(s).is_absolute())
         .unwrap_or_else(|| format!("{home}/.config"));
-    Ok(PathBuf::from(base).join("ensembly/config.toml"))
+    Some(PathBuf::from(base).join("ensembly/config.toml"))
 }
 
 fn line_at(text: &str, byte_index: usize) -> usize {
@@ -80,7 +76,9 @@ fn expand_data_dir(raw: &str) -> Result<PathBuf, String> {
 /// Load `paths.data_dir` when the config file exists. Missing file → `Ok(None)`.
 /// A present file must parse; errors name the path and line.
 pub fn load_paths_data_dir() -> Result<Option<PathBuf>, ConfigError> {
-    let path = config_file_path()?;
+    let Some(path) = config_file_path() else {
+        return Ok(None);
+    };
     if !path.is_file() {
         return Ok(None);
     }
