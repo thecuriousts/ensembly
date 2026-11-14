@@ -54,10 +54,11 @@ pub use digital_flow::{
     activate, decide, execute_dry_run, flow_to_approval_record, map_flow_status_to_approval,
     run_cycle, DigitalFlow, FlowStatus,
 };
+#[cfg(feature = "opportunity-finder")]
 pub use ensembly_schema::{
-    audit_exit_code, audit_exit_status, PackRef, EXIT_BLOCK, EXIT_ERROR, EXIT_FLAG, EXIT_PASS,
-    EXIT_PULSE_REFUSED_WRITE, EXIT_UNAUDITED_OR_STALE, EXIT_USAGE,
+    audit_exit_code, audit_exit_status, EXIT_BLOCK, EXIT_FLAG, EXIT_UNAUDITED_OR_STALE,
 };
+pub use ensembly_schema::{PackRef, EXIT_ERROR, EXIT_PASS, EXIT_PULSE_REFUSED_WRITE, EXIT_USAGE};
 pub use graph::{DepGraph, GateKind, TaskNode, TaskRealm, TaskStatus};
 pub use life_state::{LifeState, LoopRegime, OutcomeMetrics};
 pub use memory_sink::MemorySink;

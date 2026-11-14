@@ -17,7 +17,7 @@ known limit    submitted -> interview -> submitted is refused
 
 Run from the repo root. Fixtures in the tests are invented. Hosts are laptop-1, laptop-2, and mac-mini.
 
-1. `cargo test --locked -p ensembly-schema --test apps_record`
+1. `cargo test --locked -p ensembly-schema --features opportunity-finder --test apps_record`
    Expect: every ledger status maps; `offered` is refused; a second plan is empty for another writer or clock; a changed ledger field conflicts; compare lists a submit-time mismatch; an open status is not mapped as intended.
 2. `cargo test --locked -p ensembly-kernel --features opportunity-finder --test apps_record_cli`
    Expect: a second import with no clock flag, and a second import as another writer, append nothing; a return to submitted exits non-zero and leaves the log unchanged; compare mismatch exits 1; a missing log or a directory exits 2.

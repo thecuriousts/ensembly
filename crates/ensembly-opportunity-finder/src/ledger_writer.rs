@@ -30,7 +30,7 @@ pub struct LedgerWriter {
 }
 
 impl LedgerWriter {
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, LedgerWriterError> {
+    pub(crate) fn open(path: impl AsRef<Path>) -> Result<Self, LedgerWriterError> {
         Ok(Self {
             path: path.as_ref().to_path_buf(),
         })

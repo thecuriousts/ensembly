@@ -2,8 +2,7 @@
 
 use anyhow::Result;
 use clap::Subcommand;
-use ensembly_kernel::KernelWriter;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Subcommand)]
 pub enum RecordAppsCmd {

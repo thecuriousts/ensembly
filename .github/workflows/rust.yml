@@ -32,6 +32,8 @@ jobs:
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: clippy opportunity-finder
+        run: cargo clippy --locked --workspace --all-targets --features opportunity-finder -- -D warnings
       - name: test
         run: cargo test --locked --workspace
       - name: test opportunity-finder pack

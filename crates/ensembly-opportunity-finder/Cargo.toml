@@ -14,7 +14,7 @@ anyhow = "1"
 regex = "1"
 sha2 = "0.10"
 hex = "0.4"
-ensembly-schema = { path = "../ensembly-schema" }
+ensembly-schema = { path = "../ensembly-schema", features = ["opportunity-finder"] }
 
 [dev-dependencies]
 tempfile = "3"

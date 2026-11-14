@@ -17,7 +17,10 @@ path = "src/main.rs"
 
 [features]
 default = []
-opportunity-finder = ["dep:ensembly-opportunity-finder"]
+opportunity-finder = [
+    "dep:ensembly-opportunity-finder",
+    "ensembly-schema/opportunity-finder",
+]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -40,7 +43,7 @@ unicode-normalization = "0.1.26"
 
 [dev-dependencies]
 tempfile = "3"
-ensembly-schema = { path = "../ensembly-schema" }
+ensembly-schema = { path = "../ensembly-schema", features = ["opportunity-finder"] }
 
 [[test]]
 name = "single_writer_ledger"

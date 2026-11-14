@@ -3,6 +3,14 @@
 //! Application-ledger writes live in the optional opportunity-finder pack
 //! (`--features opportunity-finder`); see [`crate::writer_ledger`] when enabled.
 //!
+//! Writer identity comes from the `ENSEMBLY_WRITER` environment variable (validated
+//! as non-empty and safe via [`ensembly_schema::require_configured_writer`]).
+//!
+//! Pulse stores get accident-guard triggers on every canonical write open. Those
+//! triggers are not a security boundary: a local process that can open the file can
+//! register the same SQL function or drop them. File permissions and ownership limit
+//! local tooling.
+//!
 //! For other crates, [`KernelWriter`] is the only type that can write a decision
 //! event, or admit, supersede, or resolve a pulse write. Raw write functions are
 //! crate-private.

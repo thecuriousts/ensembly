@@ -38,6 +38,7 @@ fn row(link: &str, status: Status, cv: &str) -> LedgerRow {
 }
 
 fn open_ledger(path: &Path) -> KernelWriter {
+    let _writer_guard = setup_writer();
     let writer = KernelWriter::open_ledger(path).unwrap();
     writer.init_ledger().unwrap();
     writer

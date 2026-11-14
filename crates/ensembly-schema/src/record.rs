@@ -1,4 +1,4 @@
-use crate::ledger;
+use crate::url;
 use crate::{Checked, SCHEMA_VERSION};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -30,7 +30,7 @@ pub struct StockholmTime(String);
 impl StockholmTime {
     pub fn new(raw: impl Into<String>) -> Result<Self, String> {
         let s = raw.into();
-        ledger::check_submit_time(&s)?;
+        url::check_submit_time(&s)?;
         Ok(Self(s))
     }
 
@@ -223,8 +223,8 @@ impl<P: Checked> Checked for EventEnvelope<P> {
                 self.schema_v
             ));
         }
-        ledger::check_submit_time(self.event_time.as_str())?;
-        ledger::check_submit_time(self.record_time.as_str())?;
+        url::check_submit_time(self.event_time.as_str())?;
+        url::check_submit_time(self.record_time.as_str())?;
         self.payload.check()?;
         Ok(())
     }
@@ -234,16 +234,16 @@ impl Status {
     pub fn check_invariants(&self) -> Result<(), String> {
         match self {
             Status::Confirmed { evidence } | Status::Rejected { evidence } => {
-                ledger::check_submit_time(evidence.at.as_str())?;
+                url::check_submit_time(evidence.at.as_str())?;
             }
             Status::Submitted { submit } => match submit {
-                SubmitTime::Known { at } => ledger::check_submit_time(at.as_str())?,
+                SubmitTime::Known { at } => url::check_submit_time(at.as_str())?,
                 SubmitTime::Unknown => {}
             },
-            Status::Silent { since } => ledger::check_submit_time(since.as_str())?,
-            Status::Expired { at } => ledger::check_submit_time(at.as_str())?,
+            Status::Silent { since } => url::check_submit_time(since.as_str())?,
+            Status::Expired { at } => url::check_submit_time(at.as_str())?,
             Status::NextStage { evidence, .. } => {
-                ledger::check_submit_time(evidence.at.as_str())?;
+                url::check_submit_time(evidence.at.as_str())?;
             }
             Status::Intended | Status::Withdrawn => {}
         }
@@ -376,9 +376,10 @@ pub fn transition(
     }
 }
 
-impl From<ledger::Status> for Status {
-    fn from(s: ledger::Status) -> Self {
-        use ledger::Status as L;
+#[cfg(feature = "opportunity-finder")]
+impl From<crate::ledger::Status> for Status {
+    fn from(s: crate::ledger::Status) -> Self {
+        use crate::ledger::Status as L;
         match s {
             L::Prepared => Status::Intended,
             L::Submitted => Status::Submitted {
@@ -551,9 +552,10 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "opportunity-finder")]
     #[test]
     fn from_ledger_status_exhaustive() {
-        use ledger::Status as L;
+        use crate::ledger::Status as L;
         let _ = Status::from(L::Prepared);
         let _ = Status::from(L::Submitted);
         let _ = Status::from(L::Interview);
@@ -562,22 +564,21 @@ mod tests {
         let _ = Status::from(L::SilentClosed);
     }
 
+    #[cfg(feature = "opportunity-finder")]
     #[test]
     fn from_ledger_maps_names() {
+        use crate::ledger::Status as L;
+        assert!(matches!(Status::from(L::Prepared), Status::Intended));
         assert!(matches!(
-            Status::from(ledger::Status::Prepared),
-            Status::Intended
-        ));
-        assert!(matches!(
-            Status::from(ledger::Status::Submitted),
+            Status::from(L::Submitted),
             Status::Submitted { .. }
         ));
         assert!(matches!(
-            Status::from(ledger::Status::Interview),
+            Status::from(L::Interview),
             Status::NextStage { n: 1, .. }
         ));
         assert!(matches!(
-            Status::from(ledger::Status::SilentClosed),
+            Status::from(L::SilentClosed),
             Status::Silent { .. }
         ));
     }

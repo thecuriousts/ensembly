@@ -1,32 +1,42 @@
-//! Versioned shapes for ledger rows, company audits, and pack refs.
+//! Versioned shapes for record events, decisions, pulse packs, and (optionally) job applications.
 //!
 //! A missing `v` means the v0 shape: the same fields, with no version member.
 //! `"v": 1.0` passes the JSON Schema const for [`SCHEMA_VERSION`] and the reader refuses it.
 //!
+//! Enable job-hunt ledger/audit/adapters with feature **`opportunity-finder`**.
+//!
 //! Regenerate the checked-in JSON Schema files with
-//! `WRITE_SCHEMA=1 cargo test -p ensembly-schema --lib checked_in_schema_matches_types`.
+//! `WRITE_SCHEMA=1 cargo test -p ensembly-schema --features opportunity-finder --lib checked_in_schema_matches_types`.
 
 pub const SCHEMA_VERSION: u32 = 1;
 
-mod apps_record;
-mod audit;
 mod commit;
 mod decision;
-mod ledger;
+mod exit;
 mod pack;
 mod reconcile;
 mod record;
 mod replay;
 mod surface;
 mod sync;
+mod url;
 mod view;
 mod wire;
 
+#[cfg(feature = "opportunity-finder")]
+mod apps_record;
+#[cfg(feature = "opportunity-finder")]
+mod audit;
+#[cfg(feature = "opportunity-finder")]
+mod ledger;
+
+#[cfg(feature = "opportunity-finder")]
 pub use apps_record::{
     closed_record_status, closed_stage, compare_ledger, import_plan, map_ledger_status,
     map_ledger_status_name, stage_token, AppEventPayload, CompareMismatch, CompareReport,
     MappedStage,
 };
+#[cfg(feature = "opportunity-finder")]
 pub use audit::*;
 pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
 pub use decision::{
@@ -34,6 +44,8 @@ pub use decision::{
     GateVerdict, LabelRow, ModelDecision, SplitBucket, DEFAULT_TIMEOUT_HOURS, MODEL_VERSION,
     SPLIT_SEED, TRIAGE_QUESTION,
 };
+pub use exit::{EXIT_ERROR, EXIT_PASS, EXIT_PULSE_REFUSED_WRITE, EXIT_USAGE};
+#[cfg(feature = "opportunity-finder")]
 pub use ledger::*;
 pub use pack::*;
 pub use reconcile::{
@@ -55,6 +67,7 @@ pub use surface::{
     WRITER_ENV,
 };
 pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};
+pub use url::{check_submit_time, link_key};
 pub use view::{
     view_append, ChangeEvent, Fact, Feed, RecordView, Snapshot, ViewContract, ViewError,
 };

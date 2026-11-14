@@ -168,14 +168,11 @@ pub enum GateStatus {
 }
 
 // 0 pass, 3 flag (not approvable), 4 block, 5 unaudited or stale, 7 pulse refused write.
-// 1 and 2 stay errors and usage.
-pub const EXIT_PASS: i32 = 0;
-pub const EXIT_ERROR: i32 = 1;
-pub const EXIT_USAGE: i32 = 2;
+// 1 and 2 stay errors and usage (see [`crate::exit`]).
+pub use crate::exit::EXIT_PASS;
 pub const EXIT_FLAG: i32 = 3;
 pub const EXIT_BLOCK: i32 = 4;
 pub const EXIT_UNAUDITED_OR_STALE: i32 = 5;
-pub const EXIT_PULSE_REFUSED_WRITE: i32 = 7;
 
 pub fn audit_exit_code(s: GateStatus) -> i32 {
     match s {

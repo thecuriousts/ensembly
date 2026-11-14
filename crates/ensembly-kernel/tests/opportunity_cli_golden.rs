@@ -12,7 +12,7 @@ const AUDIT_MD: &str = include_str!("golden/audit-export.md");
 
 fn fix(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../ensembly-schema/fixtures")
+        .join("../ensembly-opportunity-finder/fixtures")
         .join(name)
 }
 

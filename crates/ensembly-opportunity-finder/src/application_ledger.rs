@@ -1,5 +1,11 @@
 //! Application ledger (Stage 1) — Ensembly is SoT for job applications.
 //! Append-only JSONL; later row for the same `link` supersedes earlier ones.
+//!
+//! # Compile-fail checks
+//!
+//! ```compile_fail
+//! let _ = ensembly_opportunity_finder::application_ledger::append_row;
+//! ```
 use std::path::Path;
 
 pub use ensembly_schema::{link_key, LedgerRow, Status, SubmitTime};

@@ -1,19 +1,44 @@
-use super::audit::AuditLine;
-use super::ledger::LedgerRowLine;
 use super::pack::PackRefLine;
 use super::*;
 use serde_json::json;
 use std::path::Path;
 
-const LEDGER: &str = "fixtures/ledger-v0.jsonl";
-const AUDIT: &str = "fixtures/audit-v0.jsonl";
+#[cfg(feature = "opportunity-finder")]
+use super::audit::AuditLine;
+#[cfg(feature = "opportunity-finder")]
+use super::ledger::LedgerRowLine;
+
 const PACK: &str = "fixtures/pack-ref-v0.jsonl";
-const LEDGER_V1: &str = "fixtures/ledger-v1.jsonl";
-const AUDIT_V1: &str = "fixtures/audit-v1.jsonl";
 const PACK_V1: &str = "fixtures/pack-ref-v1.jsonl";
 
+#[cfg(feature = "opportunity-finder")]
+const LEDGER: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../ensembly-opportunity-finder/fixtures/ledger-v0.jsonl"
+);
+#[cfg(feature = "opportunity-finder")]
+const AUDIT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../ensembly-opportunity-finder/fixtures/audit-v0.jsonl"
+);
+#[cfg(feature = "opportunity-finder")]
+const LEDGER_V1: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../ensembly-opportunity-finder/fixtures/ledger-v1.jsonl"
+);
+#[cfg(feature = "opportunity-finder")]
+const AUDIT_V1: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../ensembly-opportunity-finder/fixtures/audit-v1.jsonl"
+);
+
 fn text(rel: &str) -> String {
-    std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)).unwrap()
+    let path = if rel.contains(std::path::MAIN_SEPARATOR) || rel.starts_with('/') {
+        Path::new(rel).to_path_buf()
+    } else {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join(rel)
+    };
+    std::fs::read_to_string(path).unwrap()
 }
 
 fn first(rel: &str) -> String {
@@ -41,6 +66,7 @@ where
     }
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn fixture_lines_round_trip() {
     trip::<LedgerRow>(LEDGER);
@@ -51,9 +77,20 @@ fn fixture_lines_round_trip() {
     }
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
-fn missing_v_reads_as_zero() {
-    for rel in [LEDGER, AUDIT, PACK] {
+fn missing_v_reads_as_zero_on_pack() {
+    assert!(serde_json::from_str::<serde_json::Value>(&first(PACK))
+        .unwrap()
+        .get("v")
+        .is_none());
+    assert_eq!(decode_line::<PackRef>(&first(PACK)).unwrap().version, 0);
+}
+
+#[cfg(feature = "opportunity-finder")]
+#[test]
+fn missing_v_reads_as_zero_on_opportunity_fixtures() {
+    for rel in [LEDGER, AUDIT] {
         assert!(serde_json::from_str::<serde_json::Value>(&first(rel))
             .unwrap()
             .get("v")
@@ -61,9 +98,9 @@ fn missing_v_reads_as_zero() {
     }
     assert_eq!(decode_line::<LedgerRow>(&first(LEDGER)).unwrap().version, 0);
     assert_eq!(decode_line::<Audit>(&first(AUDIT)).unwrap().version, 0);
-    assert_eq!(decode_line::<PackRef>(&first(PACK)).unwrap().version, 0);
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn version_two_is_refused() {
     for n in [json!(0), json!(1.0), json!(2), json!("1")] {
@@ -73,6 +110,7 @@ fn version_two_is_refused() {
     }
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn unsupported_version_names_the_value() {
     let err = decode_line::<LedgerRow>(&set(LEDGER, "v", json!(2))).unwrap_err();
@@ -84,6 +122,7 @@ fn unsupported_version_names_the_value() {
     assert!(zero.contains("explicit v 0 is refused"), "{zero}");
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn unknown_field_rejected() {
     let extra = json!(1);
@@ -92,6 +131,7 @@ fn unknown_field_rejected() {
     assert!(decode_line::<PackRef>(&set(PACK, "extra", extra)).is_err());
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn unknown_field_inside_check_is_refused() {
     let mut v: serde_json::Value = serde_json::from_str(&first(AUDIT)).unwrap();
@@ -100,6 +140,7 @@ fn unknown_field_inside_check_is_refused() {
     assert!(err.contains("extra") || err.contains("unknown"), "{err}");
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn duplicate_keys_are_refused() {
     let row = first(LEDGER);
@@ -109,12 +150,14 @@ fn duplicate_keys_are_refused() {
     assert!(decode_line::<LedgerRow>(&dup_role).is_err(), "{dup_role}");
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn unknown_status_or_verdict_refused() {
     assert!(decode_line::<LedgerRow>(&set(LEDGER, "status", json!("ghosted"))).is_err());
     assert!(decode_line::<Audit>(&set(AUDIT, "verdict", json!("maybe"))).is_err());
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn version_one_round_trips() {
     let row = decode_line::<LedgerRow>(&first(LEDGER)).unwrap();
@@ -123,6 +166,7 @@ fn version_one_round_trips() {
     assert_eq!((again.version, again.value), (SCHEMA_VERSION, row.value));
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn encode_line_writes_v1_and_never_v2() {
     let row = decode_line::<LedgerRow>(&first(LEDGER)).unwrap().value;
@@ -139,6 +183,7 @@ fn legacy(status: &str, time: Option<&str>) -> String {
     )
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn legacy_sent_row_without_time_reads_as_unknown() {
     for st in ["submitted", "interview", "rejected", "silent-closed"] {
@@ -153,6 +198,7 @@ fn legacy_sent_row_without_time_reads_as_unknown() {
     }
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn submit_time_is_known_or_unknown_or_not_sent() {
     let known =
@@ -172,6 +218,7 @@ fn submit_time_is_known_or_unknown_or_not_sent() {
     }
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn legacy_read_still_refuses_a_bad_time() {
     let err = decode_line::<LedgerRow>(&legacy("submitted", Some("\"2026-10-26T18:59:00Z\"")))
@@ -179,6 +226,7 @@ fn legacy_read_still_refuses_a_bad_time() {
     assert!(err.contains("Europe/Stockholm"), "{err}");
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn watch_status_maps_onto_ledger_status() {
     assert_eq!(Status::from_watch_status("rejected"), Ok(Status::Rejected));
@@ -191,7 +239,7 @@ fn watch_status_maps_onto_ledger_status() {
 }
 
 #[test]
-fn submit_time_link_and_domain() {
+fn submit_time_and_link_key_helpers() {
     assert_eq!(
         check_submit_time("2026-10-26T18:59:00Z").unwrap_err(),
         "submit_time \"2026-10-26T18:59:00Z\" must carry the Europe/Stockholm offset (+01:00 or +02:00)"
@@ -202,12 +250,18 @@ fn submit_time_link_and_domain() {
         link_key("https://t.example/j/application/"),
         "https://t.example/j"
     );
+}
+
+#[cfg(feature = "opportunity-finder")]
+#[test]
+fn canonical_domain_normalizes_hosts() {
     assert_eq!(
         canonical_domain(" HTTPS://x@www.Acme.Example.test:443/jobs?x=1#f "),
         "acme.example.test"
     );
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn exit_code_contract() {
     assert_eq!(audit_exit_code(GateStatus::Pass), 0);
@@ -219,22 +273,15 @@ fn exit_code_contract() {
 
 #[test]
 fn exit_constants_do_not_collide() {
-    let codes = [
-        EXIT_PASS,
-        EXIT_ERROR,
-        EXIT_USAGE,
-        EXIT_FLAG,
-        EXIT_BLOCK,
-        EXIT_UNAUDITED_OR_STALE,
-        EXIT_PULSE_REFUSED_WRITE,
-    ];
-    assert_eq!(codes, [0, 1, 2, 3, 4, 5, 7]);
+    let codes = [EXIT_PASS, EXIT_ERROR, EXIT_USAGE, EXIT_PULSE_REFUSED_WRITE];
+    assert_eq!(codes, [0, 1, 2, 7]);
     let mut uniq = codes.to_vec();
     uniq.sort_unstable();
     uniq.dedup();
     assert_eq!(uniq.len(), codes.len());
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn exit_code_reverse_map() {
     assert_eq!(audit_exit_status(0), Some(&[GateStatus::Pass][..]));
@@ -267,6 +314,7 @@ fn fixtures_exclude_personal_markers() {
     assert!(n >= 2);
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn checked_in_schema_matches_types() {
     match_schema(
@@ -292,6 +340,7 @@ fn match_schema(rel: &str, schema: schemars::schema::RootSchema) {
     assert_eq!(text(rel), generated, "{rel}");
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn version_two_fails_line_schema() {
     for (rel, schema) in [
@@ -313,6 +362,7 @@ fn schema_value(schema: schemars::schema::RootSchema) -> serde_json::Value {
     serde_json::to_value(schema).unwrap()
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn line_fields_match_body_types() {
     same_fields(
@@ -345,6 +395,7 @@ fn same_fields(body: serde_json::Value, line: serde_json::Value) {
     assert_eq!(line, body);
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn byte_order_mark_is_named() {
     let line = format!("\u{feff}{}", first(LEDGER));
@@ -352,6 +403,7 @@ fn byte_order_mark_is_named() {
     assert!(err.contains("strip the BOM"), "{err}");
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn v1_fixtures_match_checked_in_schema() {
     check_lines::<LedgerRow>(LEDGER_V1, "schemas/ledger-row.v1.json");
