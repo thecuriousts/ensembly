@@ -1,0 +1,13 @@
+# ensembly config example. Every key: docs/CONFIG.md.
+# Live file: ${XDG_CONFIG_HOME:-$HOME/.config}/ensembly/config.toml
+# Write it with `ensembly init`. Local only: no telemetry, no network.
+schema = 1
+
+[paths]
+# Kernel data: ops SQLite and episodic memory.
+# `init` writes the absolute path of ${XDG_DATA_HOME:-$HOME/.local/share}/ensembly here.
+# data_dir = "/path/to/xdg-data/ensembly"
+
+[packs]
+# Optional job-search pack. Off unless you turn it on.
+opportunity_finder = false
