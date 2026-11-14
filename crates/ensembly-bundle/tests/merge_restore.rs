@@ -21,7 +21,8 @@ fn jsonl_merge_keeps_both_ids_and_sidecars_conflict() {
 "#,
     )
     .unwrap();
-    let sidecars = restore_file_with_merge(&src, &dest, true).unwrap();
+    let base = dir.path();
+    let sidecars = restore_file_with_merge(&src, &dest, true, base).unwrap();
     let body = fs::read_to_string(&dest).unwrap();
     assert!(body.contains("\"id\":\"a\""));
     assert!(body.contains("\"id\":\"b\",\"v\":1"));
@@ -39,7 +40,8 @@ fn merge_keeps_existing_file_when_content_differs() {
     fs::write(&dest, b"original").unwrap();
     let src = dir.path().join("new.txt");
     fs::write(&src, b"incoming").unwrap();
-    let sidecars = restore_file_with_merge(&src, &dest, true).unwrap();
+    let base = dir.path();
+    let sidecars = restore_file_with_merge(&src, &dest, true, base).unwrap();
     assert_eq!(fs::read(&dest).unwrap(), b"original");
     assert_eq!(sidecars.len(), 1);
     assert_eq!(fs::read(&sidecars[0]).unwrap(), b"incoming");

@@ -57,12 +57,18 @@ pub fn plan_restore(bundle_root: &Path, opts: &RestoreOpts) -> Result<RestorePla
             continue;
         }
         let src = bundle_file_path(bundle_root, &entry.path)?;
+        let prefix = format!("{}/{}", entry.section, entry.source);
         let under_source = entry
             .path
-            .strip_prefix(&format!("{}/{}", entry.section, entry.source))
+            .strip_prefix(&prefix)
             .map(|s| s.trim_start_matches('/'))
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| entry.path.rsplit('/').next().unwrap_or("file"));
+            .ok_or_else(|| {
+                format!(
+                    "manifest path {:?} does not extend section/source prefix {prefix}/",
+                    entry.path
+                )
+            })?;
         let dest = restore_dest_path(base, &entry.section, &entry.source, under_source)?;
         refuse_symlink_in_target(base, &dest)?;
         plan.copies.push((src, dest));
@@ -81,7 +87,7 @@ pub fn restore_bundle(bundle_root: &Path, opts: &RestoreOpts) -> Result<RestoreP
     let mut sidecars = Vec::new();
     for (src, dest) in &plan.copies {
         refuse_symlink_in_target(base, dest)?;
-        let sc = restore_file_with_merge(src, dest, opts.merge)?;
+        let sc = restore_file_with_merge(src, dest, opts.merge, base)?;
         sidecars.extend(sc);
     }
     Ok(RestorePlan {

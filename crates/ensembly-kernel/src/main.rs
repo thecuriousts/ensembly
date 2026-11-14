@@ -9,9 +9,10 @@ use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ensembly_bundle::{
-    export_bundle, import_bundle, load_backup_sources, merge_json_objects, merge_jsonl_records,
-    merge_ops_preserve_existing, restore_bundle, verify_bundle, ConfigSourcesError,
-    EnsemblyStorePaths, ExportOpts, ImportOpts, OpsBundleMerge, RestoreOpts,
+    export_bundle, import_bundle, load_backup_sources, manifest_file_path, merge_json_objects,
+    merge_jsonl_records, merge_ops_preserve_existing, restore_bundle, verify_bundle,
+    BundleManifest, ConfigSourcesError, EnsemblyStorePaths, ExportOpts, ImportOpts, OpsBundleMerge,
+    RestoreOpts, MANIFEST_LEDGER_PATH, MANIFEST_MEMORY_PATH, MANIFEST_OPS_PATH,
 };
 use ensembly_kernel::approvals::{list_pending, Snapshot};
 use ensembly_kernel::backup::{
@@ -1789,8 +1790,25 @@ fn write_ops_conflicts_sidecar(ops_db: &Path, conflicts: &[ensembly_bundle::KvRo
     Ok(())
 }
 
-fn restore_ops_from_bundle(bundle: &Path, ops_db: &Path, merge: bool, dry_run: bool) -> Result<()> {
-    let ops_json = bundle.join("ensembly/ops/ops-bundle.json");
+fn portable_verify_or_exit(bundle: &Path) {
+    let report = verify_bundle(bundle);
+    if !report.ok {
+        for e in &report.errors {
+            eprintln!("PORTABLE_VERIFY_FAIL: {e}");
+        }
+        std::process::exit(1);
+    }
+}
+
+fn restore_ops_from_bundle(
+    bundle: &Path,
+    manifest: &BundleManifest,
+    ops_db: &Path,
+    merge: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let ops_json =
+        manifest_file_path(bundle, manifest, MANIFEST_OPS_PATH).map_err(|e| anyhow::anyhow!(e))?;
     let incoming = OpsStore::read_bundle_file(&ops_json)?;
     if dry_run {
         return Ok(());
@@ -1812,11 +1830,15 @@ fn restore_ops_from_bundle(bundle: &Path, ops_db: &Path, merge: bool, dry_run: b
 
 fn restore_memory_from_bundle(
     bundle: &Path,
+    manifest: &BundleManifest,
     mem_path: &Path,
     merge: bool,
     dry_run: bool,
 ) -> Result<()> {
-    let src = bundle.join("ensembly/memory/ensembly-memory.json");
+    let src = match manifest_file_path(bundle, manifest, MANIFEST_MEMORY_PATH) {
+        Ok(p) => p,
+        Err(_) => return Ok(()),
+    };
     if !src.is_file() {
         return Ok(());
     }
@@ -1839,11 +1861,15 @@ fn restore_memory_from_bundle(
 
 fn restore_ledger_from_bundle(
     bundle: &Path,
+    manifest: &BundleManifest,
     ledger_path: &Path,
     merge: bool,
     dry_run: bool,
 ) -> Result<()> {
-    let src = bundle.join("ensembly/ledger/ledger.jsonl");
+    let src = match manifest_file_path(bundle, manifest, MANIFEST_LEDGER_PATH) {
+        Ok(p) => p,
+        Err(_) => return Ok(()),
+    };
     if !src.is_file() {
         return Ok(());
     }
@@ -1878,21 +1904,25 @@ fn cmd_portable_import(
     dry_run: bool,
     merge: bool,
 ) -> Result<()> {
-    import_bundle(bundle, &ImportOpts { merge, dry_run }).map_err(|e| anyhow::anyhow!(e))?;
+    portable_verify_or_exit(bundle);
+    let manifest = BundleManifest::read(bundle).map_err(|e| anyhow::anyhow!(e))?;
+    if !dry_run {
+        import_bundle(bundle, &ImportOpts { merge, dry_run }).map_err(|e| anyhow::anyhow!(e))?;
+    }
     if let Some(dir) = into {
         let (ops, mem) = resolve_into_data_dir(Some(dir), None, None);
         if let Some(ops) = ops {
-            restore_ops_from_bundle(bundle, &ops, merge, dry_run)?;
+            restore_ops_from_bundle(bundle, &manifest, &ops, merge, dry_run)?;
         }
         if let Some(mem) = mem {
-            restore_memory_from_bundle(bundle, &mem, merge, dry_run)?;
+            restore_memory_from_bundle(bundle, &manifest, &mem, merge, dry_run)?;
         }
         let ledger = ctx
             .db_path
             .parent()
             .map(|p| p.join("applications/ledger.jsonl"));
         if let Some(led) = ledger {
-            restore_ledger_from_bundle(bundle, &led, merge, dry_run)?;
+            restore_ledger_from_bundle(bundle, &manifest, &led, merge, dry_run)?;
         }
     }
     println!(
@@ -1914,14 +1944,16 @@ fn cmd_portable_restore(
     merge: bool,
 ) -> Result<()> {
     let (into_ops, into_memory) = resolve_into_data_dir(into, into_ops, into_memory);
+    portable_verify_or_exit(bundle);
+    let manifest = BundleManifest::read(bundle).map_err(|e| anyhow::anyhow!(e))?;
     if into_ops.is_none() && into_memory.is_none() && sources_to.is_none() {
         bail!("restore needs --into, --into-ops, --into-memory, or --sources-to");
     }
     if let Some(ref ops) = into_ops {
-        restore_ops_from_bundle(bundle, ops, merge, dry_run)?;
+        restore_ops_from_bundle(bundle, &manifest, ops, merge, dry_run)?;
     }
     if let Some(ref mem) = into_memory {
-        restore_memory_from_bundle(bundle, mem, merge, dry_run)?;
+        restore_memory_from_bundle(bundle, &manifest, mem, merge, dry_run)?;
     }
     let mut copies = 0usize;
     if let Some(base) = sources_to {

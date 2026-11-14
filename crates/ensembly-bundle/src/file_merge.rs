@@ -5,6 +5,9 @@ use std::path::{Path, PathBuf};
 use chrono::Utc;
 use serde_json::Value;
 
+use crate::path_safety::refuse_symlink_in_target;
+use crate::safe_io::copy_nofollow;
+
 fn ts_suffix() -> String {
     Utc::now().format("%Y%m%dT%H%M%SZ").to_string()
 }
@@ -149,12 +152,14 @@ pub fn restore_file_with_merge(
     src: &Path,
     dest: &Path,
     merge: bool,
+    sources_base: &Path,
 ) -> Result<Vec<PathBuf>, String> {
     if let Some(parent) = dest.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
+    refuse_symlink_in_target(sources_base, dest)?;
     if !dest.exists() {
-        fs::copy(src, dest).map_err(|e| e.to_string())?;
+        copy_nofollow(src, dest)?;
         return Ok(vec![]);
     }
     if !merge {

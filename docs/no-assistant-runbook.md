@@ -28,7 +28,7 @@ Views are derived from `life_state` in the ops JSON. **Restore never applies vie
 ensembly verify /tmp/bundle-fixture
 ```
 
-Exit 0, or exit 1 with checksum/parse errors.
+Exit 0 when every manifest file is present with a matching checksum, **no extra files** on disk (except `MANIFEST.json`), and jsonl/ics parse rules pass. Exit 1 on any failure.
 
 ## Import / restore
 
@@ -43,7 +43,9 @@ ensembly restore /tmp/bundle-fixture --sources-to /tmp/restored-sources
 | `--into DIR` | Ops sqlite + memory JSON under standard filenames in `DIR` |
 | `--sources-to DIR` | Config sources under `DIR/<section>/<name>/…` |
 | `--merge` | Union ops kv and ledger lines; refuse overwrite without it |
-| `--dry-run` | Verify + plan only |
+| `--dry-run` | **Verify** + plan only (no writes) |
+
+`import` and `restore` (including `--into` for ops/memory) **always run verify first** and exit non-zero before touching targets when the bundle fails verification.
 
 Refuses non-empty export dir unless `--force-new-subdir`. Skips oversize files (`--max-file-mb`, default 200) and secret-pattern hits (stderr + MANIFEST).
 

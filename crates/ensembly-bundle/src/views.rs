@@ -49,10 +49,16 @@ fn is_chore(kind: Option<&str>) -> bool {
 }
 
 fn csv_escape(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
-        format!("\"{}\"", s.replace('"', "\"\""))
+    let mut cell = s.to_string();
+    if let Some(c) = cell.chars().next() {
+        if matches!(c, '=' | '+' | '-' | '@' | '\t' | '\r') {
+            cell = format!("'{cell}");
+        }
+    }
+    if cell.contains(',') || cell.contains('"') || cell.contains('\n') {
+        format!("\"{}\"", cell.replace('"', "\"\""))
     } else {
-        s.to_string()
+        cell
     }
 }
 
@@ -77,6 +83,40 @@ fn fmt_ics_utc(dt: DateTime<Utc>) -> String {
     dt.format("%Y%m%dT%H%M%SZ").to_string()
 }
 
+fn ics_escape_text(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+        .replace('\r', "")
+        .replace('\n', "\\n")
+}
+
+fn fold_ics_property(name: &str, value: &str) -> String {
+    let unfolded = format!("{name}:{value}");
+    let bytes = unfolded.as_bytes();
+    if bytes.len() <= 75 {
+        return format!("{unfolded}\r\n");
+    }
+    let mut out = String::new();
+    let mut start = 0usize;
+    while start < bytes.len() {
+        let mut end = (start + 75).min(bytes.len());
+        while end > start && !unfolded.is_char_boundary(end) {
+            end -= 1;
+        }
+        if start == 0 {
+            out.push_str(&unfolded[start..end]);
+            out.push_str("\r\n");
+        } else {
+            out.push(' ');
+            out.push_str(&unfolded[start..end]);
+            out.push_str("\r\n");
+        }
+        start = end;
+    }
+    out
+}
+
 fn build_ics(chores: &[&TaskNodeJson], stamp: DateTime<Utc>) -> Vec<u8> {
     let stamp = fmt_ics_utc(stamp);
     let mut out = String::from(
@@ -87,10 +127,15 @@ fn build_ics(chores: &[&TaskNodeJson], stamp: DateTime<Utc>) -> Vec<u8> {
             continue;
         };
         out.push_str("BEGIN:VEVENT\r\n");
-        out.push_str(&format!("UID:{}@ensembly-bundle\r\n", n.id));
-        out.push_str(&format!("DTSTAMP:{stamp}\r\n"));
-        out.push_str(&format!("DTSTART:{}\r\n", fmt_ics_utc(dl)));
-        out.push_str(&format!("SUMMARY:{}\r\n", n.title.replace('\n', " ")));
+        out.push_str(&fold_ics_property(
+            "UID",
+            &format!("{}@ensembly-bundle", n.id),
+        ));
+        out.push_str(&fold_ics_property("DTSTAMP", &stamp));
+        out.push_str(&fold_ics_property("DTSTART", &fmt_ics_utc(dl)));
+        let summary = ics_escape_text(&n.title);
+        out.push_str(&fold_ics_property("SUMMARY", &summary));
+        out.push_str(&fold_ics_property("DESCRIPTION", &summary));
         out.push_str("END:VEVENT\r\n");
     }
     out.push_str("END:VCALENDAR\r\n");
@@ -134,6 +179,39 @@ pub fn derive_views_from_ops_bundle(
 mod tests {
     use super::*;
     use chrono::TimeZone;
+
+    #[test]
+    fn csv_formula_prefix() {
+        let n = TaskNodeJson {
+            id: "x".into(),
+            title: "=1+1".into(),
+            status: "open".into(),
+            kind: None,
+            deadline_at: None,
+        };
+        let csv = build_csv(&[&n]);
+        let s = std::str::from_utf8(&csv).unwrap();
+        assert!(s.contains("'=1+1"));
+    }
+
+    #[test]
+    fn ics_escapes_and_folds() {
+        let dl = Utc.with_ymd_and_hms(2026, 6, 15, 12, 0, 0).unwrap();
+        let long = "a".repeat(80);
+        let n = TaskNodeJson {
+            id: "c1".into(),
+            title: format!("sum; comma, and\\slash {long}"),
+            status: "open".into(),
+            kind: Some("chore".into()),
+            deadline_at: Some(dl),
+        };
+        let ics = build_ics(&[&n], Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap());
+        let s = std::str::from_utf8(&ics).unwrap();
+        assert!(s.contains("\\;"));
+        assert!(s.contains("\\,"));
+        assert!(s.contains("\\\\"));
+        assert!(s.contains("\r\n "));
+    }
 
     #[test]
     fn csv_and_ics_well_formed() {

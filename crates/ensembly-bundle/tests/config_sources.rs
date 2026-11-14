@@ -28,6 +28,10 @@ kind = "dir"
     let msg = err.to_string();
     assert!(msg.contains("duplicate"), "{msg}");
     assert!(msg.contains("vault"));
+    assert!(
+        msg.contains(":9:"),
+        "second duplicate must cite its line: {msg}"
+    );
 }
 
 #[test]

@@ -172,7 +172,7 @@ fn copy_or_hash_file(
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     fs::copy(src, &dest).map_err(|e| e.to_string())?;
-    let h = hash_file(src).map_err(|e| e.to_string())?;
+    let h = hash_file(&dest).map_err(|e| e.to_string())?;
     files.push(FileEntry {
         path: rel_bundle_path(section, source, rel),
         sha256: h.sha256,
@@ -236,7 +236,12 @@ fn export_user_source(
                 ));
             }
             let base = src.path.canonicalize().map_err(|e| e.to_string())?;
-            for entry in WalkDir::new(&base).into_iter().filter_map(|e| e.ok()) {
+            for entry in WalkDir::new(&base).follow_links(false).into_iter() {
+                let entry = entry.map_err(|e| e.to_string())?;
+                if entry.file_type().is_symlink() {
+                    eprintln!("warn: skip symlink in export {}", entry.path().display());
+                    continue;
+                }
                 if !entry.file_type().is_file() {
                     continue;
                 }

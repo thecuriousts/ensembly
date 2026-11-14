@@ -1,5 +1,8 @@
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+
+use walkdir::WalkDir;
 
 use crate::hash::hash_file;
 use crate::manifest::BundleManifest;
@@ -76,7 +79,38 @@ pub fn verify_bundle(bundle_root: &Path) -> VerifyReport {
             }
         }
     }
+    verify_no_extra_files(bundle_root, &manifest, &mut report);
     report
+}
+
+fn verify_no_extra_files(bundle_root: &Path, manifest: &BundleManifest, report: &mut VerifyReport) {
+    let mut allowed: HashSet<String> = manifest.files.iter().map(|f| f.path.clone()).collect();
+    allowed.insert("MANIFEST.json".to_string());
+    let walker = WalkDir::new(bundle_root).follow_links(false);
+    for entry in walker.into_iter() {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                report.ok = false;
+                report.errors.push(format!("walk bundle tree: {e}"));
+                return;
+            }
+        };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let rel = entry
+            .path()
+            .strip_prefix(bundle_root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        if !allowed.contains(&rel) {
+            report.ok = false;
+            report
+                .errors
+                .push(format!("extra file not in manifest: {rel}"));
+        }
+    }
 }
 
 fn verify_jsonl(path: &Path) -> Result<(), String> {

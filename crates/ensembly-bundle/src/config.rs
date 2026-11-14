@@ -92,6 +92,48 @@ fn expand_path(raw: &str) -> Result<PathBuf, String> {
     Ok(PathBuf::from(s))
 }
 
+fn parse_name_line(line: &str) -> Option<String> {
+    let t = line.trim();
+    if !t.starts_with("name") {
+        return None;
+    }
+    let (_, rhs) = t.split_once('=')?;
+    let rhs = rhs.trim().trim_matches('"').trim_matches('\'');
+    if rhs.is_empty() {
+        None
+    } else {
+        Some(rhs.to_string())
+    }
+}
+
+/// One `(line, name)` per `[[backup.sources]]` table in file order.
+pub fn backup_source_name_lines(text: &str) -> Vec<(usize, String)> {
+    let mut out = Vec::new();
+    let mut pending: Option<(usize, String)> = None;
+    for (i, line) in text.lines().enumerate() {
+        let t = line.trim();
+        if t == "[[backup.sources]]" {
+            if let Some(pair) = pending.take() {
+                out.push(pair);
+            }
+            continue;
+        }
+        if t.starts_with("[[") {
+            if let Some(pair) = pending.take() {
+                out.push(pair);
+            }
+            continue;
+        }
+        if let Some(name) = parse_name_line(t) {
+            pending = Some((i + 1, name));
+        }
+    }
+    if let Some(pair) = pending {
+        out.push(pair);
+    }
+    out
+}
+
 /// Load `[[backup.sources]]` from operator config. Missing file → empty list.
 pub fn load_backup_sources(config_path: &Path) -> Result<Vec<BackupSource>, ConfigSourcesError> {
     if !config_path.is_file() {
@@ -115,10 +157,11 @@ pub fn load_backup_sources(config_path: &Path) -> Result<Vec<BackupSource>, Conf
     let Some(raw) = cfg.backup.and_then(|b| b.sources) else {
         return Ok(vec![]);
     };
+    let name_lines = backup_source_name_lines(&text);
     let mut out = Vec::new();
     let mut seen: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
     for (idx, entry) in raw.into_iter().enumerate() {
-        let line = find_source_line(&text, &entry.name).unwrap_or(idx + 1);
+        let line = name_lines.get(idx).map(|(ln, _)| *ln).unwrap_or(idx + 1);
         let section = normalize_section(entry.section.as_deref()).map_err(|detail| {
             ConfigSourcesError::Source {
                 path: config_path.to_path_buf(),
@@ -163,15 +206,4 @@ pub fn load_backup_sources(config_path: &Path) -> Result<Vec<BackupSource>, Conf
         });
     }
     Ok(out)
-}
-
-fn find_source_line(text: &str, name: &str) -> Option<usize> {
-    let needle = format!("name = \"{name}\"");
-    let needle2 = format!("name=\"{name}\"");
-    for (i, line) in text.lines().enumerate() {
-        if line.contains(&needle) || line.contains(&needle2) {
-            return Some(i + 1);
-        }
-    }
-    None
 }

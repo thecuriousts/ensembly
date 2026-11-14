@@ -1,5 +1,7 @@
 //! Portable plain-text bundles: export, verify, import, restore.
 
+use std::path::{Path, PathBuf};
+
 mod config;
 mod export;
 mod file_merge;
@@ -8,6 +10,7 @@ mod import;
 mod manifest;
 mod merge;
 mod path_safety;
+mod safe_io;
 mod scan;
 mod section;
 mod verify;
@@ -33,3 +36,30 @@ pub use verify::{verify_bundle, VerifyReport};
 pub use views::{derive_views_from_ops_bundle, DerivedViews};
 
 pub const DEFAULT_MAX_FILE_MB: u64 = 200;
+
+pub const MANIFEST_OPS_PATH: &str = "ensembly/ops/ops-bundle.json";
+pub const MANIFEST_MEMORY_PATH: &str = "ensembly/memory/ensembly-memory.json";
+pub const MANIFEST_LEDGER_PATH: &str = "ensembly/ledger/ledger.jsonl";
+
+pub fn load_verified_manifest(bundle_root: &Path) -> Result<BundleManifest, String> {
+    let report = verify_bundle(bundle_root);
+    if !report.ok {
+        return Err(report.errors.join("; "));
+    }
+    BundleManifest::read(bundle_root)
+}
+
+pub fn manifest_file_path(
+    bundle_root: &Path,
+    manifest: &BundleManifest,
+    rel: &str,
+) -> Result<PathBuf, String> {
+    if !manifest
+        .files
+        .iter()
+        .any(|f| f.path == rel && f.excluded != Some(true))
+    {
+        return Err(format!("bundle manifest has no active file {rel:?}"));
+    }
+    bundle_file_path(bundle_root, rel)
+}

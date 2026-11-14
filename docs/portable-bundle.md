@@ -52,9 +52,9 @@ exclude = ["*.pem"]
 |---------|------|
 | `ensembly export --out DIR` | Write bundle; refuses non-empty `DIR` unless `--force-new-subdir` |
 | `ensembly backup [--out DIR]` | Timestamped dir under `data_dir/backups` or `--out` |
-| `ensembly verify BUNDLE` | Checksums + jsonl/ics parse |
-| `ensembly import BUNDLE [--dry-run]` | Verify-first ack |
-| `ensembly restore BUNDLE --sources-to DIR` | Restore config sources under `DIR/<section>/<name>/…` |
+| `ensembly verify BUNDLE` | Manifest paths, checksums, parse rules, **no missing/extra files** |
+| `ensembly import BUNDLE [--dry-run]` | Always **verify-first** (exit 1 on failure) |
+| `ensembly restore BUNDLE --sources-to DIR` | **Verify-first**, then restore sources under `DIR/<section>/<name>/…` |
 
 Never restores config sources to their original paths without an explicit destination.
 
@@ -63,6 +63,6 @@ Never restores config sources to their original paths without an explicit destin
 ```mermaid
 flowchart LR
   export[export / data-backup] --> manifest[MANIFEST.json]
-  manifest --> verify[verify]
-  verify --> restore[restore --sources-to]
+  manifest -->   verify[verify: checksums + no extra files]
+  verify --> restore[restore: verify again + apply]
 ```
