@@ -59,13 +59,7 @@ pub fn plan_restore(bundle_root: &Path, opts: &RestoreOpts) -> Result<RestorePla
             .strip_prefix(&format!("{}/{}", entry.section, entry.source))
             .map(|s| s.trim_start_matches('/'))
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| {
-                entry
-                    .path
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or("file")
-            });
+            .unwrap_or_else(|| entry.path.rsplit('/').next().unwrap_or("file"));
         if let Some(base) = &opts.sources_to {
             let dest = base
                 .join(entry.section.as_str())

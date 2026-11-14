@@ -40,10 +40,7 @@ pub struct BackupSource {
 #[derive(Debug, Error)]
 pub enum ConfigSourcesError {
     #[error("config: cannot read {}: {message}", path.display())]
-    Io {
-        path: PathBuf,
-        message: String,
-    },
+    Io { path: PathBuf, message: String },
     #[error("config: {}:{line}: invalid TOML: {detail}", path.display())]
     Parse {
         path: PathBuf,
@@ -115,7 +112,7 @@ pub fn load_backup_sources(config_path: &Path) -> Result<Vec<BackupSource>, Conf
             });
         }
     };
-  let Some(raw) = cfg.backup.and_then(|b| b.sources) else {
+    let Some(raw) = cfg.backup.and_then(|b| b.sources) else {
         return Ok(vec![]);
     };
     let mut out = Vec::new();

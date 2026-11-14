@@ -8,6 +8,11 @@ mod opportunity_cli;
 use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
+use ensembly_bundle::{
+    export_bundle, import_bundle, load_backup_sources, merge_jsonl_text, merge_ops_bundles,
+    restore_bundle, verify_bundle, ConfigSourcesError, EnsemblyStorePaths, ExportOpts, ImportOpts,
+    OpsBundleMerge, RestoreOpts,
+};
 use ensembly_kernel::approvals::{list_pending, Snapshot};
 use ensembly_kernel::backup::{
     create_backup_pack, read_backup_pack, restore_apply, restore_dry_run, write_backup_pack,
@@ -30,17 +35,12 @@ use ensembly_kernel::pulse_pack::{
 };
 use ensembly_kernel::pulse_supersede as ps;
 use ensembly_kernel::runtime::Runtime;
+use ensembly_kernel::store::OpsBundle;
 use ensembly_kernel::store::OpsStore;
 use ensembly_kernel::turn::{
     actions_from_fixture_path, build_channel_ir, context_at, rank_now, Action,
 };
 use ensembly_kernel::{kernel_version, private_path_patterns};
-use ensembly_bundle::{
-    export_bundle, import_bundle, load_backup_sources, merge_jsonl_text, merge_ops_bundles,
-    restore_bundle, verify_bundle, ConfigSourcesError, EnsemblyStorePaths, ExportOpts, ImportOpts,
-    OpsBundleMerge, RestoreOpts,
-};
-use ensembly_kernel::store::OpsBundle;
 use ensembly_paths::DEFAULT_OPS_PATH;
 use ensembly_paths::{config_file_path, load_paths_data_dir, ConfigError};
 use ensembly_schema::{commit_json, feed_json, recover_json, snapshot_json, CommitFault};
@@ -316,9 +316,7 @@ enum Commands {
         max_file_mb: u64,
     },
     /// Verify MANIFEST checksums and plain-text parse rules for a portable bundle
-    Verify {
-        bundle: PathBuf,
-    },
+    Verify { bundle: PathBuf },
     /// Verify then acknowledge a portable bundle (no default writes to live stores)
     Import {
         bundle: PathBuf,
@@ -1177,7 +1175,7 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
             force_new_subdir,
             max_file_mb,
         } => {
-            let target = out.unwrap_or_else(|| default_portable_backup_out());
+            let target = out.unwrap_or_else(default_portable_backup_out);
             cmd_portable_export(ctx, &target, force_new_subdir, max_file_mb, true)
         }
         Commands::Verify { bundle } => cmd_portable_verify(&bundle),
@@ -1682,23 +1680,16 @@ fn default_ledger_path(_ctx: &Ctx) -> Option<PathBuf> {
 
 fn cmd_portable_export(
     ctx: &Ctx,
-    out: &PathBuf,
+    out: &Path,
     force_new_subdir: bool,
     max_file_mb: u64,
     timestamp_subdir: bool,
 ) -> Result<()> {
     let ops_tmp = portable_ops_temp(ctx)?;
-    let out = if timestamp_subdir {
-        out.to_path_buf()
-    } else {
-        out.clone()
-    };
-    let out = if timestamp_subdir {
-        let stamped = out.join(Utc::now().format("%Y%m%dT%H%M%SZ").to_string());
-        stamped
-    } else {
-        out
-    };
+    let mut out = out.to_path_buf();
+    if timestamp_subdir {
+        out = out.join(Utc::now().format("%Y%m%dT%H%M%SZ").to_string());
+    }
     let sources = load_portable_sources();
     let mem = ctx.resolve_memory_path();
     let report = export_bundle(ExportOpts {
@@ -1726,7 +1717,7 @@ fn cmd_portable_export(
     Ok(())
 }
 
-fn cmd_portable_verify(bundle: &PathBuf) -> Result<()> {
+fn cmd_portable_verify(bundle: &Path) -> Result<()> {
     let report = verify_bundle(bundle);
     if report.ok {
         println!("PORTABLE_VERIFY_OK bundle={}", bundle.display());
@@ -1757,10 +1748,7 @@ fn resolve_into_data_dir(
                 .and_then(|s| s.to_str())
                 .unwrap_or("ensembly-memory.json"),
         );
-        return (
-            into_ops.or(Some(ops)),
-            into_memory.or(Some(mem)),
-        );
+        return (into_ops.or(Some(ops)), into_memory.or(Some(mem)));
     }
     (into_ops, into_memory)
 }
@@ -1772,12 +1760,7 @@ fn merge_bundle_structs(a: &OpsBundle, b: &OpsBundle) -> Result<OpsBundle> {
     Ok(serde_json::from_value(serde_json::to_value(merged)?)?)
 }
 
-fn restore_ops_from_bundle(
-    bundle: &Path,
-    ops_db: &Path,
-    merge: bool,
-    dry_run: bool,
-) -> Result<()> {
+fn restore_ops_from_bundle(bundle: &Path, ops_db: &Path, merge: bool, dry_run: bool) -> Result<()> {
     let ops_json = bundle.join("ensembly/ops/ops-bundle.json");
     let incoming = OpsStore::read_bundle_file(&ops_json)?;
     if dry_run {
@@ -1852,19 +1835,12 @@ fn restore_ledger_from_bundle(
 
 fn cmd_portable_import(
     ctx: &Ctx,
-    bundle: &PathBuf,
+    bundle: &Path,
     into: Option<PathBuf>,
     dry_run: bool,
     merge: bool,
 ) -> Result<()> {
-    import_bundle(
-        bundle,
-        &ImportOpts {
-            merge,
-            dry_run,
-        },
-    )
-    .map_err(|e| anyhow::anyhow!(e))?;
+    import_bundle(bundle, &ImportOpts { merge, dry_run }).map_err(|e| anyhow::anyhow!(e))?;
     if let Some(dir) = into {
         let (ops, mem) = resolve_into_data_dir(Some(dir), None, None);
         if let Some(ops) = ops {
@@ -1888,9 +1864,10 @@ fn cmd_portable_import(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_portable_restore(
     _ctx: &Ctx,
-    bundle: &PathBuf,
+    bundle: &Path,
     into: Option<PathBuf>,
     into_ops: Option<PathBuf>,
     into_memory: Option<PathBuf>,

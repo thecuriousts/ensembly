@@ -60,10 +60,7 @@ fn build_csv(rows: &[&TaskNodeJson]) -> Vec<u8> {
     let mut out = String::from("id,title,status,kind,deadline_at\n");
     for n in rows {
         let kind = n.kind.as_deref().unwrap_or("");
-        let deadline = n
-            .deadline_at
-            .map(|d| d.to_rfc3339())
-            .unwrap_or_default();
+        let deadline = n.deadline_at.map(|d| d.to_rfc3339()).unwrap_or_default();
         out.push_str(&format!(
             "{},{},{},{},{}\n",
             csv_escape(&n.id),
@@ -82,7 +79,9 @@ fn fmt_ics_utc(dt: DateTime<Utc>) -> String {
 
 fn build_ics(chores: &[&TaskNodeJson], stamp: DateTime<Utc>) -> Vec<u8> {
     let stamp = fmt_ics_utc(stamp);
-    let mut out = String::from("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ensembly//portable-bundle//EN\r\n");
+    let mut out = String::from(
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//ensembly//portable-bundle//EN\r\n",
+    );
     for n in chores {
         let Some(dl) = n.deadline_at else {
             continue;
@@ -155,8 +154,9 @@ mod tests {
             }]
         });
         let raw = serde_json::to_vec(&ops).unwrap();
-        let v = derive_views_from_ops_bundle(&raw, Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap())
-            .unwrap();
+        let v =
+            derive_views_from_ops_bundle(&raw, Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap())
+                .unwrap();
         let todos = std::str::from_utf8(&v.todos_csv).unwrap();
         assert!(todos.contains("t1,Inbox"));
         let chores = std::str::from_utf8(&v.chores_csv).unwrap();

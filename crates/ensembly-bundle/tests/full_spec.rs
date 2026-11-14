@@ -1,7 +1,7 @@
 use chrono::{TimeZone, Utc};
 use ensembly_bundle::{
-    export_bundle, merge_ops_bundles, restore_bundle, verify_bundle, BackupSource, BackupSourceKind,
-    BundleManifest, EnsemblyStorePaths, ExportOpts, KvRow, OpsBundleMerge,
+    export_bundle, merge_ops_bundles, restore_bundle, verify_bundle, BackupSource,
+    BackupSourceKind, BundleManifest, EnsemblyStorePaths, ExportOpts, KvRow, OpsBundleMerge,
     RestoreOpts, DEFAULT_MAX_FILE_MB,
 };
 use sha2::{Digest, Sha256};
@@ -167,7 +167,11 @@ fn derived_views_present_and_valid() {
 #[test]
 fn secret_fixture_excluded() {
     let dir = tempdir().unwrap();
-    let root = export_fixture(dir.path(), Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(), "bundle-secret");
+    let root = export_fixture(
+        dir.path(),
+        Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
+        "bundle-secret",
+    );
     assert!(!root.join("shared/vault/leak.pem").exists());
     let m = BundleManifest::read(&root).unwrap();
     assert!(m

@@ -87,13 +87,19 @@ mod tests {
             format: "f".into(),
             schema_version: 1,
             exported_at: "t".into(),
-            kv: vec![row("alpha", "2026-01-01T00:00:00Z"), row("beta", "2026-01-01T00:00:00Z")],
+            kv: vec![
+                row("alpha", "2026-01-01T00:00:00Z"),
+                row("beta", "2026-01-01T00:00:00Z"),
+            ],
         };
         let b = OpsBundleMerge {
             format: "f".into(),
             schema_version: 1,
             exported_at: "t2".into(),
-            kv: vec![row("beta", "2026-02-01T00:00:00Z"), row("gamma", "2026-02-01T00:00:00Z")],
+            kv: vec![
+                row("beta", "2026-02-01T00:00:00Z"),
+                row("gamma", "2026-02-01T00:00:00Z"),
+            ],
         };
         let m = merge_ops_bundles(&a, &b);
         let keys: Vec<_> = m.kv.iter().map(|r| r.key.as_str()).collect();

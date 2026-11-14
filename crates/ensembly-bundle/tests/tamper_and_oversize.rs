@@ -48,6 +48,7 @@ fn oversize_file_skipped_in_manifest() {
     let mut f = OpenOptions::new()
         .create(true)
         .write(true)
+        .truncate(true)
         .open(&big)
         .unwrap();
     let chunk = vec![0u8; 1024 * 1024];

@@ -8,12 +8,12 @@ use crate::config::BackupSource;
 use crate::config::BackupSourceKind;
 use crate::hash::{hash_bytes, hash_file};
 use crate::manifest::{BundleManifest, FileEntry, SourceRef, BUNDLE_FORMAT};
-use crate::scan::{default_excluded, scan_secrets, file_matches_glob};
+use crate::scan::{default_excluded, file_matches_glob, scan_secrets};
 use crate::section::RESERVED_SECTION_ENSEMBLY;
 use crate::views::derive_views_from_ops_bundle;
 use crate::DEFAULT_MAX_FILE_MB;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct EnsemblyStorePaths {
     pub ops_json: Option<PathBuf>,
     pub memory_json: Option<PathBuf>,
@@ -117,6 +117,7 @@ fn jsonl_rows_if_needed(name: &str, content: &[u8]) -> Option<u64> {
     Some(s.lines().filter(|l| !l.trim().is_empty()).count() as u64)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn copy_or_hash_file(
     bundle_root: &Path,
     src: &Path,
@@ -204,9 +205,17 @@ fn export_user_source(
     match src.kind {
         BackupSourceKind::File => {
             if !src.path.is_file() {
-                return Err(format!("source {}: missing file {}", src.name, src.path.display()));
+                return Err(format!(
+                    "source {}: missing file {}",
+                    src.name,
+                    src.path.display()
+                ));
             }
-            let rel = src.path.file_name().and_then(|n| n.to_str()).unwrap_or("data");
+            let rel = src
+                .path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("data");
             copy_or_hash_file(
                 bundle_root,
                 &src.path,
@@ -220,7 +229,11 @@ fn export_user_source(
         }
         BackupSourceKind::Dir => {
             if !src.path.is_dir() {
-                return Err(format!("source {}: missing dir {}", src.name, src.path.display()));
+                return Err(format!(
+                    "source {}: missing dir {}",
+                    src.name,
+                    src.path.display()
+                ));
             }
             let base = src.path.canonicalize().map_err(|e| e.to_string())?;
             for entry in WalkDir::new(&base).into_iter().filter_map(|e| e.ok()) {
@@ -299,8 +312,8 @@ pub fn export_bundle(opts: ExportOpts) -> Result<ExportReport, String> {
             false,
             &mut files,
         )?;
-        let views =
-            derive_views_from_ops_bundle(&raw, opts.created_at).unwrap_or_else(|_| empty_derived_views());
+        let views = derive_views_from_ops_bundle(&raw, opts.created_at)
+            .unwrap_or_else(|_| empty_derived_views());
         sources.push(SourceRef {
             name: "views".into(),
             section: section.into(),
@@ -311,15 +324,7 @@ pub fn export_bundle(opts: ExportOpts) -> Result<ExportReport, String> {
             ("chores.csv", views.chores_csv.as_slice()),
             ("deadlines.ics", views.deadlines_ics.as_slice()),
         ] {
-            add_plain_file(
-                &bundle_root,
-                section,
-                "views",
-                rel,
-                bytes,
-                true,
-                &mut files,
-            )?;
+            add_plain_file(&bundle_root, section, "views", rel, bytes, true, &mut files)?;
         }
     }
     if let Some(ref mem) = opts.stores.memory_json {
@@ -384,7 +389,7 @@ pub fn export_bundle(opts: ExportOpts) -> Result<ExportReport, String> {
     };
     manifest.write(&bundle_root).map_err(|e| e.to_string())?;
 
-  Ok(ExportReport {
+    Ok(ExportReport {
         bundle_root,
         files: manifest.files.len(),
         skipped_oversize: warnings.0,
@@ -453,8 +458,14 @@ mod tests {
         assert!(rep.bundle_root.join("shared/notes/note.md").is_file());
         assert!(rep.bundle_root.join("work/tasks/todo.csv").is_file());
         let m = BundleManifest::read(&rep.bundle_root).unwrap();
-        assert!(m.files.iter().any(|f| f.section == "shared" && f.source == "notes"));
-        assert!(m.files.iter().any(|f| f.section == "work" && f.source == "tasks"));
+        assert!(m
+            .files
+            .iter()
+            .any(|f| f.section == "shared" && f.source == "notes"));
+        assert!(m
+            .files
+            .iter()
+            .any(|f| f.section == "work" && f.source == "tasks"));
     }
 
     #[test]
@@ -474,15 +485,5 @@ mod tests {
         })
         .unwrap_err();
         assert!(err.contains("non-empty"));
-    }
-}
-
-impl Default for EnsemblyStorePaths {
-    fn default() -> Self {
-        Self {
-            ops_json: None,
-            memory_json: None,
-            ledger_jsonl: None,
-        }
     }
 }

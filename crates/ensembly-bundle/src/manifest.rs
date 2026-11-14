@@ -40,9 +40,7 @@ pub struct BundleManifest {
 impl BundleManifest {
     pub fn write(&self, bundle_root: &std::path::Path) -> Result<(), std::io::Error> {
         let p = bundle_root.join("MANIFEST.json");
-        let json = serde_json::to_string_pretty(self).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, e)
-        })?;
+        let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
         std::fs::write(p, json)
     }
 
@@ -51,10 +49,7 @@ impl BundleManifest {
         let raw = std::fs::read_to_string(&p).map_err(|e| format!("read manifest: {e}"))?;
         let m: Self = serde_json::from_str(&raw).map_err(|e| format!("parse manifest: {e}"))?;
         if m.bundle_format != BUNDLE_FORMAT {
-            return Err(format!(
-                "unsupported bundle_format {:?}",
-                m.bundle_format
-            ));
+            return Err(format!("unsupported bundle_format {:?}", m.bundle_format));
         }
         Ok(m)
     }
