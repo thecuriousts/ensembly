@@ -37,6 +37,7 @@ clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 regex = "1"
 ensembly-paths = { path = "../ensembly-paths" }
+ensembly-bundle = { path = "../ensembly-bundle" }
 ensembly-memory = { path = "../ensembly-memory" }
 ensembly-agents = { path = "../ensembly-agents" }
 ensembly-schema = { path = "../ensembly-schema" }

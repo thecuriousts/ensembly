@@ -152,7 +152,7 @@ flowchart LR
 crates/ensembly-kernel/   authorize/claim · MsgBus · SQLite · pulse-pack
 crates/ensembly-memory/   episodic CRDT (aux)
 crates/ensembly-agents/   ensembly-mcp (read-only)
-docs/                     charter · MAP · PLAYBOOK · mesh bridge · scoreboard
+docs/                     charter · MAP · PLAYBOOK · portable-bundle · mesh bridge · scoreboard
 marketplaces/             flowingstack (cursor) · ensembly (grokbot)
 prototype/                parked — not product
 ```

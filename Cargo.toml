@@ -2,6 +2,7 @@
 [workspace]
 members = [
     "crates/ensembly-paths",
+    "crates/ensembly-bundle",
     "crates/ensembly-kernel",
     "crates/ensembly-opportunity-finder",
     "crates/ensembly-memory",

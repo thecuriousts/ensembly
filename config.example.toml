@@ -10,3 +10,12 @@ schema = 1
 
 # Optional opportunity-finder pack: build-time only (not this file).
 #   cargo install --path crates/ensembly-kernel --features opportunity-finder
+
+# Portable bundle extra sources: docs/portable-bundle.md
+# [[backup.sources]]
+# name = "notes"
+# section = "shared"   # optional; [A-Za-z0-9_-]+ only; not "ensembly"
+# path = "~/vault/notes"
+# kind = "dir"
+# include = ["**/*"]
+# exclude = ["*.pem"]
