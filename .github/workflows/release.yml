@@ -40,10 +40,7 @@ jobs:
             echo "tag input required for workflow_dispatch" >&2
             exit 2
           fi
-          scripts/version-check --product ensembly-cli --tag "$tag"
-          cargo_ver=$(python3 -c 'import tomllib, pathlib; print(tomllib.loads(pathlib.Path("crates/ensembly-kernel/Cargo.toml").read_bytes())["package"]["version"])')
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$cargo_ver" >> "$GITHUB_OUTPUT"
+          python3 scripts/release-resolve "$tag" --github-output
 
   build:
     needs: resolve
@@ -174,7 +171,7 @@ jobs:
           set -eu
           cd artifacts
           title_ver="${RELEASE_TAG#ensembly-cli--v}"
-          args=(release create "$RELEASE_TAG" --draft --title "ensembly CLI ${title_ver}" --notes "Prebuilt ensembly CLI binaries (default features, opportunity-finder off). Verify SHA256SUMS, then unpack and move ensembly onto PATH.")
+          args=(release create "$RELEASE_TAG" --draft --target "$GITHUB_SHA" --title "ensembly CLI ${title_ver}" --notes "Prebuilt ensembly CLI binaries (default features, opportunity-finder off). Verify SHA256SUMS, then unpack and move ensembly onto PATH.")
           for f in ensembly-*.tar.gz SHA256SUMS; do
             args+=("$f")
           done
