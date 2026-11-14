@@ -29,6 +29,20 @@ A relative `XDG_*` value is ignored, as the XDG spec requires.
 | `schema` | int | `1` | Config format version. Bumped only when a key changes meaning. |
 | `paths.data_dir` | string | absolute `${XDG_DATA_HOME:-$HOME/.local/share}/ensembly` | Where kernel data lives: ops SQLite and episodic memory. `init` creates the directory. The runtime uses this when `--db` / `--memory` are omitted and no legacy `data/local/` files exist in the working directory. |
 
+### `[[backup.sources]]` (portable bundle)
+
+Used by `ensembly export` / `data-backup`. See [portable-bundle.md](portable-bundle.md).
+
+| Field | Required | Default | Meaning |
+|-------|----------|---------|---------|
+| `name` | yes | — | Directory name under `bundle/<section>/<name>/` |
+| `path` | yes | — | `~` or `~/…` source on disk (`dir` or `file`) |
+| `kind` | yes | — | `dir` or `file` |
+| `section` | no | `shared` | Safe folder segment; not `ensembly` (reserved) |
+| `include` / `exclude` | no | `**/*` / empty | Glob filters for `dir` sources |
+
+Duplicate `name` within the same `section` is a config error (exit 2, path + line).
+
 The optional **opportunity-finder** pack is **not** a config toggle: enable it with `cargo` feature `opportunity-finder` on `ensembly-kernel` at build time. See [docs/DECISIONS.md](DECISIONS.md).
 
 Checked-in example: [config.example.toml](../config.example.toml).
