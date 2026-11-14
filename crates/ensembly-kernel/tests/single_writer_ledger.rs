@@ -4,6 +4,7 @@
 use ensembly_kernel::application_ledger::{LedgerRow, Status};
 use ensembly_kernel::idempotency_key;
 use ensembly_kernel::writer::{KernelWriter, WriterError};
+use ensembly_schema::{lock, write_seal};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -44,6 +45,17 @@ fn open_ledger(path: &Path) -> KernelWriter {
     writer
 }
 
+fn open_sealed_ledger(path: &Path, seed: &[u8]) -> KernelWriter {
+    let _writer_guard = setup_writer();
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).unwrap();
+    }
+    fs::write(path, seed).unwrap();
+    write_seal(path, seed).unwrap();
+    lock(path).unwrap();
+    KernelWriter::open_ledger(path).unwrap()
+}
+
 fn seal_path(ledger: &Path) -> std::path::PathBuf {
     let mut name = ledger.file_name().unwrap().to_os_string();
     name.push(".writer-hash");
@@ -77,8 +89,8 @@ fn ledger_append_after_existing_v1_line() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ledger.jsonl");
     let v1_line = r#"{"company":"Acme Fictional","role":"Engineer","link":"https://jobs.example.test/acme/9","status":"submitted","submit_time":"2026-10-26T18:59:00+01:00","cv_version":"cv-sample-1","v":1}"#;
-    fs::write(&path, format!("{v1_line}\n")).unwrap();
-    let writer = open_ledger(&path);
+    let seed = format!("{v1_line}\n");
+    let writer = open_sealed_ledger(&path, seed.as_bytes());
     let next = row(
         "https://jobs.example.test/demo/v1-next",
         Status::Prepared,
