@@ -131,6 +131,12 @@ Paste one prompt into Grok Bot and it installs, configures and checks ensembly f
 
 ---
 
+## Privacy: no telemetry
+
+ensembly has no telemetry and no HTTP client. In a recorded trace of a clean install and first run (commit `d62cf28`, 14 Nov 2026), `ensembly init`, `ensembly doctor --offline`, the runtime and pulse-pack commands and `ensembly-mcp` made no network connections on Linux, and the same commands ran with all networking blocked on macOS. Install-time downloads came only from rustup, GitHub (the clone) and crates.io. The one default network call is `ensembly doctor` without `--offline`, which runs `git ls-remote` against this repo to check for a newer release; `--offline` or `ENSEMBLY_OFFLINE=1` skips it. Method, per-phase tables, code audit and limits: [docs/proof/network-trace.md](docs/proof/network-trace.md).
+
+---
+
 ## Plugins
 
 Catalog `thecuriousts-plugins` ([.cursor-plugin/marketplace.json](.cursor-plugin/marketplace.json)).
