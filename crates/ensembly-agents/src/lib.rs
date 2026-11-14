@@ -10,14 +10,15 @@
 //! `grok -p --output-format json`. Export `ensembly-mcp`. Local fact and conflict
 //! checks use llama.cpp or MLX (the former Ollama slot); they are never a hard dependency.
 
+pub mod agent_id;
 pub mod delegation;
-pub mod env_alias;
 pub mod grok;
 pub mod inference;
 pub mod local_checks;
 pub mod mcp_server;
 pub mod rpc;
 
+pub use agent_id::resolve_agent_id;
 pub use delegation::{resolve_delegate, DelegateBackend, DelegationBackend, LocalOnlyDelegate};
 pub use grok::{
     acp_initialize_params, acp_session_new_params, grok_acp_argv, grok_headless_argv,

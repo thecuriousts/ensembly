@@ -95,8 +95,11 @@ impl Opts {
     }
 }
 
-pub fn run(o: &Opts) -> Report {
+pub fn run(o: &Opts, operator_config_problem: Option<&str>) -> Report {
     let mut failures = Vec::new();
+    if let Some(msg) = operator_config_problem {
+        failures.push(format!("operator config: {msg}"));
+    }
     let mut installs = Vec::new();
     let claude_code = claude_installs(&o.claude_dir, &mut installs, &mut failures);
     let cursor = cursor_installs(&o.home.join(".cursor/plugins"), &mut installs);

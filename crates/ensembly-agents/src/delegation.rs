@@ -22,7 +22,7 @@ impl DelegateBackend {
     }
 
     pub fn from_env() -> Self {
-        crate::env_alias::env_alias("ENSEMBLY_DELEGATE", "PERAM_DELEGATE")
+        ensembly_paths::env_alias("ENSEMBLY_DELEGATE", "PERAM_DELEGATE")
             .map(|v| Self::parse(&v))
             .unwrap_or_default()
     }

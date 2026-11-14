@@ -31,7 +31,7 @@ impl InferenceBackend {
     }
 
     pub fn from_env() -> Self {
-        crate::env_alias::env_alias("ENSEMBLY_INFERENCE", "PERAM_INFERENCE")
+        ensembly_paths::env_alias("ENSEMBLY_INFERENCE", "PERAM_INFERENCE")
             .map(|v| Self::parse(&v))
             .unwrap_or_default()
     }
