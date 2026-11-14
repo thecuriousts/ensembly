@@ -28,7 +28,9 @@ One tag per product, `NAME--vX.Y.Z`, the format `claude plugin tag` writes. The 
 |---|---|---|
 | flowingstack | `flowingstack--vX.Y.Z` | `marketplaces/cursor/flowingstack/.cursor-plugin/plugin.json` and `.claude-plugin/plugin.json` |
 | ensembly (Grok Bot plugin) | `ensembly--vX.Y.Z` | `marketplaces/grokbot/ensembly/plugin.json` |
-| ensembly CLI | `ensembly-cli--vX.Y.Z` | `crates/ensembly-kernel/Cargo.toml` |
+| ensembly CLI | `ensembly-cli--vX.Y.Z` | `crates/ensembly-kernel/Cargo.toml` (`package.version`; this is what `ensembly doctor` prints as `ensembly-cli`) |
+
+The workspace root `Cargo.toml` still sets `workspace.package.version = 0.3.0` for crates that inherit the workspace version only. The shipped CLI is versioned independently in `crates/ensembly-kernel/Cargo.toml`. Release tags and prebuilt archives use the kernel version (currently `0.5.1`), not `0.3.0`.
 
 Claude Code caches a plugin by `version`, so a change shipped without a bump never reaches users. `scripts/version-check` fails when:
 
@@ -57,3 +59,26 @@ Exit 0 consistent, 1 mismatch, 2 unreadable manifest or bad arguments. The `rail
 ## Clean-profile CI
 
 `scripts/clean-profile WORKDIR` builds the CLI into a fresh `HOME`, points `CLAUDE_CONFIG_DIR` inside it, runs `claude plugin validate --strict`, installs flowingstack from a local marketplace built from committed files, links it as a Cursor local plugin, and checks both doctors online and offline. The Claude Code CLI is pinned in `.github/workflows/rails.yml`; validate, marketplace add and install need no login and no API key. The local marketplace lives only in the job's temp dir; no `marketplace.json` for Claude is committed.
+
+## Prebuilt CLI binaries
+
+Workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) builds default-feature `ensembly` (opportunity-finder **off**) for:
+
+| Target | Runner |
+|--------|--------|
+| `aarch64-apple-darwin` | `macos-latest` |
+| `x86_64-apple-darwin` | `macos-15-intel` |
+| `x86_64-unknown-linux-gnu` | `ubuntu-latest` |
+| `aarch64-unknown-linux-gnu` | `ubuntu-latest` (cross-linked) |
+
+Trigger: push tag `ensembly-cli--vX.Y.Z`, or `workflow_dispatch` with the same tag shape. The job runs `scripts/version-check --tag …`, then uploads `ensembly-<version>-<target>.tar.gz` plus `SHA256SUMS` to a **draft** GitHub release (`gh release create --draft`). Never publish a non-draft release from CI.
+
+Checksums locally or in CI:
+
+```sh
+shasum -a 256 -c SHA256SUMS
+# or
+scripts/verify-release-checksums DIR
+```
+
+`scripts/install.sh` tries the matching asset from [releases/latest](https://github.com/thecuriousts/ensembly/releases/latest) first (checksum verified), then falls back to `cargo install`. Pass `--from-source` to skip the release lookup. GitHub only serves **published** releases on `releases/latest`; draft assets require a manual download until the owner publishes.

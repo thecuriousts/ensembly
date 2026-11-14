@@ -12,7 +12,8 @@ class Marketplace(unittest.TestCase):
     def test_root_entry(self):
         m = json.loads(read(os.path.join(REPO, ".cursor-plugin", "marketplace.json")))
         self.assertTrue(m["name"])
-        self.assertTrue(m["owner"]["name"])
+        self.assertEqual(m["owner"]["name"], "Peramanathan Sathyamoorthy")
+        self.assertNotIn("email", m["owner"])
         self.assertNotIn("pluginRoot", m.get("metadata", {}))
         e = [p for p in m["plugins"] if p["name"] == "flowingstack"]
         self.assertEqual(len(e), 1)
@@ -32,10 +33,10 @@ class Marketplace(unittest.TestCase):
         self.assertTrue(10 <= len(d) <= 200, d)
         for w in ("thecuriousts", "p10ns11y", "author"):
             self.assertNotIn(w, d.lower())
-        self.assertEqual(p["author"]["name"], "thecuriousts")
+        self.assertEqual(p["author"]["name"], "Peramanathan Sathyamoorthy")
         self.assertNotIn("email", p["author"])
         self.assertEqual(p.get("repository"), "https://github.com/thecuriousts/ensembly/")
-        self.assertEqual(p.get("publisher"), "thecuriousts")
+        self.assertEqual(p.get("publisher"), "Peramanathan Sathyamoorthy")
         self.assertEqual(run("doc-lint", os.path.join(".cursor-plugin", "plugin.json"))[0], 0)
 
     def test_plugin_manifest_fields(self):

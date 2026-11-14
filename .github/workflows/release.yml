@@ -1,0 +1,128 @@
+name: release
+
+on:
+  push:
+    tags:
+      - ensembly-cli--v*
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. ensembly-cli--v0.5.1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: resolve tag and version
+        id: v
+        env:
+          REF_TAG: ${{ github.ref_type == 'tag' && github.ref_name || github.event.inputs.tag }}
+        run: |
+          set -eu
+          tag="${REF_TAG:-}"
+          if [ -z "$tag" ]; then
+            echo "tag input required for workflow_dispatch" >&2
+            exit 2
+          fi
+          scripts/version-check --tag "$tag"
+          ver=$(python3 -c 'import tomllib, pathlib; print(tomllib.loads(pathlib.Path("crates/ensembly-kernel/Cargo.toml").read_bytes())["package"]["version"])')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+        with:
+          targets: ${{ matrix.target }}
+      - name: cross toolchain (aarch64 linux)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          printf '\n[target.aarch64-unknown-linux-gnu]\nlinker = "aarch64-linux-gnu-gcc"\n' >> "$HOME/.cargo/config.toml"
+      - name: build
+        run: |
+          set -eu
+          cargo build --locked -p ensembly-kernel --release --target "${{ matrix.target }}"
+          bin="target/${{ matrix.target }}/release/ensembly"
+          strip "$bin" 2>/dev/null || true
+          ver='${{ needs.resolve.outputs.version }}'
+          name="ensembly-${ver}-${{ matrix.target }}"
+          mkdir -p "dist/${name}"
+          cp "$bin" "dist/${name}/ensembly"
+          cp LICENSE.md "dist/${name}/LICENSE"
+          cp README.md "dist/${name}/README"
+          tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+          (cd dist && shasum -a 256 "${name}.tar.gz" > "${{ matrix.target }}.sha256")
+      - uses: actions/upload-artifact@32d3d170e69bc3f3fcd867b95e6ebe410c5d8e61 # v7.0.0
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/
+          retention-days: 5
+
+  release:
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3295beac59edc1e837cdbd03b45d7126f6ce5e43 # v7.0.0
+        with:
+          path: artifacts
+          pattern: dist-*
+          merge-multiple: true
+      - name: SHA256SUMS
+        run: |
+          set -eu
+          cd artifacts
+          shasum -a 256 ensembly-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+          python3 "$GITHUB_WORKSPACE/scripts/verify-release-checksums" "$PWD"
+      - name: draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -eu
+          cd artifacts
+          args=(release create "$TAG" --draft --title "ensembly CLI ${TAG#ensembly-cli--v}" --notes "Prebuilt ensembly CLI binaries (default features, opportunity-finder off). Verify SHA256SUMS, then unpack and move ensembly onto PATH.")
+          for f in ensembly-*.tar.gz SHA256SUMS; do
+            args+=("$f")
+          done
+          gh "${args[@]}"

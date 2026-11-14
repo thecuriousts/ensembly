@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - name: version-check tests
-        run: python3 -m unittest discover -s scripts -p 'test_version_check.py'
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
       - name: Open in Grok Bot link matches the prompt
         run: |
           python3 -m unittest discover -s scripts -p 'test_grokbot_link.py'

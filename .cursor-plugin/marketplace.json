@@ -1,6 +1,6 @@
 {
   "name": "thecuriousts-plugins",
-  "owner": {"name": "thecuriousts"},
+  "owner": {"name": "Peramanathan Sathyamoorthy"},
   "plugins": [
     {"name": "flowingstack", "source": "marketplaces/cursor/flowingstack", "description": "Task contracts, a run ledger, frozen eval sets, a review rubric, and doc and privacy checks for agent work"},
     {"name": "ensembly", "source": "marketplaces/grokbot/ensembly", "description": "Record layer for every bot: one owner per fact, dated rows, write intent then act then verify, idempotency keys, and verified retrieve"}

@@ -20,11 +20,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: cursor manifest schemas
+        run: |
+          python3 -m pip install --quiet jsonschema
+          python3 scripts/validate_cursor_manifests.py
       - name: grokbot ensembly
         working-directory: marketplaces/grokbot/ensembly/test
         run: |
           python3 check_plugin.py
-          python3 -m unittest test_check_plugin
+          python3 -m unittest discover -s . -p 'test_*.py'
       - name: cursor flowingstack
         working-directory: marketplaces/cursor/flowingstack
         run: python3 -m unittest discover -s test
