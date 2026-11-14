@@ -75,7 +75,7 @@ Never:
 - Push to GitHub, post anywhere, or submit any marketplace form.
 - Create a routine without a yes.
 
-Once, after this message, offer these routines with one question card each. Preselect nothing; a dismissed card is No. Create a routine only on yes, by its exact name, and never twice:
+Offer these routines with one question card each. Skip a routine that already exists under its exact name, or that `routines_offered` in the state file marks as declined. Preselect nothing; a dismissed card is No. Create a routine only on yes, by its exact name, and never twice. Record each answer as `"created"` or `"declined"` under `routines_offered` in the state file:
 - "Ensembly weekly update check", Monday morning: run `git -C ~/ensembly fetch`, then `git -C ~/ensembly rev-list --count HEAD..@{u}`. If behind, say how many new commits and ask before updating. If not, stay quiet.
 - "Ensembly monthly full check", first of the month: run the full test and report only if it is not green.
 ```

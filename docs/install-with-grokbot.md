@@ -36,7 +36,7 @@ flowchart TB
 | **Core (always)** | `scripts/install.sh --harness grok` (or `--update`), `ensembly init`, `ensembly doctor --offline`, the plugin, the state file, the Page. |
 | **Optional** | The full test (`scripts/stranger-test.sh`, ten minutes or more), commands for Cursor, Claude Code or the plain CLI on your own computer, a dedicated Ensembly bot. A skipped or dismissed card means no, and setup goes on. |
 | **State file** | `${XDG_CONFIG_HOME:-~/.config}/ensembly/grokbot-install.json`: version, commit, harnesses, plugin, test result, Page link, bot name. A re-run reads it and updates in place. |
-| **Data** | Config at `~/.config/ensembly/config.toml`. Data in `~/.local/share/ensembly` (the `data_dir` line). Existing data is never moved. |
+| **Data** | Config at `${XDG_CONFIG_HOME:-~/.config}/ensembly/config.toml`. Data in `${XDG_DATA_HOME:-~/.local/share}/ensembly` (the `data_dir` line). Existing data is never moved. |
 | **Never** | Asks for passwords, tokens or keys. Uses `sudo`. Deletes, moves or overwrites your files without asking. Turns on opportunity-finder. Posts anything. Creates a second Page or a second bot. |
 | **Done looks like** | `ensembly doctor --offline` shows no `fail` lines, you get a Page called "Ensembly on Grok Bot", and Grok Bot says "Ensembly setup complete". |
 

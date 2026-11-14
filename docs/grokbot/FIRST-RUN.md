@@ -45,7 +45,7 @@ Paths used below:
 
 ## Step 1. Detect an earlier install
 
-- Read the state file if it exists.
+- Read the state file if it exists. If it cannot be read, or its `schema` is not 1, do not overwrite it: copy it to `grokbot-install.json.bak` (only if no `.bak` exists yet; otherwise ask with a question card) and treat this run as an earlier install without a state file.
 - Check whether the config file exists.
 - Check whether `ensembly version` runs. If not, try `~/.cargo/bin/ensembly version`.
 - Say one line: "New install", or "Found an earlier install: <version>, <harnesses>, Page <link or none>, bot <name or none>. I will update it in place."
@@ -53,10 +53,12 @@ Paths used below:
 
 ## Step 2. Check Rust
 
+- If `~/.cargo/env` exists, run `. "$HOME/.cargo/env"` first, in the same command as the checks.
 - Run `cargo --version` and `rustup --version`.
 - If both work, go on. rustup fetches the Rust version pinned in `~/ensembly/rust-toolchain.toml` by itself on the first build.
-- If either is missing, ask with a question card: "ensembly needs Rust to build. May I install it with rustup into my own home folder, without sudo?" Choices: "Yes, install Rust" and "No".
-- On yes, run `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path`, then `. "$HOME/.cargo/env"`.
+- If either is missing, ask with a question card: "ensembly needs Rust to build. May I download the official rustup installer from rustup.rs and run it to install Rust into my own home folder, without sudo?" Choices: "Yes, install Rust" and "No".
+- On yes, run `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path`.
+- From here on, if `~/.cargo/env` exists, start every command that uses cargo or ensembly with `. "$HOME/.cargo/env" && `, because each command may run in a fresh shell.
 - On no or a dismissed card, the core install cannot run. Say so in one line, skip to step 12, and report that nothing was installed.
 
 ## Step 3. Install for Grok Bot
@@ -65,7 +67,7 @@ Paths used below:
 - Earlier install: `cd ~/ensembly && sh scripts/install.sh --update --harness grok`
 - This builds the `ensembly` command. The first build takes several minutes. Success: the last line is `done`.
 - If it warns that a folder is not on PATH, run the `export PATH=...` line it prints before every later ensembly command in this run.
-- The `grok` harness writes nothing else; it prints how to add the plugin (step 6).
+- The `grok` harness writes nothing else. It prints a hint about adding a local plugin; follow step 6 instead.
 - If it fails, show the last 20 lines, explain them in plain words, skip to step 12, and report the failure.
 
 ## Step 4. Write the config
@@ -104,7 +106,8 @@ Write the state file now, creating its folder only if it is missing. It belongs 
   "harnesses": { "grok": "installed" },
   "full_test": "not run",
   "page": "<Page link, filled in step 8>",
-  "bot": null
+  "bot": null,
+  "routines_offered": {}
 }
 ```
 
@@ -132,18 +135,20 @@ Write the state file now, creating its folder only if it is missing. It belongs 
 
 - Ask with a question card, multi-select: "Which of these do you also use on your own computer?" Choices: "Cursor", "Claude Code", "Plain command line", "None of these". Preselect nothing.
 - These run on the user's computer, not yours. For each choice, give one block of commands to paste into a terminal there, and say what success looks like. Say how to open a terminal: on a Mac, the Terminal app; on Linux, the terminal app. git and cargo are needed there too; the installer says how to get them.
-- Start every block with: `[ -d ~/ensembly ] || git clone https://github.com/thecuriousts/ensembly ~/ensembly; cd ~/ensembly`
+- Start every block with these two lines, so each block works in a new terminal:
+  `[ -d ~/ensembly ] || git clone https://github.com/thecuriousts/ensembly ~/ensembly`
+  `cd ~/ensembly`
   - Cursor: `sh scripts/install.sh --update --harness cursor`, then restart Cursor. Success: the last line is `done`, and the ensembly skill shows in Cursor.
   - Claude Code: `sh scripts/install.sh --update --harness claude`, then start a new Claude Code session. Success: the last line is `done`, and the skills ensembly, record-layer and verified-retrieve show.
   - Plain command line: `sh scripts/install.sh --update --harness cli`. Success: the last line is `done`.
-- End every block with `ensembly init` (exit 7 is fine) and `ensembly doctor --offline`.
+- End every block with `ensembly init` (exit 7 is fine) and `ensembly doctor --offline`. Join the install line and these two with `&&` so a failed install stops the block.
 - If the installer warns that a folder is not on PATH, tell the user to run the `export PATH=...` line it prints.
 - If the installer skips a link because something is already there, tell the user to leave it and ask you. Never tell them to delete it.
 - Record each choice as `"commands given"` under `harnesses` in the state file. On "None of these" or a dismissed card, go on.
 
 ## Step 11. Optional: dedicated Ensembly bot
 
-- If the state file names a bot, or a bot named exactly "Ensembly" already exists, do not create another. Send it the first message from [docs/ensembly-bot-template.md](../ensembly-bot-template.md) so it has the current instructions, and go on.
+- If the state file names a bot, or a bot named exactly "Ensembly" already exists, do not create another. Send it the first message from [docs/ensembly-bot-template.md](../ensembly-bot-template.md) so it has the current instructions, and go on. The first message tells it not to offer routines again that already exist or were declined.
 - Otherwise ask with a question card: "Want a dedicated Ensembly bot that owns setup, updates and troubleshooting?" Choices: "Yes" and "No".
 - On "Yes", if you can create bots (CreateAgent): create one named "Ensembly" with the job and description from the template, then send it the template's first message. Record `"bot": "Ensembly"` in the state file.
 - On "Yes" when you cannot create bots: say so in one line and give the user `~/ensembly/docs/ensembly-bot-template.md` to use when they create the bot themselves. Do not act as that bot yourself.
