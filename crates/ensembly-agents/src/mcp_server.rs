@@ -133,12 +133,30 @@ pub struct McpServeConfig {
 
 impl Default for McpServeConfig {
     fn default() -> Self {
-        Self {
-            memory_path: crate::env_alias::env_alias("ENSEMBLY_MEMORY", "PERAM_MEMORY")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| crate::env_alias::resolve_memory_path(None)),
+        Self::from_env(None).unwrap_or_else(|e| {
+            eprintln!("{e}");
+            std::process::exit(2);
+        })
+    }
+}
+
+impl McpServeConfig {
+    /// Same paired path resolution as the `ensembly` CLI (`paths.data_dir` + cwd discover).
+    pub fn from_env(cli_memory: Option<PathBuf>) -> anyhow::Result<Self> {
+        let config_data = ensembly_paths::load_paths_data_dir()?;
+        let explicit = cli_memory.or_else(|| {
+            ensembly_paths::env_alias("ENSEMBLY_MEMORY", "PERAM_MEMORY").map(PathBuf::from)
+        });
+        let paths = ensembly_paths::resolve_data_paths(
+            std::path::Path::new(""),
+            None,
+            explicit,
+            config_data.as_deref(),
+        );
+        Ok(Self {
+            memory_path: paths.memory,
             agent_id: crate::env_alias::resolve_agent_id(None),
-        }
+        })
     }
 }
 

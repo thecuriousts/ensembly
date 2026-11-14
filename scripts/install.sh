@@ -31,37 +31,43 @@ run() {
 }
 
 # install.root from cargo config (after CARGO_INSTALL_ROOT); else $CARGO_HOME.
+install_root_from_toml() {
+  file=$1
+  [ -f "$file" ] || return 1
+  awk '
+    /^\[install\]/ { in_install=1; next }
+    /^\[/ { in_install=0 }
+    in_install && $1 == "root" {
+      gsub(/"/, "", $3)
+      print $3
+      exit 0
+    }
+  ' "$file"
+}
+
+expand_tilde() {
+  p=$1
+  case $p in
+    "~") printf '%s' "$HOME" ;;
+    "~/"*) printf '%s' "$HOME/${p#~/}" ;;
+    *) printf '%s' "$p" ;;
+  esac
+}
+
 cargo_install_root() {
   if [ -n "${CARGO_INSTALL_ROOT:-}" ]; then
     printf '%s' "$CARGO_INSTALL_ROOT"
     return 0
   fi
   cargo_home=${CARGO_HOME:-$HOME/.cargo}
-  root=$(REPO="$REPO" CARGO_HOME="$cargo_home" HOME="$HOME" python3 - <<'PY' 2>/dev/null || true
-import os
-import tomllib
-from pathlib import Path
-
-repo = Path(os.environ["REPO"])
-home = Path(os.environ.get("CARGO_HOME", Path.home() / ".cargo"))
-for path in (home / "config.toml", repo / ".cargo" / "config.toml"):
-    if not path.is_file():
-        continue
-    with path.open("rb") as f:
-        data = tomllib.load(f)
-    install = data.get("install") or {}
-    root = install.get("root")
-    if root:
-        print(str(Path(os.path.expanduser(str(root)))))
-        raise SystemExit(0)
-print(str(home))
-PY
-  )
-  if [ -n "$root" ]; then
-    printf '%s' "$root"
-  else
-    printf '%s' "$cargo_home"
-  fi
+  for file in "$cargo_home/config.toml" "$cargo_home/config" "$REPO/.cargo/config.toml"; do
+    root=$(install_root_from_toml "$file" 2>/dev/null || true)
+    if [ -n "$root" ]; then
+      expand_tilde "$root"
+      return 0
+    fi
+  done
+  printf '%s' "$cargo_home"
 }
 
 HARNESS=cli

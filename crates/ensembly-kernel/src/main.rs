@@ -21,8 +21,7 @@ use ensembly_kernel::doctor;
 use ensembly_kernel::memory_sink::MemorySink;
 use ensembly_kernel::msg_bus::ManualCmd;
 use ensembly_kernel::paths::{
-    env_alias, migrate_local_paths_at, resolve_memory_path_config, resolve_ops_db_config,
-    DEFAULT_MEMORY_PATH,
+    env_alias, migrate_local_paths_at, resolve_data_paths, DataPaths, DEFAULT_MEMORY_PATH,
 };
 use ensembly_kernel::pulse_core as pc;
 use ensembly_kernel::pulse_pack::{
@@ -36,6 +35,7 @@ use ensembly_kernel::turn::{
     actions_from_fixture_path, build_channel_ir, context_at, rank_now, Action,
 };
 use ensembly_kernel::{kernel_version, private_path_patterns};
+use ensembly_paths::load_paths_data_dir;
 use ensembly_schema::{commit_json, feed_json, recover_json, snapshot_json, CommitFault};
 #[cfg(feature = "opportunity-finder")]
 use opportunity_cli::{AppsCmd, RecordAppsCmd};
@@ -44,11 +44,11 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(name = env!("CARGO_BIN_NAME"), about = "ensembly operator kernel (Rust)")]
 struct Cli {
-    /// Ops SQLite path (T1). Fresh default: data/local/ensembly-ops.sqlite (legacy peram-ops.sqlite discovered if present).
+    /// Ops SQLite path (T1). When omitted: existing `data/local/` or `private/state/` files, else `paths.data_dir` from config, else `data/local/ensembly-ops.sqlite`.
     #[arg(long, global = true)]
     db: Option<PathBuf>,
 
-    /// Episodic memory path. Fresh default: data/local/ensembly-memory.json (legacy peram-memory.json discovered if present).
+    /// Episodic memory path. When omitted: paired with the resolved ops DB directory, or the same config / cwd rules as `--db`.
     #[arg(long, global = true)]
     memory: Option<PathBuf>,
 
@@ -580,12 +580,16 @@ struct MemoryFlags {
 /// Attach episodic memory to a runtime. Explicit `--memory <path>` open
 /// failure is fatal (operator asked for it); default-path failure warns on
 /// stderr and continues — memory is aux, never a control dependency.
-fn attach_memory(rt: &mut Runtime, flags: &MemoryFlags, config_data: Option<&Path>) {
+fn attach_memory(rt: &mut Runtime, flags: &MemoryFlags, paired: &DataPaths) {
     if flags.no_memory {
         return;
     }
     let explicit = flags.memory.is_some();
-    let path = resolve_memory_path_config(flags.memory.clone(), config_data);
+    let path = if explicit {
+        resolve_data_paths(Path::new(""), None, flags.memory.clone(), None).memory
+    } else {
+        paired.memory.clone()
+    };
     match MemorySink::open(&path) {
         Ok(sink) => rt.memory = Some(sink),
         Err(e) => {
@@ -998,10 +1002,22 @@ fn pulse_resolve_cmd(cfg: &pc::PulseCfg, req: ps::ResolveRequest, json: bool) ->
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let config_data_dir = ensembly_kernel::config::read_paths_data_dir();
-    let data_root = config_data_dir.as_deref();
+    let config_data_dir = match load_paths_data_dir() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }
+    };
+    let data_paths = resolve_data_paths(
+        Path::new(""),
+        cli.db.clone(),
+        cli.memory.clone(),
+        config_data_dir.as_deref(),
+    );
     let ctx = Ctx {
-        db_path: resolve_ops_db_config(cli.db.clone(), data_root),
+        db_path: data_paths.ops_db.clone(),
+        data_paths,
         config_data_dir,
         memory_flags: MemoryFlags {
             memory: cli.memory.clone(),
@@ -1015,6 +1031,7 @@ fn main() -> Result<()> {
 /// Values every subcommand may need, lifted out of `Cli` before the match moves `cmd`.
 struct Ctx {
     db_path: PathBuf,
+    data_paths: DataPaths,
     config_data_dir: Option<PathBuf>,
     memory_flags: MemoryFlags,
     memory_cli: Option<PathBuf>,
@@ -1022,7 +1039,16 @@ struct Ctx {
 
 impl Ctx {
     fn resolve_memory_path(&self) -> PathBuf {
-        resolve_memory_path_config(self.memory_cli.clone(), self.config_data_dir.as_deref())
+        if self.memory_cli.is_some() {
+            return resolve_data_paths(
+                Path::new(""),
+                None,
+                self.memory_cli.clone(),
+                self.config_data_dir.as_deref(),
+            )
+            .memory;
+        }
+        self.data_paths.memory.clone()
     }
 }
 
@@ -1312,7 +1338,7 @@ fn manual_via_runtime(ctx: &Ctx, cmd: ManualCmd, decision: &str, id: &str) -> Re
     gate_via_runtime(
         &ctx.db_path,
         &ctx.memory_flags,
-        ctx.config_data_dir.as_deref(),
+        &ctx.data_paths,
         cmd,
         decision,
         id,
@@ -1703,7 +1729,7 @@ fn cmd_runtime(ctx: &Ctx, sub: RuntimeCmd) -> Result<()> {
     if let Some(snap) = store.load_snapshot()? {
         rt.snapshot = snap;
     }
-    attach_memory(&mut rt, &ctx.memory_flags, ctx.config_data_dir.as_deref());
+    attach_memory(&mut rt, &ctx.memory_flags, &ctx.data_paths);
     let mut r = Rt { store, rt, now };
     match sub {
         RuntimeCmd::Load { fixture, json } => runtime_load(&mut r, &fixture, json),
@@ -2023,7 +2049,7 @@ fn cmd_channel_pulse(db_path: &PathBuf, sub: ChannelPulseCmd) -> Result<()> {
 fn gate_via_runtime(
     db_path: &PathBuf,
     memory_flags: &MemoryFlags,
-    config_data: Option<&Path>,
+    data_paths: &DataPaths,
     cmd: ManualCmd,
     decision: &str,
     id: &str,
@@ -2042,7 +2068,7 @@ fn gate_via_runtime(
     if let Some(snap) = store.load_snapshot()? {
         rt.snapshot = snap;
     }
-    attach_memory(&mut rt, memory_flags, config_data);
+    attach_memory(&mut rt, memory_flags, data_paths);
     let cmd = match cmd {
         ManualCmd::Approve { id } => ManualCmd::Approve {
             id: ensembly_kernel::runtime::action_id_of(&id).to_string(),

@@ -293,6 +293,7 @@ dependencies = [
  "chrono",
  "clap",
  "ensembly-memory",
+ "ensembly-paths",
  "ensembly-schema",
  "serde",
  "serde_json",
@@ -312,6 +313,7 @@ dependencies = [
  "ensembly-agents",
  "ensembly-memory",
  "ensembly-opportunity-finder",
+ "ensembly-paths",
  "ensembly-schema",
  "hex",
  "rand 0.8.7",
@@ -322,7 +324,6 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror",
- "toml",
  "unicode-normalization",
 ]
 
@@ -353,6 +354,16 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "ensembly-paths"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]

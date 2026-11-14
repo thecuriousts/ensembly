@@ -28,6 +28,7 @@ clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 ensembly-memory = { path = "../ensembly-memory" }
 ensembly-schema = { path = "../ensembly-schema" }
+ensembly-paths = { path = "../ensembly-paths" }
 unicode-normalization = "0.1"
 
 [dev-dependencies]

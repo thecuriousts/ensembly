@@ -108,25 +108,25 @@ out=$(ensembly --no-memory doctor --offline) || fail "doctor exit $?"
 printf '%s\n' "$out"
 expect_line "$out" "harness cursor present" "ops-db absent" "latest skipped"
 
-step "sample: runtime HITL/HOOTL loop on fixtures/issue-1-runtime.json"
-run ensembly --memory "$MEM" runtime load --fixture "$FIX"
-run ensembly --memory "$MEM" runtime status
-run ensembly --memory "$MEM" runtime tick
-run ensembly --memory "$MEM" runtime tick
-run ensembly --memory "$MEM" runtime tick
-run ensembly --memory "$MEM" runtime tick
-run ensembly --memory "$MEM" runtime approve pay-rent
-run ensembly --memory "$MEM" runtime claim grocery-errand
-run ensembly --memory "$MEM" runtime complete grocery-errand
+step "sample: runtime HITL/HOOTL loop on fixtures/issue-1-runtime.json (config default memory)"
+run ensembly runtime load --fixture "$FIX"
+run ensembly runtime status
+run ensembly runtime tick
+run ensembly runtime tick
+run ensembly runtime tick
+run ensembly runtime tick
+run ensembly runtime approve pay-rent
+run ensembly runtime claim grocery-errand
+run ensembly runtime complete grocery-errand
 printf '+ ensembly runtime status --json\n'
-out=$(ensembly --memory "$MEM" runtime status --json) || fail "status exit $?"
+out=$(ensembly runtime status --json) || fail "status exit $?"
 printf '%s\n' "$out"
 printf '%s\n' "$out" | grep -qF '"ok": true' || fail "runtime status not ok"
 [ -s "$MEM" ] || fail "memory file not written: $MEM"
 
 step "sample: pulse-pack export, then validate it"
-run ensembly --memory "$MEM" pulse-pack export --out "$WORK/session.pulse.json"
-run ensembly --memory "$MEM" pulse-pack import --pack "$WORK/session.pulse.json" --dry-run
+run ensembly pulse-pack export --out "$WORK/session.pulse.json"
+run ensembly pulse-pack import --pack "$WORK/session.pulse.json" --dry-run
 
 step "doctor after the sample"
 out=$(ensembly --no-memory doctor --offline) || fail "doctor exit $?"

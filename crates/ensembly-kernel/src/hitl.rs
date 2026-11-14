@@ -15,6 +15,7 @@ pub fn hitl_kinds() -> &'static [&'static str] {
         "finance_transfer",
         "git_push_shared",
         "publish_private_data",
+        "bill_pay",
     ]
 }
 

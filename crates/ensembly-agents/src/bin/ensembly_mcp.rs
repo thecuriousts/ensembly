@@ -5,7 +5,7 @@
 //! cargo run -p ensembly-agents --bin ensembly-mcp
 //! # or after install: ensembly-mcp
 //! ```
-//! Env: `ENSEMBLY_MEMORY` / `PERAM_MEMORY` (fresh default data/local/ensembly-memory.json),
+//! Env: `ENSEMBLY_MEMORY` / `PERAM_MEMORY` override; else same path law as the CLI (`paths.data_dir` or cwd).
 //! `ENSEMBLY_AGENT_ID` / `PERAM_AGENT_ID` (new stores: ensembly-swarm).
 
 use clap::Parser;
@@ -26,13 +26,10 @@ struct Cli {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let mut config = McpServeConfig::default();
-    if let Some(p) = cli.memory.or_else(|| {
-        ensembly_agents::env_alias::env_alias("ENSEMBLY_MEMORY", "PERAM_MEMORY").map(PathBuf::from)
-    }) {
-        config.memory_path = p;
+    let mut config = McpServeConfig::from_env(cli.memory)?;
+    if let Some(id) = cli.agent_id {
+        config.agent_id = ensembly_agents::env_alias::resolve_agent_id(Some(id));
     }
-    config.agent_id = ensembly_agents::env_alias::resolve_agent_id(cli.agent_id);
     eprintln!(
         "ensembly-mcp listening stdio memory={:?} agent={}",
         config.memory_path, config.agent_id

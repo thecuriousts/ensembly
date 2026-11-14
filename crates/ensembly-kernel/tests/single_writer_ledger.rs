@@ -73,6 +73,24 @@ fn idempotency_key_is_link_key_tab_stage() {
 }
 
 #[test]
+fn ledger_append_after_existing_v1_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ledger.jsonl");
+    let v1_line = r#"{"company":"Acme Fictional","role":"Engineer","link":"https://jobs.example.test/acme/9","status":"submitted","submit_time":"2026-10-26T18:59:00+01:00","cv_version":"cv-sample-1","v":1}"#;
+    fs::write(&path, format!("{v1_line}\n")).unwrap();
+    let writer = open_ledger(&path);
+    let next = row(
+        "https://jobs.example.test/demo/v1-next",
+        Status::Prepared,
+        "cv-sample-1",
+    );
+    assert!(writer.append_ledger(&next).unwrap().appended);
+    let text = fs::read_to_string(&path).unwrap();
+    assert!(text.starts_with(v1_line), "v1 seed line must be preserved");
+    assert_eq!(text.lines().count(), 2);
+}
+
+#[test]
 fn ledger_append_is_idempotent_on_the_same_key_and_payload() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ledger.jsonl");

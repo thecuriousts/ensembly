@@ -36,11 +36,14 @@ check_help() {
 
 top=$("$BIN" --help 2>&1) || fail "$BIN --help exited $?"
 assert_no_leak "ensembly --help" "$top"
-printf '%s\n' "$top" | sed -n 's/^  \([a-z0-9][-a-z0-9]*\).*/\1/p' | while read -r cmd; do
+sub_cmds=$(printf '%s\n' "$top" | sed -n 's/^  \([a-z0-9][-a-z0-9]*\).*/\1/p' | grep -v '^help' | grep . || true)
+[ -n "$sub_cmds" ] || fail "no subcommands discovered from --help"
+n_cmds=$(printf '%s\n' "$sub_cmds" | wc -l | tr -d ' ')
+[ "$n_cmds" -ge 3 ] || fail "too few subcommands discovered ($n_cmds)"
+while read -r cmd; do
   [ -n "$cmd" ] || continue
-  case $cmd in
-    help|help*) continue ;;
-  esac
   check_help "ensembly $cmd --help" "$cmd" --help
-done
+done <<EOF
+$sub_cmds
+EOF
 printf 'ok: default CLI surface has no apps/decision leaks\n'

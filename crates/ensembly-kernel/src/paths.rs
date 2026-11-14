@@ -3,125 +3,17 @@
 //! Fresh trees create `ensembly-*` files. Existing `peram-*` files are opened
 //! in place. Never copy or rename a live DB.
 
+pub use ensembly_paths::{
+    env_alias, resolve_data_paths, resolve_memory_path, resolve_memory_path_at,
+    resolve_memory_path_config, resolve_ops_db, resolve_ops_db_at, resolve_ops_db_config,
+    DataPaths, DEFAULT_AGENT_ID, DEFAULT_MEMORY_PATH, DEFAULT_OPS_PATH, DEFAULT_OPS_PRIVATE_PATH,
+    LEGACY_AGENT_ID, LEGACY_MEMORY_PATH, LEGACY_OPS_PATH, LEGACY_OPS_PRIVATE_PATH,
+};
+
 use serde::Serialize;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-
-pub const DEFAULT_OPS_PATH: &str = "data/local/ensembly-ops.sqlite";
-pub const DEFAULT_OPS_PRIVATE_PATH: &str = "private/state/ensembly-ops.sqlite";
-pub const LEGACY_OPS_PATH: &str = "data/local/peram-ops.sqlite";
-pub const LEGACY_OPS_PRIVATE_PATH: &str = "private/state/peram-ops.sqlite";
-
-pub const DEFAULT_MEMORY_PATH: &str = "data/local/ensembly-memory.json";
-pub const LEGACY_MEMORY_PATH: &str = "data/local/peram-memory.json";
-
-const CONFIG_OPS_NAME: &str = "ensembly-ops.sqlite";
-const CONFIG_MEMORY_NAME: &str = "ensembly-memory.json";
-
-/// Replica id for **new** empty memory documents. Existing docs keep theirs.
-pub const DEFAULT_AGENT_ID: &str = "ensembly-swarm";
-pub const LEGACY_AGENT_ID: &str = "peram-swarm";
-
-/// Prefer `primary` when set and non-empty; else `legacy` (one-release alias).
-pub fn env_alias(primary: &str, legacy: &str) -> Option<String> {
-    std::env::var(primary)
-        .ok()
-        .filter(|s| !s.is_empty())
-        .or_else(|| std::env::var(legacy).ok().filter(|s| !s.is_empty()))
-}
-
-/// `--db` wins. Else existing ensembly file, else existing legacy file, else
-/// create-default (parent-dir discover, new names).
-pub fn resolve_ops_db(explicit: Option<PathBuf>) -> PathBuf {
-    resolve_ops_db_config(explicit, None)
-}
-
-/// Like [`resolve_ops_db`] but honors `paths.data_dir` from `ensembly init` when set.
-pub fn resolve_ops_db_config(explicit: Option<PathBuf>, config_data: Option<&Path>) -> PathBuf {
-    if let Some(p) = explicit {
-        return p;
-    }
-    let cwd_default = resolve_ops_db_at(Path::new(""), None);
-    if cwd_default.is_file() {
-        return cwd_default;
-    }
-    if let Some(data) = config_data {
-        let path = data.join(CONFIG_OPS_NAME);
-        if path.is_file() || data.is_dir() {
-            return path;
-        }
-    }
-    cwd_default
-}
-
-pub fn resolve_ops_db_at(root: &Path, explicit: Option<PathBuf>) -> PathBuf {
-    if let Some(p) = explicit {
-        return p;
-    }
-    let existing = [
-        DEFAULT_OPS_PATH,
-        DEFAULT_OPS_PRIVATE_PATH,
-        LEGACY_OPS_PATH,
-        LEGACY_OPS_PRIVATE_PATH,
-    ];
-    for rel in existing {
-        let path = root.join(rel);
-        if path.is_file() {
-            return path;
-        }
-    }
-    let create = [DEFAULT_OPS_PATH, DEFAULT_OPS_PRIVATE_PATH];
-    for rel in create {
-        let path = root.join(rel);
-        if path.parent().map(|p| p.exists()).unwrap_or(false) {
-            return path;
-        }
-    }
-    root.join(DEFAULT_OPS_PATH)
-}
-
-/// `--memory` wins. Else existing ensembly file, else existing legacy file,
-/// else the fresh `ensembly-memory.json` default.
-pub fn resolve_memory_path(explicit: Option<PathBuf>) -> PathBuf {
-    resolve_memory_path_config(explicit, None)
-}
-
-/// Like [`resolve_memory_path`] but honors `paths.data_dir` from `ensembly init` when set.
-pub fn resolve_memory_path_config(
-    explicit: Option<PathBuf>,
-    config_data: Option<&Path>,
-) -> PathBuf {
-    if let Some(p) = explicit {
-        return p;
-    }
-    let cwd_default = resolve_memory_path_at(Path::new(""), None);
-    if cwd_default.is_file() {
-        return cwd_default;
-    }
-    if let Some(data) = config_data {
-        let path = data.join(CONFIG_MEMORY_NAME);
-        if path.is_file() || data.is_dir() {
-            return path;
-        }
-    }
-    cwd_default
-}
-
-pub fn resolve_memory_path_at(root: &Path, explicit: Option<PathBuf>) -> PathBuf {
-    if let Some(p) = explicit {
-        return p;
-    }
-    let ensembly = root.join(DEFAULT_MEMORY_PATH);
-    if ensembly.is_file() {
-        return ensembly;
-    }
-    let legacy = root.join(LEGACY_MEMORY_PATH);
-    if legacy.is_file() {
-        return legacy;
-    }
-    ensembly
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PathCopyAction {
@@ -201,12 +93,14 @@ mod tests {
     #[test]
     fn fresh_default_creates_ensembly_ops_and_memory() {
         let dir = tempfile::tempdir().unwrap();
-        let ops = resolve_ops_db_at(dir.path(), None);
-        let mem = resolve_memory_path_at(dir.path(), None);
-        assert_eq!(ops, dir.path().join(DEFAULT_OPS_PATH));
-        assert_eq!(mem, dir.path().join(DEFAULT_MEMORY_PATH));
-        assert!(!ops.exists(), "must not create the file during resolve");
-        assert!(!mem.exists());
+        let paired = resolve_data_paths(dir.path(), None, None, None);
+        assert_eq!(paired.ops_db, dir.path().join(DEFAULT_OPS_PATH));
+        assert_eq!(paired.memory, dir.path().join(DEFAULT_MEMORY_PATH));
+        assert!(
+            !paired.ops_db.exists(),
+            "must not create the file during resolve"
+        );
+        assert!(!paired.memory.exists());
     }
 
     #[test]

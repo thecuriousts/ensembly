@@ -1,6 +1,7 @@
 # Workspace root — operator kernel (Rust only at repo root).
 [workspace]
 members = [
+    "crates/ensembly-paths",
     "crates/ensembly-kernel",
     "crates/ensembly-opportunity-finder",
     "crates/ensembly-memory",
