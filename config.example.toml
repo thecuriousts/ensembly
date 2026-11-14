@@ -8,6 +8,5 @@ schema = 1
 # `init` writes the absolute path of ${XDG_DATA_HOME:-$HOME/.local/share}/ensembly here.
 # data_dir = "/path/to/xdg-data/ensembly"
 
-[packs]
-# Optional job-search pack. Off unless you turn it on.
-opportunity_finder = false
+# Optional opportunity-finder pack: build-time only (not this file).
+#   cargo install --path crates/ensembly-kernel --features opportunity-finder

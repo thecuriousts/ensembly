@@ -134,9 +134,9 @@ fn existing_decision(
     if text.is_empty() {
         return Ok(None);
     }
-    for line in text.lines().filter(|l| !l.trim().is_empty()) {
-        let prev: LedgerRow = serde_json::from_str(line)
-            .map_err(|e| LedgerWriterError::Ledger(format!("parse ledger: {e}")))?;
+    let lines = application_ledger::parse_ledger(text)
+        .map_err(|e| LedgerWriterError::Ledger(e.to_string()))?;
+    for prev in lines {
         if idempotency_key(&prev) != key {
             continue;
         }

@@ -382,3 +382,16 @@ Essay: [Archive is not memory](https://captain.kingsparrow.space/articles/memory
 | `record-view` re-counts first passes from the rows and exits 1 on a mismatch | A viewer that trusts the stated score |
 | Plugin manifest (`.claude-plugin/plugin.json`) in the flowingstack folder; the repo-root Claude marketplace file kept off the default branch until the owner says yes | Publishing a marketplace from the default branch without that yes |
 
+## Opportunity-finder pack trust boundary (2026-11-14)
+
+**Verdict:** `ensembly-opportunity-finder` is an in-repo, `publish = false` crate. The default kernel build does not link it. Job-hunt types and CLI surface compile only when `ensembly-kernel` is built with feature `opportunity-finder`.
+
+| Adopt | Refuse |
+|-------|--------|
+| `KernelWriter` as the supported ledger write path for operators and harnesses | Treating `kernel-bridge` as a security boundary |
+| `kernel-bridge` only when `ensembly-kernel` enables the optional dependency with `kernel-bridge` | Publishing `ensembly-opportunity-finder` to crates.io |
+| `open_kernel_ledger_writer` + `LedgerWriter::open` as crate-private; compile-fail doctests for external callers | Documenting `attach_for_kernel` as a public construction API |
+| Ledger writer still enforces seal, lock, append-only, and idempotency when opened via the bridge | A second divergent parse or write path for existing JSONL lines |
+
+**Trust model:** Any local process that can open the operator's JSONL can write it. The kernel bridge encodes the architectural rule that pulse/ops paths go through `KernelWriter`, not a secrecy guarantee. Third-party crates must not enable `kernel-bridge` by default; in-tree `ensembly-kernel` enables it only with `opportunity-finder`.
+

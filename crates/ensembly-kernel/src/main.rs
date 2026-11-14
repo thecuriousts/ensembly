@@ -21,7 +21,8 @@ use ensembly_kernel::doctor;
 use ensembly_kernel::memory_sink::MemorySink;
 use ensembly_kernel::msg_bus::ManualCmd;
 use ensembly_kernel::paths::{
-    env_alias, migrate_local_paths_at, resolve_memory_path, resolve_ops_db, DEFAULT_MEMORY_PATH,
+    env_alias, migrate_local_paths_at, resolve_memory_path_config, resolve_ops_db_config,
+    DEFAULT_MEMORY_PATH,
 };
 use ensembly_kernel::pulse_core as pc;
 use ensembly_kernel::pulse_pack::{
@@ -579,12 +580,12 @@ struct MemoryFlags {
 /// Attach episodic memory to a runtime. Explicit `--memory <path>` open
 /// failure is fatal (operator asked for it); default-path failure warns on
 /// stderr and continues — memory is aux, never a control dependency.
-fn attach_memory(rt: &mut Runtime, flags: &MemoryFlags) {
+fn attach_memory(rt: &mut Runtime, flags: &MemoryFlags, config_data: Option<&Path>) {
     if flags.no_memory {
         return;
     }
     let explicit = flags.memory.is_some();
-    let path = resolve_memory_path(flags.memory.clone());
+    let path = resolve_memory_path_config(flags.memory.clone(), config_data);
     match MemorySink::open(&path) {
         Ok(sink) => rt.memory = Some(sink),
         Err(e) => {
@@ -997,8 +998,11 @@ fn pulse_resolve_cmd(cfg: &pc::PulseCfg, req: ps::ResolveRequest, json: bool) ->
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let config_data_dir = ensembly_kernel::config::read_paths_data_dir();
+    let data_root = config_data_dir.as_deref();
     let ctx = Ctx {
-        db_path: resolve_ops_db(cli.db.clone()),
+        db_path: resolve_ops_db_config(cli.db.clone(), data_root),
+        config_data_dir,
         memory_flags: MemoryFlags {
             memory: cli.memory.clone(),
             no_memory: cli.no_memory,
@@ -1011,8 +1015,15 @@ fn main() -> Result<()> {
 /// Values every subcommand may need, lifted out of `Cli` before the match moves `cmd`.
 struct Ctx {
     db_path: PathBuf,
+    config_data_dir: Option<PathBuf>,
     memory_flags: MemoryFlags,
     memory_cli: Option<PathBuf>,
+}
+
+impl Ctx {
+    fn resolve_memory_path(&self) -> PathBuf {
+        resolve_memory_path_config(self.memory_cli.clone(), self.config_data_dir.as_deref())
+    }
 }
 
 fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
@@ -1153,11 +1164,7 @@ fn default_config(data_dir: &Path) -> Result<String> {
          \n\
          [paths]\n\
          # Kernel data: ops SQLite and episodic memory.\n\
-         data_dir = {}\n\
-         \n\
-         [packs]\n\
-         # Optional job-search pack. Off unless you turn it on.\n\
-         opportunity_finder = false\n",
+         data_dir = {}\n",
         toml_str(data_dir)?
     ))
 }
@@ -1302,7 +1309,14 @@ fn print_turn_text(plan: &ensembly_kernel::turn::FocusPlan, store: &OpsStore) {
 }
 
 fn manual_via_runtime(ctx: &Ctx, cmd: ManualCmd, decision: &str, id: &str) -> Result<()> {
-    gate_via_runtime(&ctx.db_path, &ctx.memory_flags, cmd, decision, id)
+    gate_via_runtime(
+        &ctx.db_path,
+        &ctx.memory_flags,
+        ctx.config_data_dir.as_deref(),
+        cmd,
+        decision,
+        id,
+    )
 }
 
 fn cmd_turn(
@@ -1546,7 +1560,7 @@ fn rfc3339_or_dash(t: Option<chrono::DateTime<Utc>>) -> String {
 }
 
 fn cmd_pulse_pack(ctx: &Ctx, sub: PulsePackCmd) -> Result<()> {
-    let memory_path = resolve_memory_path(ctx.memory_cli.clone());
+    let memory_path = ctx.resolve_memory_path();
     let archive_sidecar = PathBuf::from(DEFAULT_ARCHIVE_SIDECAR);
     match sub {
         PulsePackCmd::Export {
@@ -1689,7 +1703,7 @@ fn cmd_runtime(ctx: &Ctx, sub: RuntimeCmd) -> Result<()> {
     if let Some(snap) = store.load_snapshot()? {
         rt.snapshot = snap;
     }
-    attach_memory(&mut rt, &ctx.memory_flags);
+    attach_memory(&mut rt, &ctx.memory_flags, ctx.config_data_dir.as_deref());
     let mut r = Rt { store, rt, now };
     match sub {
         RuntimeCmd::Load { fixture, json } => runtime_load(&mut r, &fixture, json),
@@ -2009,6 +2023,7 @@ fn cmd_channel_pulse(db_path: &PathBuf, sub: ChannelPulseCmd) -> Result<()> {
 fn gate_via_runtime(
     db_path: &PathBuf,
     memory_flags: &MemoryFlags,
+    config_data: Option<&Path>,
     cmd: ManualCmd,
     decision: &str,
     id: &str,
@@ -2027,7 +2042,7 @@ fn gate_via_runtime(
     if let Some(snap) = store.load_snapshot()? {
         rt.snapshot = snap;
     }
-    attach_memory(&mut rt, memory_flags);
+    attach_memory(&mut rt, memory_flags, config_data);
     let cmd = match cmd {
         ManualCmd::Approve { id } => ManualCmd::Approve {
             id: ensembly_kernel::runtime::action_id_of(&id).to_string(),

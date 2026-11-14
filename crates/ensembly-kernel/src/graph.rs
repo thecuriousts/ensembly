@@ -314,16 +314,7 @@ fn gate_for_action(a: &Action, realm: TaskRealm) -> GateKind {
         return GateKind::Physical;
     }
     // AuthGate = high-stakes digital mutate only. Finance *prep* chores stay HOOTL.
-    let hitl = matches!(
-        a.kind.as_deref(),
-        Some("job_application_submit")
-            | Some("finance_transfer")
-            | Some("external_email_send")
-            | Some("calendar_mutate")
-            | Some("git_push_shared")
-            | Some("publish_private_data")
-            | Some("bill_pay")
-    );
+    let hitl = crate::hitl::action_requires_auth_gate(a.kind.as_deref());
     if hitl {
         GateKind::Auth
     } else {

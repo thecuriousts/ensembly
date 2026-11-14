@@ -84,11 +84,6 @@ case $HARNESS in
   cursor|claude|grok|cli|all) ;;
   *) printf 'error: --harness must be cursor, claude, grok, cli or all (got %s)\n' "$HARNESS" >&2; exit 2 ;;
 esac
-if [ -n "$PREFIX" ] && [ "$DRY_RUN" = 0 ]; then
-  mkdir -p -- "$PREFIX"
-  PREFIX=$(CDPATH='' cd -- "$PREFIX" && pwd)
-fi
-
 REPO=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 PLUGIN=$REPO/marketplaces/grokbot/ensembly
 [ -f "$REPO/crates/ensembly-kernel/Cargo.toml" ] || die "not an ensembly checkout: $REPO"
@@ -109,6 +104,10 @@ elif ! command -v rustup >/dev/null 2>&1; then
   warn "rustup not found; cargo must already be the version in rust-toolchain.toml."
 fi
 [ "$missing" = 0 ] || die "missing prerequisites above; re-run when they are on PATH"
+if [ -n "$PREFIX" ] && [ "$DRY_RUN" = 0 ]; then
+  mkdir -p -- "$PREFIX"
+  PREFIX=$(CDPATH='' cd -- "$PREFIX" && pwd)
+fi
 say "repo $REPO"
 say "harness $HARNESS"
 
@@ -126,19 +125,8 @@ elif [ "$DRY_RUN" = 1 ]; then
   run cargo install --path "$REPO/crates/ensembly-kernel" --locked --force --bin ensembly
   BIN_DIR=$(CDPATH='' cd -- "$(cargo_install_root)" && pwd)/bin
 else
-  printf '+ cargo install --path %s/crates/ensembly-kernel --locked --force --bin ensembly\n' "$REPO"
-  install_out=$(cargo install --path "$REPO/crates/ensembly-kernel" --locked --force --bin ensembly 2>&1) || {
-    printf '%s\n' "$install_out" >&2
-    die "cargo install failed"
-  }
-  printf '%s\n' "$install_out"
-  # shellcheck disable=SC2016
-  bin=$(printf '%s\n' "$install_out" | sed -n 's/.*executable `ensembly` at `\([^`]*\)`.*/\1/p' | tail -1)
-  if [ -z "$bin" ]; then
-    BIN_DIR=$(CDPATH='' cd -- "$(cargo_install_root)" && pwd)/bin
-  else
-    BIN_DIR=$(CDPATH='' cd -- "$(dirname -- "$bin")" && pwd)
-  fi
+  run cargo install --path "$REPO/crates/ensembly-kernel" --locked --force --bin ensembly
+  BIN_DIR=$(CDPATH='' cd -- "$(cargo_install_root)" && pwd)/bin
 fi
 case :${PATH}: in
   *:"$BIN_DIR":*) ;;

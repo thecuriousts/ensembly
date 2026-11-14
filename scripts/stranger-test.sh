@@ -60,6 +60,23 @@ step "install (all harnesses)"
 run sh "$REPO/scripts/install.sh" --harness all --prefix "$WORK/prefix"
 [ -x "$WORK/prefix/bin/ensembly" ] || fail "ensembly not installed under $WORK/prefix/bin"
 run ensembly version
+PLUGIN="$REPO/marketplaces/grokbot/ensembly"
+cursor_link="$HOME/.cursor/plugins/local/ensembly"
+[ -L "$cursor_link" ] || fail "cursor plugin link missing: $cursor_link"
+case "$(readlink "$cursor_link")" in
+  "$PLUGIN") ;;
+  *) fail "cursor plugin link: want $PLUGIN got $(readlink "$cursor_link")" ;;
+esac
+skills_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
+for skill in ensembly record-layer verified-retrieve; do
+  dest="$skills_dir/$skill"
+  [ -L "$dest" ] || fail "claude skill link missing: $dest"
+  want="$PLUGIN/skills/$skill"
+  case "$(readlink "$dest")" in
+    "$want") ;;
+    *) fail "claude skill $skill: want $want got $(readlink "$dest")" ;;
+  esac
+done
 
 step "default CLI surface (no opportunity-finder in default build)"
 run sh "$REPO/scripts/assert-default-cli-surface.sh" "$WORK/prefix/bin/ensembly"
@@ -71,8 +88,8 @@ printf '%s\n' "$out"
 CONFIG="$XDG_CONFIG_HOME/ensembly/config.toml"
 DATA="$XDG_DATA_HOME/ensembly"
 [ "$out" = "$CONFIG" ] || fail "init printed $out, want $CONFIG"
-run grep -qxF 'opportunity_finder = false' "$CONFIG"
 run grep -qxF "data_dir = \"$DATA\"" "$CONFIG"
+! grep -q opportunity_finder "$CONFIG" || fail "config must not contain packs.opportunity_finder"
 [ -d "$DATA" ] || fail "init did not create $DATA"
 printf '+ ensembly init   (again: must refuse, exit 7)\n'
 set +e
@@ -81,40 +98,38 @@ code=$?
 set -e
 [ "$code" = 7 ] || fail "second init exit $code, want 7"
 
-# The runtime does not read config yet (docs/CONFIG.md): pass the data dir explicitly.
-DB="$DATA/ensembly-ops.sqlite"
 MEM="$DATA/ensembly-memory.json"
 FIX="$REPO/fixtures/issue-1-runtime.json"
 cd "$WORK"
 
 step "doctor before the sample"
-printf '+ ensembly --db %s doctor --offline\n' "$DB"
-out=$(ensembly --no-memory --db "$DB" doctor --offline) || fail "doctor exit $?"
+printf '+ ensembly doctor --offline\n'
+out=$(ensembly --no-memory doctor --offline) || fail "doctor exit $?"
 printf '%s\n' "$out"
-expect_line "$out" "ops-db absent" "latest skipped"
+expect_line "$out" "harness cursor present" "ops-db absent" "latest skipped"
 
 step "sample: runtime HITL/HOOTL loop on fixtures/issue-1-runtime.json"
-run ensembly --db "$DB" --memory "$MEM" runtime load --fixture "$FIX"
-run ensembly --db "$DB" --memory "$MEM" runtime status
-run ensembly --db "$DB" --memory "$MEM" runtime tick
-run ensembly --db "$DB" --memory "$MEM" runtime tick
-run ensembly --db "$DB" --memory "$MEM" runtime tick
-run ensembly --db "$DB" --memory "$MEM" runtime tick
-run ensembly --db "$DB" --memory "$MEM" runtime approve pay-rent
-run ensembly --db "$DB" --memory "$MEM" runtime claim grocery-errand
-run ensembly --db "$DB" --memory "$MEM" runtime complete grocery-errand
+run ensembly --memory "$MEM" runtime load --fixture "$FIX"
+run ensembly --memory "$MEM" runtime status
+run ensembly --memory "$MEM" runtime tick
+run ensembly --memory "$MEM" runtime tick
+run ensembly --memory "$MEM" runtime tick
+run ensembly --memory "$MEM" runtime tick
+run ensembly --memory "$MEM" runtime approve pay-rent
+run ensembly --memory "$MEM" runtime claim grocery-errand
+run ensembly --memory "$MEM" runtime complete grocery-errand
 printf '+ ensembly runtime status --json\n'
-out=$(ensembly --db "$DB" --memory "$MEM" runtime status --json) || fail "status exit $?"
+out=$(ensembly --memory "$MEM" runtime status --json) || fail "status exit $?"
 printf '%s\n' "$out"
 printf '%s\n' "$out" | grep -qF '"ok": true' || fail "runtime status not ok"
 [ -s "$MEM" ] || fail "memory file not written: $MEM"
 
 step "sample: pulse-pack export, then validate it"
-run ensembly --db "$DB" --memory "$MEM" pulse-pack export --out "$WORK/session.pulse.json"
-run ensembly --db "$DB" --memory "$MEM" pulse-pack import --pack "$WORK/session.pulse.json" --dry-run
+run ensembly --memory "$MEM" pulse-pack export --out "$WORK/session.pulse.json"
+run ensembly --memory "$MEM" pulse-pack import --pack "$WORK/session.pulse.json" --dry-run
 
 step "doctor after the sample"
-out=$(ensembly --no-memory --db "$DB" doctor --offline) || fail "doctor exit $?"
+out=$(ensembly --no-memory doctor --offline) || fail "doctor exit $?"
 printf '%s\n' "$out"
 expect_line "$out" "ops-db ok"
 
