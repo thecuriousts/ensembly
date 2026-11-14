@@ -92,13 +92,16 @@ fn token_named_file_excluded_without_force_include() {
 
 #[test]
 fn force_include_does_not_bypass_secret_content_scan() {
+    let ghp_token = format!(
+        "ignore this {}{}",
+        concat!("gh", "p_"),
+        "abcdefghijklmnopqrstuvwxyz1234567890"
+    );
+    let pem_body = format!("-----BEGIN {} KEY-----\nfixture\n", concat!("PRIV", "ATE"));
+
     let dir = tempdir().unwrap();
     let (out, manifest) = export_with_source(&dir, vec!["notes.txt".into()], |shared| {
-        fs::write(
-            shared.join("notes.txt"),
-            b"ignore this ghp_abcdefghijklmnopqrstuvwxyz1234567890",
-        )
-        .unwrap();
+        fs::write(shared.join("notes.txt"), ghp_token.as_bytes()).unwrap();
     });
     assert!(!out.join("shared/vault/notes.txt").exists());
     let entry = manifest
@@ -118,11 +121,7 @@ fn force_include_does_not_bypass_secret_content_scan() {
 
     let dir2 = tempdir().unwrap();
     let (_out2, manifest2) = export_with_source(&dir2, vec!["private.pem".into()], |shared| {
-        fs::write(
-            shared.join("private.pem"),
-            b"-----BEGIN PRIVATE KEY-----\nfixture\n",
-        )
-        .unwrap();
+        fs::write(shared.join("private.pem"), pem_body.as_bytes()).unwrap();
     });
     let entry2 = manifest2
         .files

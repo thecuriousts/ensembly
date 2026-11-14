@@ -97,6 +97,6 @@ Join refuses checksum mismatches, missing or extra part files, non-empty output,
 ```mermaid
 flowchart LR
   export[export / data-backup] --> manifest[MANIFEST.json]
-  manifest -->   verify[verify: checksums + no extra files]
+  manifest --> verify[verify: checksums + no extra files]
   verify --> restore[restore: verify once, then apply]
 ```
