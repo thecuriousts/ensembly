@@ -98,5 +98,5 @@ Join refuses checksum mismatches, missing or extra part files, non-empty output,
 flowchart LR
   export[export / data-backup] --> manifest[MANIFEST.json]
   manifest -->   verify[verify: checksums + no extra files]
-  verify --> restore[restore: verify again + apply]
+  verify --> restore[restore: verify once, then apply]
 ```

@@ -41,7 +41,9 @@ pub use split_join::{
     PartsManifest, PARTS_FORMAT,
 };
 pub use verify::{verify_bundle, VerifyReport};
-pub use verify_ics::{verify_ics_content, verify_ics_file};
+pub use verify_ics::{
+    verify_ics_content, verify_ics_file, VERIFY_ICS_MAX_BYTES, VERIFY_ICS_MAX_LOGICAL_LINE_BYTES,
+};
 pub use views::{derive_views_from_ops_bundle, DerivedViews};
 
 pub const DEFAULT_MAX_FILE_MB: u64 = 200;

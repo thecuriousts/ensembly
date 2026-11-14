@@ -344,3 +344,36 @@ fn join_rollback_after_duplicate_tar_path() {
     assert!(err.contains("duplicate tar path"), "{err}");
     assert!(!target.join("MANIFEST.json").exists());
 }
+
+#[test]
+fn unpack_streams_two_hundred_mb_member() {
+    const SIZE: u64 = 200 * 1024 * 1024;
+    let dir = tempdir().unwrap();
+    let payload = dir.path().join("payload.bin");
+    {
+        use std::io::Write;
+        let mut f = fs::File::create(&payload).unwrap();
+        let block = vec![0xCDu8; 1024 * 1024];
+        let mut written = 0u64;
+        while written < SIZE {
+            let take = block.len().min((SIZE - written) as usize);
+            f.write_all(&block[..take]).unwrap();
+            written += take as u64;
+        }
+    }
+    let tar = dir.path().join("big.tar");
+    write_crafted_tar(&tar, |raw| {
+        let mut b = Builder::new(raw);
+        let mut h = Header::new_gnu();
+        h.set_size(SIZE);
+        let mut f = fs::File::open(&payload).map_err(|e| e.to_string())?;
+        b.append_data(&mut h, "sources/shared/data/large.bin", &mut f)
+            .map_err(|e| e.to_string())?;
+        b.into_inner().map_err(|e| e.to_string())?;
+        Ok(())
+    });
+    let out = dir.path().join("unpacked");
+    unpack_tar_to_bundle(&tar, &out).unwrap();
+    let extracted = out.join("sources/shared/data/large.bin");
+    assert_eq!(fs::metadata(&extracted).unwrap().len(), SIZE);
+}

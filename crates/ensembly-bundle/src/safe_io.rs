@@ -10,11 +10,26 @@ const O_NOFOLLOW: i32 = 0o100000;
 #[cfg(all(unix, not(target_os = "linux")))]
 const O_NOFOLLOW: i32 = 0x00200000;
 
-pub fn copy_nofollow(src: &Path, dest: &Path) -> Result<(), String> {
-    let data = fs::read(src).map_err(|e| e.to_string())?;
-    write_nofollow(dest, &data, dest.exists())
+fn open_nofollow_read(path: &Path) -> Result<std::fs::File, String> {
+    if let Ok(meta) = fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() {
+            return Err(format!("refusing symlink source {}", path.display()));
+        }
+    }
+    let mut opts = OpenOptions::new();
+    opts.read(true);
+    #[cfg(unix)]
+    opts.custom_flags(O_NOFOLLOW);
+    opts.open(path)
+        .map_err(|e| format!("open {}: {e}", path.display()))
 }
 
+pub fn copy_nofollow(src: &Path, dest: &Path) -> Result<(), String> {
+    let mut src_file = open_nofollow_read(src)?;
+    copy_reader_nofollow(dest, &mut src_file, dest.exists())
+}
+
+#[allow(dead_code)]
 pub fn write_nofollow(dest: &Path, data: &[u8], allow_truncate: bool) -> Result<(), String> {
     if let Ok(meta) = fs::symlink_metadata(dest) {
         if meta.file_type().is_symlink() {
