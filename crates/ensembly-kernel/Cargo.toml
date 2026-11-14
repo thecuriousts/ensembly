@@ -19,6 +19,7 @@ path = "src/main.rs"
 default = []
 opportunity-finder = [
     "dep:ensembly-opportunity-finder",
+    "ensembly-opportunity-finder/kernel-bridge",
     "ensembly-schema/opportunity-finder",
 ]
 

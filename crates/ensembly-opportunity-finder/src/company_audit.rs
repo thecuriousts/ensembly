@@ -618,8 +618,11 @@ mod tests {
             "domain must be stored canonical"
         );
         let mut b = first();
-        b.audited_at = "2026-10-20T09:00:00Z".into();
+        b.audited_at = "2026-10-20T09:00".into();
         assert!(validate_audit(&b).is_err());
+        let mut c = first();
+        c.audited_at = "2026-10-20T09:00:00Z".into();
+        assert!(validate_audit(&c).is_ok());
         let line = SAMPLE
             .lines()
             .next()

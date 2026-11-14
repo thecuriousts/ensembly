@@ -16,10 +16,12 @@ mod commit;
 #[cfg(feature = "opportunity-finder")]
 mod decision;
 mod exit;
+#[cfg(feature = "opportunity-finder")]
 mod pack;
 mod reconcile;
 mod record;
 mod replay;
+mod sealed_io;
 mod surface;
 mod sync;
 mod url;
@@ -48,9 +50,13 @@ pub use decision::{
     GateVerdict, LabelRow, ModelDecision, SplitBucket, DEFAULT_TIMEOUT_HOURS, MODEL_VERSION,
     SPLIT_SEED, TRIAGE_QUESTION,
 };
-pub use exit::{EXIT_ERROR, EXIT_PASS, EXIT_PULSE_REFUSED_WRITE, EXIT_USAGE};
+pub use exit::{
+    EXIT_BLOCK, EXIT_ERROR, EXIT_FLAG, EXIT_PASS, EXIT_PULSE_REFUSED_WRITE,
+    EXIT_UNAUDITED_OR_STALE, EXIT_USAGE,
+};
 #[cfg(feature = "opportunity-finder")]
 pub use ledger::*;
+#[cfg(feature = "opportunity-finder")]
 pub use pack::*;
 pub use reconcile::{
     apply_conflict_action, is_terminal, merge_copy_into_owner, reconcile, Conflict, ConflictAction,
@@ -58,17 +64,21 @@ pub use reconcile::{
 };
 pub use record::{
     transition, Aggregate, AggregateId, ConflictState, EventEnvelope, EventId, EventKind, Evidence,
-    Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Source, Status as RecordStatus,
-    StockholmTime, TextForm, Version,
+    Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Rfc3339Time, Source,
+    Status as RecordStatus, TextForm, Version,
 };
 pub use replay::{
     current_rows, parse_event_log, replay, replay_log_file, restore_drill, restore_log,
     MaterializedAggregate, ReplayError,
 };
+pub use sealed_io::{
+    check_seal, grew_without_rewrite, lock, read_bytes, seal_path, unlock, write_seal,
+    SealedIoError,
+};
 pub use surface::{
-    commit_json, configured_writer, feed_json, recover_json, require_configured_writer,
-    snapshot_json, stockholm_record_now, validate_writer_identity, JsonPayload, RecordSurfaceError,
-    WRITER_ENV,
+    commit_json, configured_writer, feed_json, record_now_local, recover_json,
+    require_configured_writer, snapshot_json, stockholm_record_now, validate_writer_identity,
+    JsonPayload, RecordSurfaceError, WRITER_ENV,
 };
 pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};
 pub use url::{check_submit_time, link_key};

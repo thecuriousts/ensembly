@@ -1,10 +1,17 @@
 //! Published writer for the application ledger (opportunity-finder pack only).
+//!
+//! ```compile_fail
+//! use ensembly_opportunity_finder::ledger_writer::LedgerWriter;
+//! LedgerWriter::open("/tmp/x").unwrap();
+//! ```
 
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
-use ensembly_schema::{link_key, map_ledger_status, LedgerRow};
+use ensembly_schema::{
+    check_seal, grew_without_rewrite, link_key, lock, map_ledger_status, read_bytes, seal_path,
+    unlock, write_seal, LedgerRow, SealedIoError,
+};
 use thiserror::Error;
 
 use crate::application_ledger;
@@ -30,22 +37,17 @@ pub struct LedgerWriter {
 }
 
 impl LedgerWriter {
+    #[cfg_attr(not(feature = "kernel-bridge"), allow(dead_code))]
     pub(crate) fn open(path: impl AsRef<Path>) -> Result<Self, LedgerWriterError> {
         Ok(Self {
             path: path.as_ref().to_path_buf(),
         })
     }
 
-    /// Used only from `ensembly-kernel` `KernelWriter::open_ledger`; not a public writer API.
-    #[doc(hidden)]
-    pub fn attach_for_kernel(path: impl AsRef<Path>) -> Result<Self, LedgerWriterError> {
-        Self::open(path)
-    }
-
     /// Seal an empty or missing ledger. Refuses a non-empty ledger or an existing seal.
     pub fn init_ledger(&self) -> Result<(), LedgerWriterError> {
         let path = &self.path;
-        let bytes = read_ledger_bytes(path)?;
+        let bytes = read_bytes(path).map_err(map_sealed)?;
         if !bytes.is_empty() {
             return Err(LedgerWriterError::Ledger(
                 "ledger already has rows; init is only for a new empty ledger".into(),
@@ -64,34 +66,33 @@ impl LedgerWriter {
                 LedgerWriterError::Ledger(format!("create {}: {err}", path.display()))
             })?;
         }
-        write_seal(path, b"")?;
-        lock_ledger(path)
+        write_seal(path, b"").map_err(map_sealed)?;
+        lock(path).map_err(map_sealed)
     }
 
     /// Append one ledger row, or skip a retry with the same key and payload.
     pub fn append_ledger(&self, row: &LedgerRow) -> Result<LedgerWriteReceipt, LedgerWriterError> {
         let path = &self.path;
         let key = idempotency_key(row);
-        let before = read_ledger_bytes(path)?;
-        check_seal(path, &before)?;
+        let before = read_bytes(path).map_err(map_sealed)?;
+        check_seal(path, &before).map_err(map_sealed)?;
         if let Some(decision) = existing_decision(&before, row, &key)? {
             return Ok(decision);
         }
-        unlock_ledger(path)?;
+        unlock(path).map_err(map_sealed)?;
         let result = application_ledger::append_row(path, row)
             .map_err(|err| LedgerWriterError::Ledger(err.to_string()));
         let after_result = result.and_then(|_| {
-            let after = read_ledger_bytes(path)?;
-            if !ledger_grew_without_rewrite(&before, &after) {
+            let after = read_bytes(path).map_err(map_sealed)?;
+            if !grew_without_rewrite(&before, &after) {
                 return Err(LedgerWriterError::Ledger(
-                    "ledger history was rewritten; the writer will not keep a mutated prefix"
-                        .into(),
+                    "history was rewritten; the writer will not append".into(),
                 ));
             }
-            write_seal(path, &after)?;
+            write_seal(path, &after).map_err(map_sealed)?;
             Ok(after)
         });
-        let lock = lock_ledger(path);
+        let lock = lock(path).map_err(map_sealed);
         after_result?;
         lock?;
         Ok(LedgerWriteReceipt {
@@ -101,7 +102,21 @@ impl LedgerWriter {
     }
 }
 
-/// `link_key` plus a tab plus the record-layer stage token.
+#[cfg(feature = "kernel-bridge")]
+#[doc(hidden)]
+pub fn open_kernel_ledger_writer(
+    path: impl AsRef<Path>,
+) -> Result<LedgerWriter, LedgerWriterError> {
+    LedgerWriter::open(path)
+}
+
+fn map_sealed(err: SealedIoError) -> LedgerWriterError {
+    match err {
+        SealedIoError::Io(msg) | SealedIoError::Refused(msg) => LedgerWriterError::Ledger(msg),
+    }
+}
+
+/// Canonical `link_key` plus a tab plus the record-layer stage token.
 pub fn idempotency_key(row: &LedgerRow) -> String {
     format!(
         "{}\t{}",
@@ -111,40 +126,35 @@ pub fn idempotency_key(row: &LedgerRow) -> String {
 }
 
 fn existing_decision(
-    bytes: &[u8],
+    before: &[u8],
     row: &LedgerRow,
     key: &str,
 ) -> Result<Option<LedgerWriteReceipt>, LedgerWriterError> {
-    if bytes.is_empty() {
+    let text = std::str::from_utf8(before).map_err(|e| LedgerWriterError::Ledger(e.to_string()))?;
+    if text.is_empty() {
         return Ok(None);
     }
-    let text =
-        std::str::from_utf8(bytes).map_err(|err| LedgerWriterError::Ledger(err.to_string()))?;
-    let rows = application_ledger::parse_ledger(text)
-        .map_err(|err| LedgerWriterError::Ledger(err.to_string()))?;
-    let matches: Vec<&LedgerRow> = rows
-        .iter()
-        .filter(|existing| idempotency_key(existing) == key)
-        .collect();
-    if matches.is_empty() {
-        return Ok(None);
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        let prev: LedgerRow = serde_json::from_str(line)
+            .map_err(|e| LedgerWriterError::Ledger(format!("parse ledger: {e}")))?;
+        if idempotency_key(&prev) != key {
+            continue;
+        }
+        if same_payload(&prev, row) {
+            return Ok(Some(LedgerWriteReceipt {
+                key: key.into(),
+                appended: false,
+            }));
+        }
+        return Err(LedgerWriterError::Conflict {
+            key: key.into(),
+            detail: "a different payload is already stored for this key".into(),
+        });
     }
-    if matches
-        .iter()
-        .any(|existing| same_ledger_payload(existing, row))
-    {
-        return Ok(Some(LedgerWriteReceipt {
-            key: key.to_string(),
-            appended: false,
-        }));
-    }
-    Err(LedgerWriterError::Conflict {
-        key: key.to_string(),
-        detail: "payload for this stage differs from a stored row. The writer does not rewrite a stored row. Append a later stage.".into(),
-    })
+    Ok(None)
 }
 
-fn same_ledger_payload(left: &LedgerRow, right: &LedgerRow) -> bool {
+fn same_payload(left: &LedgerRow, right: &LedgerRow) -> bool {
     left.company.trim() == right.company.trim()
         && left.role.trim() == right.role.trim()
         && link_key(left.link.trim()) == link_key(right.link.trim())
@@ -157,119 +167,4 @@ fn same_ledger_payload(left: &LedgerRow, right: &LedgerRow) -> bool {
 
 fn normalize_url(url: Option<&str>) -> Option<String> {
     url.map(|value| value.trim().trim_end_matches('/').to_string())
-}
-
-fn read_ledger_bytes(path: &Path) -> Result<Vec<u8>, LedgerWriterError> {
-    match fs::read(path) {
-        Ok(bytes) => Ok(bytes),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(err) => Err(LedgerWriterError::Ledger(format!(
-            "read {}: {err}",
-            path.display()
-        ))),
-    }
-}
-
-fn ledger_grew_without_rewrite(before: &[u8], after: &[u8]) -> bool {
-    if before.is_empty() {
-        return !after.is_empty();
-    }
-    if after.starts_with(before) {
-        return after.len() > before.len();
-    }
-    let mut with_nl = before.to_vec();
-    if !with_nl.ends_with(b"\n") {
-        with_nl.push(b'\n');
-    }
-    after.starts_with(&with_nl) && after.len() > with_nl.len()
-}
-
-fn unlock_ledger(path: &Path) -> Result<(), LedgerWriterError> {
-    if path.exists() {
-        set_ledger_mode(path, 0o644)?;
-    }
-    let seal = seal_path(path);
-    if seal.exists() {
-        set_ledger_mode(&seal, 0o644)?;
-    }
-    Ok(())
-}
-
-fn lock_ledger(path: &Path) -> Result<(), LedgerWriterError> {
-    if path.exists() {
-        set_ledger_mode(path, 0o444)?;
-    }
-    let seal = seal_path(path);
-    if seal.exists() {
-        set_ledger_mode(&seal, 0o444)?;
-    }
-    Ok(())
-}
-
-fn set_ledger_mode(path: &Path, mode: u32) -> Result<(), LedgerWriterError> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(mode)).map_err(|err| {
-            LedgerWriterError::Ledger(format!("permissions {}: {err}", path.display()))
-        })
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (path, mode);
-        Ok(())
-    }
-}
-
-fn seal_path(ledger: &Path) -> PathBuf {
-    let mut name = ledger
-        .file_name()
-        .unwrap_or_else(|| std::ffi::OsStr::new("ledger.jsonl"))
-        .to_os_string();
-    name.push(".writer-hash");
-    ledger.with_file_name(name)
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    hex::encode(Sha256::digest(bytes))
-}
-
-fn check_seal(path: &Path, bytes: &[u8]) -> Result<(), LedgerWriterError> {
-    let seal = seal_path(path);
-    match fs::read_to_string(&seal) {
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Err(LedgerWriterError::Ledger(
-            "ledger seal is missing; the writer will not adopt current bytes. Init only a new empty ledger".into(),
-        )),
-        Ok(expected) => {
-            if expected.trim() == sha256_hex(bytes) {
-                Ok(())
-            } else {
-                Err(LedgerWriterError::Ledger(
-                    "ledger history was rewritten; the writer will not append".into(),
-                ))
-            }
-        }
-        Err(err) => Err(LedgerWriterError::Ledger(format!(
-            "read {}: {err}",
-            seal.display()
-        ))),
-    }
-}
-
-fn write_seal(path: &Path, bytes: &[u8]) -> Result<(), LedgerWriterError> {
-    let seal = seal_path(path);
-    if seal.exists() {
-        set_ledger_mode(&seal, 0o644)?;
-    }
-    fs::write(
-        &seal,
-        format!(
-            "{}
-",
-            sha256_hex(bytes)
-        ),
-    )
-    .map_err(|err| LedgerWriterError::Ledger(format!("write {}: {err}", seal.display())))?;
-    set_ledger_mode(&seal, 0o444)
 }

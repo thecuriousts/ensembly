@@ -620,10 +620,10 @@ fn cli_read_and_refused_write() {
 /// 5 unaudited or stale (1/2 errors). 0 is success in both.
 #[test]
 fn pulse_and_audit_exit_codes_do_not_clash() {
-    use ensembly_schema::EXIT_PASS;
+    use ensembly_schema::{EXIT_BLOCK, EXIT_FLAG, EXIT_PASS, EXIT_UNAUDITED_OR_STALE};
     let pulse = [1, 2, pc::REFUSED_WRITE_EXIT];
     // Opportunity-finder pack uses 3/4/5 for company audit; pulse must not reuse those.
-    let audit_only = [3, 4, 5];
+    let audit_only = [EXIT_FLAG, EXIT_BLOCK, EXIT_UNAUDITED_OR_STALE];
     assert_eq!(EXIT_PASS, 0);
     for c in pulse {
         assert!(

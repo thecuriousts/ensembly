@@ -43,12 +43,12 @@
       ]
     },
     "submit_time": {
-      "description": "RFC 3339 with seconds and a numeric offset (not Z). null for prepared, for withdrawn dropped before sending, or with submit_time_unknown: true.",
+      "description": "RFC 3339 with seconds and a numeric offset or Z/z (UTC). null for prepared, for withdrawn dropped before sending, or with submit_time_unknown: true.",
       "type": [
         "string",
         "null"
       ],
-      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?[+-]\\d{2}:\\d{2}$"
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?([+-]\\d{2}:\\d{2}|[Zz])$"
     },
     "submit_time_unknown": {
       "description": "true when the application was sent but its time was never recorded; submit_time is then null. Only for submitted, interview, rejected, silent-closed. Absent otherwise (never false).",

@@ -359,6 +359,7 @@ name = "ensembly-schema"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hex",
  "libc",
  "schemars",
  "serde",

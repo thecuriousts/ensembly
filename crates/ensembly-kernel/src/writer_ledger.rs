@@ -2,7 +2,9 @@
 
 use std::path::Path;
 
-use ensembly_opportunity_finder::ledger_writer::{LedgerWriter, LedgerWriterError};
+use ensembly_opportunity_finder::{
+    ledger_writer::LedgerWriter, open_kernel_ledger_writer, LedgerWriterError,
+};
 use ensembly_schema::LedgerRow;
 
 use super::writer::{KernelWriter, WriterError};
@@ -54,7 +56,7 @@ impl KernelWriter {
 
     fn ledger_writer(&self) -> Result<LedgerWriter, WriterError> {
         let path = self.ledger_path()?;
-        LedgerWriter::attach_for_kernel(path).map_err(|e| WriterError::Ledger(e.to_string()))
+        open_kernel_ledger_writer(path).map_err(|e| WriterError::Ledger(e.to_string()))
     }
 }
 

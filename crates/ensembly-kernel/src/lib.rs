@@ -1,6 +1,5 @@
 //! ensembly-kernel — Game of Peram life control plane (Rust iron-peak).
 //!
-//!
 //! Operator CLI (`bin/swarm.js` + `src/*`) is the live day/turn/graph host.
 //! Control-plane features expand here.
 //!
@@ -60,10 +59,12 @@ pub use digital_flow::{
     run_cycle, DigitalFlow, FlowStatus,
 };
 #[cfg(feature = "opportunity-finder")]
+pub use ensembly_schema::PackRef;
+#[cfg(feature = "opportunity-finder")]
 pub use ensembly_schema::{
     audit_exit_code, audit_exit_status, EXIT_BLOCK, EXIT_FLAG, EXIT_UNAUDITED_OR_STALE,
 };
-pub use ensembly_schema::{PackRef, EXIT_ERROR, EXIT_PASS, EXIT_PULSE_REFUSED_WRITE, EXIT_USAGE};
+pub use ensembly_schema::{EXIT_ERROR, EXIT_PASS, EXIT_PULSE_REFUSED_WRITE, EXIT_USAGE};
 pub use graph::{DepGraph, GateKind, TaskNode, TaskRealm, TaskStatus};
 pub use life_state::{LifeState, LoopRegime, OutcomeMetrics};
 pub use memory_sink::MemorySink;

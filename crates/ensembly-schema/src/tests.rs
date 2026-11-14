@@ -1,3 +1,4 @@
+#[cfg(feature = "opportunity-finder")]
 use super::pack::PackRefLine;
 use super::*;
 use serde_json::json;
@@ -8,8 +9,16 @@ use super::audit::AuditLine;
 #[cfg(feature = "opportunity-finder")]
 use super::ledger::LedgerRowLine;
 
-const PACK: &str = "fixtures/pack-ref-v0.jsonl";
-const PACK_V1: &str = "fixtures/pack-ref-v1.jsonl";
+#[cfg(feature = "opportunity-finder")]
+const PACK: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../ensembly-opportunity-finder/fixtures/pack-ref-v0.jsonl"
+);
+#[cfg(feature = "opportunity-finder")]
+const PACK_V1: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../ensembly-opportunity-finder/fixtures/pack-ref-v1.jsonl"
+);
 
 #[cfg(feature = "opportunity-finder")]
 const LEDGER: &str = concat!(
@@ -77,6 +86,7 @@ fn fixture_lines_round_trip() {
     }
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn missing_v_reads_as_zero_on_pack() {
     assert!(serde_json::from_str::<serde_json::Value>(&first(PACK))
@@ -121,6 +131,7 @@ fn unsupported_version_names_the_value() {
     assert!(zero.contains("explicit v 0 is refused"), "{zero}");
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn unknown_field_rejected_on_pack_ref() {
     let extra = json!(1);
@@ -224,10 +235,11 @@ fn submit_time_is_known_or_unknown_or_not_sent() {
 
 #[cfg(feature = "opportunity-finder")]
 #[test]
-fn legacy_read_still_refuses_a_bad_time() {
-    let err = decode_line::<LedgerRow>(&legacy("submitted", Some("\"2026-10-26T18:59:00Z\"")))
-        .unwrap_err();
-    assert!(err.contains("numeric offset"), "{err}");
+fn legacy_z_submit_time_is_accepted() {
+    let row = decode_line::<LedgerRow>(&legacy("submitted", Some("\"2026-10-26T18:59:00Z\"")))
+        .unwrap()
+        .value;
+    check_row_submit_time(&row).unwrap();
 }
 
 #[cfg(feature = "opportunity-finder")]
@@ -244,9 +256,8 @@ fn watch_status_maps_onto_ledger_status() {
 
 #[test]
 fn submit_time_and_link_key_helpers() {
-    assert!(check_submit_time("2026-10-26T18:59:00Z")
-        .unwrap_err()
-        .contains("numeric offset"));
+    assert!(check_submit_time("2026-10-26T18:59:00Z").is_ok());
+    assert!(check_submit_time("2026-10-26T18:59:00z").is_ok());
     assert!(check_submit_time("2026-10-26T18:59:00+01:00").is_ok());
     assert!(check_submit_time("2026-07-01T10:00:00+02:00").is_ok());
     assert!(check_submit_time("2026-03-15T12:00:00-05:00").is_ok());
@@ -327,12 +338,14 @@ fn fixtures_exclude_personal_markers() {
     assert!(n >= 2);
 }
 
+#[cfg(feature = "opportunity-finder")]
 #[test]
 fn checked_in_pack_schema_matches_types() {
-    match_schema(
-        "schemas/pack-ref.v1.json",
-        schemars::schema_for!(PackRefLine),
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../ensembly-opportunity-finder/schemas/pack-ref.v1.json"
     );
+    match_schema_at(path, schemars::schema_for!(PackRefLine));
 }
 
 #[cfg(feature = "opportunity-finder")]
@@ -350,11 +363,6 @@ fn checked_in_opportunity_schema_matches_types() {
         &format!("{root}/schemas/company-audit.v1.json"),
         schemars::schema_for!(AuditLine),
     );
-}
-
-fn match_schema(rel: &str, schema: schemars::schema::RootSchema) {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
-    match_schema_at(&path.to_string_lossy(), schema);
 }
 
 fn match_schema_at(path: &str, schema: schemars::schema::RootSchema) {
@@ -443,7 +451,11 @@ fn v1_fixtures_match_checked_in_schema() {
     );
     check_lines::<LedgerRow>(LEDGER_V1, &format!("{root}/ledger-row.v1.json"));
     check_lines::<Audit>(AUDIT_V1, &format!("{root}/company-audit.v1.json"));
-    check_lines::<PackRef>(PACK_V1, "schemas/pack-ref.v1.json");
+    let pack_schema = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../ensembly-opportunity-finder/schemas/pack-ref.v1.json"
+    );
+    check_lines::<PackRef>(PACK_V1, pack_schema);
 }
 
 fn check_lines<T>(lines: &str, schema_rel: &str)

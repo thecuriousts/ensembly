@@ -20,14 +20,16 @@
 //! ```compile_fail
 //! let _ = ensembly_kernel::pulse_supersede::admit;
 //! ```
-//!
 
 use std::path::{Path, PathBuf};
 
-#[cfg(feature = "opportunity-finder")]
-use std::{fs, io};
-
 use ensembly_schema::require_configured_writer;
+#[cfg(feature = "opportunity-finder")]
+use ensembly_schema::{
+    check_seal as schema_check_seal, grew_without_rewrite, lock as schema_lock, read_bytes,
+    seal_path as schema_seal_path, unlock as schema_unlock, write_seal as schema_write_seal,
+    SealedIoError,
+};
 use thiserror::Error;
 
 use crate::pulse_supersede::{
@@ -144,125 +146,45 @@ pub(crate) fn require_writer(writer: &str) -> Result<(), WriterError> {
 
 #[cfg(feature = "opportunity-finder")]
 pub(crate) fn read_sealed_bytes(path: &Path) -> Result<Vec<u8>, WriterError> {
-    match fs::read(path) {
-        Ok(bytes) => Ok(bytes),
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(err) => Err(WriterError::Ledger(format!(
-            "read {}: {err}",
-            path.display()
-        ))),
-    }
+    read_bytes(path).map_err(map_sealed)
 }
 
 #[cfg(feature = "opportunity-finder")]
 pub(crate) fn sealed_grew_without_rewrite(before: &[u8], after: &[u8]) -> bool {
-    if before.is_empty() {
-        return !after.is_empty();
-    }
-    if after.starts_with(before) {
-        return after.len() > before.len();
-    }
-    let mut with_nl = before.to_vec();
-    if !with_nl.ends_with(b"\n") {
-        with_nl.push(b'\n');
-    }
-    after.starts_with(&with_nl) && after.len() > with_nl.len()
+    grew_without_rewrite(before, after)
 }
 
 #[cfg(feature = "opportunity-finder")]
 pub(crate) fn unlock_sealed(path: &Path) -> Result<(), WriterError> {
-    if path.exists() {
-        set_sealed_mode(path, 0o644)?;
-    }
-    let seal = seal_path(path);
-    if seal.exists() {
-        set_sealed_mode(&seal, 0o644)?;
-    }
-    Ok(())
+    schema_unlock(path).map_err(map_sealed)
 }
 
 #[cfg(feature = "opportunity-finder")]
 pub(crate) fn lock_sealed(path: &Path) -> Result<(), WriterError> {
-    if path.exists() {
-        set_sealed_mode(path, 0o444)?;
-    }
-    let seal = seal_path(path);
-    if seal.exists() {
-        set_sealed_mode(&seal, 0o444)?;
-    }
-    Ok(())
-}
-
-#[cfg(feature = "opportunity-finder")]
-fn set_sealed_mode(path: &Path, mode: u32) -> Result<(), WriterError> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(mode))
-            .map_err(|err| WriterError::Ledger(format!("permissions {}: {err}", path.display())))
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (path, mode);
-        Ok(())
-    }
+    schema_lock(path).map_err(map_sealed)
 }
 
 #[cfg(feature = "opportunity-finder")]
 pub(crate) fn seal_path(ledger: &Path) -> PathBuf {
-    let mut name = ledger
-        .file_name()
-        .unwrap_or_else(|| std::ffi::OsStr::new("ledger.jsonl"))
-        .to_os_string();
-    name.push(".writer-hash");
-    ledger.with_file_name(name)
-}
-
-#[cfg(feature = "opportunity-finder")]
-fn sha256_hex(bytes: &[u8]) -> String {
-    use sha2::{Digest, Sha256};
-    hex::encode(Sha256::digest(bytes))
+    schema_seal_path(ledger)
 }
 
 #[cfg(feature = "opportunity-finder")]
 pub(crate) fn check_seal(path: &Path, bytes: &[u8]) -> Result<(), WriterError> {
-    let seal = seal_path(path);
-    match fs::read_to_string(&seal) {
-        Err(err) if err.kind() == io::ErrorKind::NotFound => Err(WriterError::Ledger(
-            "seal is missing; the writer will not adopt current bytes".into(),
-        )),
-        Ok(expected) => {
-            if expected.trim() == sha256_hex(bytes) {
-                Ok(())
-            } else {
-                Err(WriterError::Ledger(
-                    "history was rewritten; the writer will not append".into(),
-                ))
-            }
-        }
-        Err(err) => Err(WriterError::Ledger(format!(
-            "read {}: {err}",
-            seal.display()
-        ))),
-    }
+    schema_check_seal(path, bytes).map_err(map_sealed)
 }
 
 #[cfg(feature = "opportunity-finder")]
 pub(crate) fn write_seal(path: &Path, bytes: &[u8]) -> Result<(), WriterError> {
-    let seal = seal_path(path);
-    if seal.exists() {
-        set_sealed_mode(&seal, 0o644)?;
+    schema_write_seal(path, bytes).map_err(map_sealed)
+}
+
+#[cfg(feature = "opportunity-finder")]
+fn map_sealed(err: SealedIoError) -> WriterError {
+    match err {
+        SealedIoError::Refused(msg) => WriterError::Refused(msg),
+        SealedIoError::Io(msg) => WriterError::Ledger(msg),
     }
-    fs::write(
-        &seal,
-        format!(
-            "{}
-",
-            sha256_hex(bytes)
-        ),
-    )
-    .map_err(|err| WriterError::Ledger(format!("write {}: {err}", seal.display())))?;
-    set_sealed_mode(&seal, 0o444)
 }
 
 pub(crate) fn store(err: impl ToString) -> WriterError {

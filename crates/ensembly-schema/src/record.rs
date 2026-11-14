@@ -25,9 +25,9 @@ pub struct Version(pub u64);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(transparent)]
-pub struct StockholmTime(String);
+pub struct Rfc3339Time(String);
 
-impl StockholmTime {
+impl Rfc3339Time {
     pub fn new(raw: impl Into<String>) -> Result<Self, String> {
         let s = raw.into();
         url::check_submit_time(&s)?;
@@ -121,7 +121,7 @@ pub enum Source {
 #[serde(deny_unknown_fields)]
 pub struct Evidence {
     pub source: Source,
-    pub at: StockholmTime,
+    pub at: Rfc3339Time,
     pub text: TextForm,
 }
 
@@ -129,7 +129,7 @@ pub struct Evidence {
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum SubmitTime {
-    Known { at: StockholmTime },
+    Known { at: Rfc3339Time },
     Unknown,
 }
 
@@ -142,8 +142,8 @@ pub enum Status {
     Confirmed { evidence: Evidence },
     Rejected { evidence: Evidence },
     NextStage { n: u8, evidence: Evidence },
-    Silent { since: StockholmTime },
-    Expired { at: StockholmTime },
+    Silent { since: Rfc3339Time },
+    Expired { at: Rfc3339Time },
     Withdrawn,
 }
 
@@ -155,7 +155,7 @@ pub struct Aggregate {
     pub status: Status,
     pub version: Version,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stale_after: Option<StockholmTime>,
+    pub stale_after: Option<Rfc3339Time>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,8 +206,8 @@ pub struct EventEnvelope<P> {
     pub aggregate: AggregateId,
     pub key: IdempotencyKey,
     pub version: Version,
-    pub event_time: StockholmTime,
-    pub record_time: StockholmTime,
+    pub event_time: Rfc3339Time,
+    pub record_time: Rfc3339Time,
     pub source: Source,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prev_hash: Option<Hash>,
@@ -262,7 +262,7 @@ pub fn transition(
     kind: EventKind,
     ev: Option<Evidence>,
     submit: Option<SubmitTime>,
-    at: Option<StockholmTime>,
+    at: Option<Rfc3339Time>,
 ) -> Result<Status, IllegalTransition> {
     use EventKind::*;
     let err = |reason: &'static str| IllegalTransition {
@@ -280,7 +280,7 @@ pub fn transition(
         (Status::Intended, Withdraw) => Ok(Status::Withdrawn),
         (Status::Intended, Expire) => {
             let Some(t) = at else {
-                return Err(err("expire needs StockholmTime"));
+                return Err(err("expire needs Rfc3339Time"));
             };
             Ok(Status::Expired { at: t })
         }
@@ -311,7 +311,7 @@ pub fn transition(
         (Status::Submitted { .. }, Withdraw) => Ok(Status::Withdrawn),
         (Status::Submitted { .. }, Expire) => {
             let Some(t) = at else {
-                return Err(err("expire needs StockholmTime"));
+                return Err(err("expire needs Rfc3339Time"));
             };
             Ok(Status::Expired { at: t })
         }
@@ -383,7 +383,7 @@ impl From<crate::ledger::Status> for Status {
         fn ledger_map_evidence(label: &str) -> Evidence {
             Evidence {
                 source: Source::LegacyUnknown,
-                at: StockholmTime::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
+                at: Rfc3339Time::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
                 text: TextForm(format!("from-ledger-{label}")),
             }
         }
@@ -401,7 +401,7 @@ impl From<crate::ledger::Status> for Status {
             },
             L::Withdrawn => Status::Withdrawn,
             L::SilentClosed => Status::Silent {
-                since: StockholmTime::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
+                since: Rfc3339Time::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
             },
         }
     }
@@ -442,13 +442,13 @@ mod tests {
     use crate::{decode_line, encode_line, SCHEMA_VERSION};
     use serde_json::json;
 
-    type LegalEdgeArgs = fn() -> (Option<Evidence>, Option<SubmitTime>, Option<StockholmTime>);
+    type LegalEdgeArgs = fn() -> (Option<Evidence>, Option<SubmitTime>, Option<Rfc3339Time>);
     type LegalEdge = (Status, EventKind, LegalEdgeArgs);
 
     const FIXTURE: &str = "fixtures/record-events-v1.jsonl";
 
-    fn t() -> StockholmTime {
-        StockholmTime::new("2026-10-26T18:59:00+01:00").unwrap()
+    fn t() -> Rfc3339Time {
+        Rfc3339Time::new("2026-10-26T18:59:00+01:00").unwrap()
     }
 
     fn ev(label: &str) -> Evidence {

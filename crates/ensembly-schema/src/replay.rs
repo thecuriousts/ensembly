@@ -175,7 +175,7 @@ pub fn restore_drill(source: &Path) -> Result<(), ReplayError> {
 mod tests {
     use super::*;
     use crate::commit::{Commit, CommitFault, UnitOfWork};
-    use crate::record::{EventId, Source, StockholmTime};
+    use crate::record::{EventId, Rfc3339Time, Source};
     use std::time::Duration;
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,8 +192,8 @@ mod tests {
         }
     }
 
-    fn t(s: &str) -> StockholmTime {
-        StockholmTime::new(s).unwrap()
+    fn t(s: &str) -> Rfc3339Time {
+        Rfc3339Time::new(s).unwrap()
     }
 
     fn event(n: u64, writer: &str, aggregate: &str, key: &str) -> EventEnvelope<ScenarioPayload> {

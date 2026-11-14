@@ -6,14 +6,14 @@ pub fn link_key(link: &str) -> &str {
     l.strip_suffix("/application").unwrap_or(l)
 }
 
-/// RFC 3339 with a numeric timezone offset (not `Z` alone).
+/// RFC 3339 timestamp (`Z`/`z` accepted as UTC).
 pub fn check_submit_time(t: &str) -> Result<(), String> {
-    if t.ends_with('Z') {
-        return Err(format!(
-            "submit_time {t:?} must include a numeric offset, not Z"
-        ));
-    }
-    chrono::DateTime::parse_from_rfc3339(t)
-        .map_err(|e| format!("submit_time {t:?} is not RFC 3339 with offset: {e}"))?;
+    let normalized = if t.ends_with('Z') || t.ends_with('z') {
+        format!("{}+00:00", &t[..t.len() - 1])
+    } else {
+        t.to_string()
+    };
+    chrono::DateTime::parse_from_rfc3339(&normalized)
+        .map_err(|e| format!("submit_time {t:?} is not RFC 3339: {e}"))?;
     Ok(())
 }

@@ -15,7 +15,7 @@ pub enum RecordAppsCmd {
         /// Writer identity; must match the configured ENSEMBLY_WRITER value.
         #[arg(long)]
         writer: String,
-        /// Stockholm time stored when a row has no submit time. Marked synthetic.
+        /// Local RFC 3339 time when a row has no submit time. Marked synthetic.
         #[arg(long)]
         at: Option<String>,
     },
@@ -56,7 +56,7 @@ pub enum AppsCmd {
         /// prepared|submitted|interview|rejected|withdrawn|silent-closed
         #[arg(long)]
         status: String,
-        /// RFC 3339 with +01:00/+02:00 (omit only for prepared)
+        /// RFC 3339 with numeric offset or Z (omit only for prepared)
         #[arg(long)]
         submit_time: Option<String>,
         /// Sent, but the time was never recorded (submit_time stays null)
@@ -312,7 +312,7 @@ pub fn cmd_record_apps(cmd: RecordAppsCmd) -> Result<()> {
             writer,
             at,
         } => {
-            let at = at.unwrap_or_else(ensembly_schema::stockholm_record_now);
+            let at = at.unwrap_or_else(ensembly_schema::record_now_local);
             let receipt = ensembly_kernel::import_ledger(&ledger, &log, &writer, &at)
                 .map_err(anyhow::Error::msg)?;
             println!("{}", serde_json::to_string(&receipt)?);

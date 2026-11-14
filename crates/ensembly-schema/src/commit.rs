@@ -426,7 +426,7 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::record::{AggregateId, EventId, IdempotencyKey, Source, StockholmTime, Version};
+    use crate::record::{AggregateId, EventId, IdempotencyKey, Rfc3339Time, Source, Version};
 
     #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -442,8 +442,8 @@ mod tests {
         }
     }
 
-    fn t(s: &str) -> StockholmTime {
-        StockholmTime::new(s).unwrap()
+    fn t(s: &str) -> Rfc3339Time {
+        Rfc3339Time::new(s).unwrap()
     }
 
     fn event(n: u64, writer: &str, key: &str) -> EventEnvelope<ScenarioPayload> {

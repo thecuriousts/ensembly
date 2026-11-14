@@ -9,8 +9,8 @@
 //! appends nothing. A return to an earlier stage is refused.
 
 use crate::record::{
-    AggregateId, EventEnvelope, EventId, Evidence, IdempotencyKey, Source, Status as RecordStatus,
-    StockholmTime, SubmitTime as RecordSubmitTime, TextForm, Version,
+    AggregateId, EventEnvelope, EventId, Evidence, IdempotencyKey, Rfc3339Time, Source,
+    Status as RecordStatus, SubmitTime as RecordSubmitTime, TextForm, Version,
 };
 use crate::replay::replay;
 use crate::surface::{require_configured_writer, validate_writer_identity};
@@ -91,7 +91,7 @@ pub fn closed_stage(status: crate::ledger::Status) -> Result<MappedStage, String
 }
 
 pub fn closed_record_status(row: &LedgerRow, observed_at: &str) -> Result<RecordStatus, String> {
-    let at = StockholmTime::new(observed_at)?;
+    let at = Rfc3339Time::new(observed_at)?;
     match row.status {
         crate::ledger::Status::Interview => Ok(RecordStatus::NextStage {
             n: 1,
@@ -119,7 +119,7 @@ pub fn import_plan(
     observed_at: &str,
 ) -> Result<Vec<EventEnvelope<AppEventPayload>>, String> {
     require_configured_writer(writer)?;
-    let at = StockholmTime::new(observed_at)?;
+    let at = Rfc3339Time::new(observed_at)?;
     let mut planned = Vec::new();
     let mut staged = existing.to_vec();
     for row in current_rows(rows) {
@@ -314,7 +314,7 @@ fn conflict(key: &str, submit_time: bool) -> String {
 fn build_event(
     row: &LedgerRow,
     writer: &str,
-    at: &StockholmTime,
+    at: &Rfc3339Time,
     existing: &[EventEnvelope<AppEventPayload>],
 ) -> Result<EventEnvelope<AppEventPayload>, String> {
     require_link(&row.link)?;
@@ -362,7 +362,7 @@ fn next_version(existing: &[EventEnvelope<AppEventPayload>], aggregate: &str) ->
         + 1
 }
 
-fn status_for(row: &LedgerRow, at: &StockholmTime) -> Result<RecordStatus, String> {
+fn status_for(row: &LedgerRow, at: &Rfc3339Time) -> Result<RecordStatus, String> {
     if let Some(status) = status_open(row) {
         return status;
     }
@@ -389,13 +389,13 @@ fn submitted_status(row: &LedgerRow) -> Result<RecordStatus, String> {
 fn submit_of(row: &LedgerRow) -> Result<RecordSubmitTime, String> {
     match row.submit_time() {
         Some(crate::ledger::SubmitTime::Known(time)) => Ok(RecordSubmitTime::Known {
-            at: StockholmTime::new(time)?,
+            at: Rfc3339Time::new(time)?,
         }),
         Some(crate::ledger::SubmitTime::Unknown) | None => Ok(RecordSubmitTime::Unknown),
     }
 }
 
-fn evidence(row: &LedgerRow, at: &StockholmTime) -> Result<Evidence, String> {
+fn evidence(row: &LedgerRow, at: &Rfc3339Time) -> Result<Evidence, String> {
     Ok(Evidence {
         source: Source::LegacyUnknown,
         at: when(row, at)?,
@@ -403,9 +403,9 @@ fn evidence(row: &LedgerRow, at: &StockholmTime) -> Result<Evidence, String> {
     })
 }
 
-fn when(row: &LedgerRow, at: &StockholmTime) -> Result<StockholmTime, String> {
+fn when(row: &LedgerRow, at: &Rfc3339Time) -> Result<Rfc3339Time, String> {
     match row.submit_time() {
-        Some(crate::ledger::SubmitTime::Known(time)) => StockholmTime::new(time),
+        Some(crate::ledger::SubmitTime::Known(time)) => Rfc3339Time::new(time),
         Some(crate::ledger::SubmitTime::Unknown) | None => Ok(at.clone()),
     }
 }
