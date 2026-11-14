@@ -195,17 +195,19 @@ copy_plugin() {
       return 0
     fi
   fi
-  run mkdir -p "$(dirname -- "$dest")"
-  run cp -R "$src" "$dest"
+  # Marker first, then contents: an interrupted copy still carries the marker,
+  # so the next run replaces it instead of skipping it.
+  run mkdir -p "$dest"
   printf '+ record source in %s\n' "$dest/$MARKER"
   [ "$DRY_RUN" = 1 ] || printf '%s\n' "$src" > "$dest/$MARKER"
+  run cp -R "$src/." "$dest/"
 }
 
 wire_cursor() {
   say "== cursor"
   copy_plugin "$PLUGIN" "$HOME/.cursor/plugins/local/ensembly"
   say "Restart Cursor (or run Developer: Reload Window), then load the \`ensembly\` skill. \`ensembly doctor --offline\` lists the plugin."
-  say "The copy does not follow git pull; re-run this script (add --update to pull first) to refresh it."
+  say "The copy does not follow git pull; re-run this script (add --update to pull first) to refresh it. A re-run replaces the copy, so edits made inside it are lost."
 }
 
 wire_claude() {

@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Build the 'Open in Grok Bot' web link from the prompt in docs/install-with-grokbot.md.
+
+Format from https://docs.x.ai/grok-bot/deep-links (the page's link builder):
+https://cursor.com/grok-bot/link/v1/prompt?text=<encodeURIComponent(text)>
+Control characters (newlines too) become spaces; text must be 1..1000 characters.
+No id: the link uses the reader's primary Bot. The prompt is filled in, never sent.
+
+  scripts/grokbot-link           print the link
+  scripts/grokbot-link --check   exit 1 unless README.md and the doc carry exactly this link
+Exit 0 ok, 1 drift or missing link, 2 prompt unreadable or too long.
+"""
+import os
+import re
+import sys
+from urllib.parse import quote
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DOC = "docs/install-with-grokbot.md"
+CARRIERS = ["README.md", DOC]
+BASE = "https://cursor.com/grok-bot/link/v1/prompt?text="
+LINK_RE = re.compile(re.escape(BASE) + r"[^)\s\"'>]*")
+
+
+def prompt(repo=REPO):
+    with open(os.path.join(repo, DOC), encoding="utf-8") as f:
+        text = f.read()
+    m = re.search(r"^## The prompt\n.*?^```text\n(.*?)^```", text, re.S | re.M)
+    if not m:
+        raise ValueError(f"{DOC}: no ```text block under '## The prompt'")
+    return m.group(1).rstrip("\n")
+
+
+def link(text):
+    flat = "".join(" " if ord(c) <= 31 or 127 <= ord(c) <= 159 else c for c in text)
+    if not flat.strip():
+        raise ValueError("prompt is empty")
+    if len(flat) > 1000:
+        raise ValueError(f"prompt is {len(flat)} characters; deep links allow 1000")
+    # encodeURIComponent, except ( and ) are escaped too so a Markdown link cannot break.
+    return BASE + quote(flat, safe="-_.!~*'")
+
+
+def check(repo=REPO):
+    want = link(prompt(repo))
+    errs = []
+    for rel in CARRIERS:
+        with open(os.path.join(repo, rel), encoding="utf-8") as f:
+            found = LINK_RE.findall(f.read())
+        if not found:
+            errs.append(f"{rel}: no Open in Grok Bot link")
+        errs += [f"{rel}: link does not match the prompt in {DOC}" for u in found if u != want]
+    return errs
+
+
+def main(argv):
+    try:
+        if argv[1:] == ["--check"]:
+            errs = check()
+            for e in errs:
+                print(e)
+            print("grokbot-link ok" if not errs else "run scripts/grokbot-link and paste the link")
+            return 1 if errs else 0
+        if argv[1:]:
+            print("usage: scripts/grokbot-link [--check]", file=sys.stderr)
+            return 2
+        print(link(prompt()))
+        return 0
+    except (OSError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

@@ -2,6 +2,8 @@
 
 A step-by-step guide for people who have never used a terminal. You copy each command, paste it, press Enter, and check that you see what the guide says you should see.
 
+**Use Grok Bot?** The easiest way is to let Grok Bot do all of this on its own computer: paste one prompt from [install-with-grokbot.md](install-with-grokbot.md). You then need nothing below. Follow this guide when you want ensembly on your own computer, for Cursor, Claude Code or the terminal.
+
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1e3a5f","primaryTextColor":"#ffffff","lineColor":"#f59e0b","fontFamily":"Inter"}}}%%
 flowchart LR
@@ -35,7 +37,7 @@ A terminal is a window where you type commands.
 |---|---|
 | **macOS** | Press `Cmd` + `Space`, type `Terminal`, press Enter. |
 | **Linux** | Press `Ctrl` + `Alt` + `T`, or open the app menu and search for `Terminal`. |
-| **Windows** | First install WSL: click Start, type `PowerShell`, right-click it, choose **Run as administrator**, then paste `wsl --install` and press Enter. Restart the computer when asked. After the restart, open **Ubuntu** from the Start menu and choose a user name and password. Use that Ubuntu window as your terminal for every step below, and follow the **Linux** rows. Microsoft's guide: [Install WSL](https://learn.microsoft.com/windows/wsl/install). |
+| **Windows** | First install WSL: click Start, type `PowerShell`, right-click it, choose **Run as administrator**, then paste `wsl --install` and press Enter. Restart the computer when asked. If it says virtualization is turned off, it has to be switched on in the computer's firmware settings (search the web for your computer model plus "enable virtualization"). After the restart, open **Ubuntu** from the Start menu and choose a user name and password. Use that Ubuntu window as your terminal for every step below, and follow the **Linux** rows. Microsoft's guide: [Install WSL](https://learn.microsoft.com/windows/wsl/install). |
 
 To paste into a terminal: `Cmd` + `V` on macOS, `Ctrl` + `Shift` + `V` on Linux and in Ubuntu on Windows (or right-click).
 
@@ -67,7 +69,7 @@ Then **close the terminal and open a new one**, so it can find Rust. Check it wo
 cargo --version
 ```
 
-You should see something like `cargo 1.100.0`. The exact number does not matter: ensembly asks for the version it needs and Rust fetches it on the first build.
+You should see something like `cargo 1.100.0`. The exact number does not matter: ensembly asks for the version it needs and Rust fetches it on the first build (inside the `ensembly` folder, `cargo --version` then shows that version).
 
 ## 4. Download ensembly
 
@@ -138,7 +140,9 @@ ensembly runtime claim grocery-errand
 ensembly runtime complete grocery-errand
 ```
 
-**Success looks like:** the lines start with `RUNTIME_LOAD ok`, `# LifeState v2`, `RUNTIME_APPROVE id=pay-rent`, `RUNTIME_CLAIM id=grocery-errand`, and `RUNTIME_COMPLETE id=grocery-errand`. Run `ensembly doctor --offline` again and it now says `ops-db ok`.
+**Success looks like:** among the lines you see `RUNTIME_LOAD ok`, `# LifeState v` followed by a number, `RUNTIME_APPROVE id=pay-rent`, `RUNTIME_CLAIM id=grocery-errand`, and `RUNTIME_COMPLETE id=grocery-errand`. Run `ensembly doctor --offline` again and it now says `ops-db ok`.
+
+The example remembers what you did. If you run it a second time, `approve` prints `Error: approval already Approved`: that means the first run worked, and the other commands still run.
 
 Optional, the full self-test (it rebuilds and runs every test, so it takes longer):
 
@@ -171,7 +175,7 @@ The `ensembly` command keeps the record: which tasks are approved, claimed, and 
 | **Terminal** | Use the commands from step 7. `ensembly --help` lists them all. |
 | **Cursor** | Quit Cursor fully and open it again (or run **Developer: Reload Window** from the command palette). Open **Customize**: the three skills are listed. In chat, type `/ensembly`. For the flowingstack plugin (task contracts and review checks), see [its README](../marketplaces/cursor/flowingstack/README.md). |
 | **Claude Code** | Start a new Claude Code session. The skills show as `ensembly`, `record-layer`, and `verified-retrieve`. Ask it to load the `ensembly` skill. |
-| **Grok Bot** | In Grok Bot, add the GitHub marketplace `thecuriousts/ensembly` and install the `ensembly` plugin, or install a local plugin from the folder `marketplaces/grokbot/ensembly`. Then, in any bot, load the `ensembly` skill. |
+| **Grok Bot** | Easiest: paste the prompt from [install-with-grokbot.md](install-with-grokbot.md). Or, in Grok Bot, add the GitHub marketplace `thecuriousts/ensembly` and install the `ensembly` plugin, or install a local plugin from the folder `marketplaces/grokbot/ensembly`. Then, in any bot, load the `ensembly` skill. |
 
 The job-search pack (opportunity-finder) is not installed. It is optional and only built when someone asks for it: see [its README](../crates/ensembly-opportunity-finder/README.md).
 
@@ -185,15 +189,23 @@ The job-search pack (opportunity-finder) is not installed. It is optional and on
 | `linker 'cc' not found`, or an error mentioning `libsqlite3-sys` or `cc` | The C compiler is missing: redo step 2. |
 | `cannot open scripts/install.sh` or `No such file or directory` | You are in the wrong folder. Run `cd ~/ensembly` and try again. |
 | `fatal: destination path 'ensembly' already exists` | You downloaded it before. Run `cd ensembly`, then `git pull`, and carry on from step 5. |
-| `warn: skip ...: exists and was not installed from this checkout` | A folder with that name already exists. Move it somewhere else, then run the installer again. |
+| `warn: skip ...: exists and was not installed from this checkout`, `warn: skip ...: exists and is not a link`, or `warn: skip ...: links to ..., not this checkout`, and the last line is `error: some links or copies were skipped` | Something with that name was already there, and the installer will not touch what it did not make. The warning names the path. Move it somewhere else, for example `mv ~/.claude/skills/ensembly ~/ensembly-old-skill`, then run the installer again. |
 | `init: ... exists; refused without --force` | You already ran `ensembly init`. Nothing is wrong. |
+| `Error: approval already Approved` | You already ran the example. Nothing is wrong. |
 | Many `Compiling ...` lines for several minutes | Normal on the first run. Wait. |
-| Cursor does not show the skills | Quit Cursor fully and reopen it. Check that `~/.cursor/plugins/local/ensembly` is a real folder. On company (Enterprise) Cursor, an admin must allow local plugins. |
+| Cursor does not show the skills | Quit Cursor fully and reopen it. Run `ls -la ~/.cursor/plugins/local/`: the `ensembly` line must start with `d` (a folder), not `l` (a link). On company (Enterprise) Cursor, an admin must allow local plugins. |
 | `No space left on device` | Free at least 4 GB and run the installer again. |
 
 ## Update or remove
 
 - **Update:** `cd ensembly`, then `sh scripts/install.sh --update --harness all`. It downloads the latest code and installs it again.
-- **Remove:** `cargo uninstall ensembly-kernel` removes the command. Delete `~/.cursor/plugins/local/ensembly` and the three links in `~/.claude/skills` if you installed them. Your settings are in `~/.config/ensembly` and your data in `~/.local/share/ensembly`; delete those only if you want them gone.
+- **Remove:** `cargo uninstall ensembly-kernel` removes the command. If you installed for Cursor or Claude Code, also run:
+
+  ```sh
+  rm -rf ~/.cursor/plugins/local/ensembly
+  rm ~/.claude/skills/ensembly ~/.claude/skills/record-layer ~/.claude/skills/verified-retrieve
+  ```
+
+  Your settings are in `~/.config/ensembly` and your data in `~/.local/share/ensembly`; delete those only if you want them gone.
 
 More detail for developers: [README](../README.md), [settings](CONFIG.md).
