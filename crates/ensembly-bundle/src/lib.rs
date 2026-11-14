@@ -21,6 +21,7 @@ pub use config::{load_backup_sources, BackupSource, BackupSourceKind, ConfigSour
 pub use export::{export_bundle, EnsemblyStorePaths, ExportOpts, ExportReport};
 pub use file_merge::{merge_json_objects, merge_jsonl_records, restore_file_with_merge};
 pub use hash::hash_bytes;
+pub use hash::HashResult;
 pub use import::{import_bundle, restore_bundle, ImportOpts, RestoreOpts, RestorePlan};
 pub use manifest::{BundleManifest, FileEntry, BUNDLE_FORMAT};
 pub use merge::{
@@ -34,8 +35,9 @@ pub use section::{
     SECTION_RE,
 };
 pub use split_join::{
-    build_evil_tar, build_symlink_tar, join_bundle, pack_bundle, unpack_tar_to_bundle, JoinOpts,
-    JoinReport, PackOpts, PackReport, PartEntry, PartsManifest, PARTS_FORMAT,
+    build_bundle_tar, build_evil_gnu_longname_tar, build_evil_tar, build_symlink_tar,
+    join_bundle, pack_bundle, unpack_tar_to_bundle, JoinOpts, JoinReport, PackOpts, PackReport,
+    PartEntry, PartsManifest, PARTS_FORMAT,
 };
 pub use verify::{verify_bundle, VerifyReport};
 pub use views::{derive_views_from_ops_bundle, DerivedViews};
