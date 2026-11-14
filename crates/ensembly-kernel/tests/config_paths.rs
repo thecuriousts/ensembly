@@ -31,7 +31,7 @@ fn resolve_ops_and_memory_from_config_data_dir() {
     std::env::set_var("HOME", &home);
     std::env::set_var("XDG_CONFIG_HOME", &xdg_cfg);
     let data_dir = load_paths_data_dir().expect("config data_dir");
-    let got = resolve_data_paths(t.path(), None, None, data_dir.as_deref()).unwrap();
+    let got = resolve_data_paths(t.path(), None, None, data_dir.as_deref());
     assert_eq!(got.ops_db, xdg_data.join("ensembly/ensembly-ops.sqlite"));
     assert_eq!(got.memory, xdg_data.join("ensembly/ensembly-memory.json"));
 }
@@ -53,7 +53,7 @@ fn existing_local_ops_wins_over_config_data_dir() {
     std::env::set_var("HOME", &home);
     std::env::set_var("XDG_CONFIG_HOME", &xdg_cfg);
     let data_dir = load_paths_data_dir().unwrap();
-    let got = resolve_data_paths(t.path(), None, None, data_dir.as_deref()).unwrap();
+    let got = resolve_data_paths(t.path(), None, None, data_dir.as_deref());
     assert_eq!(got.ops_db, local_ops);
     assert_eq!(got.memory, t.path().join("data/local/ensembly-memory.json"));
 }

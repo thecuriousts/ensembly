@@ -297,6 +297,7 @@ dependencies = [
  "ensembly-schema",
  "serde",
  "serde_json",
+ "serial_test",
  "tempfile",
  "thiserror",
  "unicode-normalization",

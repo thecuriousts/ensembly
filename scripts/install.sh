@@ -40,6 +40,8 @@ install_root_from_toml() {
     in_install && /^[[:space:]]*root[[:space:]]*=/ {
       sub(/^[^=]*=[[:space:]]*/, "", $0)
       gsub(/"/, "", $0)
+      sub(/[[:space:]]*#.*$/, "", $0)
+      gsub(/[[:space:]]+$/, "", $0)
       print $0
       exit 0
     }
@@ -50,7 +52,7 @@ expand_tilde() {
   p=$1
   case $p in
     "~") printf '%s' "$HOME" ;;
-    "~/"*) printf '%s' "$HOME/${p#\\~/}" ;;
+    "~/"*) printf '%s' "$HOME/${p#\~/}" ;;
     *) printf '%s' "$p" ;;
   esac
 }
@@ -61,7 +63,7 @@ cargo_install_root() {
     return 0
   fi
   cargo_home=${CARGO_HOME:-$HOME/.cargo}
-  for file in "$cargo_home/config.toml" "$cargo_home/config" "$REPO/.cargo/config.toml"; do
+  for file in "$REPO/.cargo/config.toml" "$cargo_home/config.toml" "$cargo_home/config"; do
     root=$(install_root_from_toml "$file" 2>/dev/null || true)
     if [ -n "$root" ]; then
       expand_tilde "$root"

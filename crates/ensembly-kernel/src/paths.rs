@@ -4,10 +4,10 @@
 //! in place. Never copy or rename a live DB.
 
 pub use ensembly_paths::{
-    env_alias, resolve_data_paths, resolve_memory_path, resolve_memory_path_at,
-    resolve_memory_path_config, resolve_ops_db, resolve_ops_db_at, resolve_ops_db_config,
-    DataPaths, DEFAULT_AGENT_ID, DEFAULT_MEMORY_PATH, DEFAULT_OPS_PATH, DEFAULT_OPS_PRIVATE_PATH,
-    LEGACY_AGENT_ID, LEGACY_MEMORY_PATH, LEGACY_OPS_PATH, LEGACY_OPS_PRIVATE_PATH,
+    env_alias, resolve_data_paths, resolve_memory_path, resolve_memory_path_at, resolve_ops_db,
+    resolve_ops_db_at, DataPaths, DEFAULT_AGENT_ID, DEFAULT_MEMORY_PATH, DEFAULT_OPS_PATH,
+    DEFAULT_OPS_PRIVATE_PATH, LEGACY_AGENT_ID, LEGACY_MEMORY_PATH, LEGACY_OPS_PATH,
+    LEGACY_OPS_PRIVATE_PATH,
 };
 
 use serde::Serialize;
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn fresh_default_creates_ensembly_ops_and_memory() {
         let dir = tempfile::tempdir().unwrap();
-        let paired = resolve_data_paths(dir.path(), None, None, None).unwrap();
+        let paired = resolve_data_paths(dir.path(), None, None, None);
         assert_eq!(paired.ops_db, dir.path().join(DEFAULT_OPS_PATH));
         assert_eq!(paired.memory, dir.path().join(DEFAULT_MEMORY_PATH));
         assert!(

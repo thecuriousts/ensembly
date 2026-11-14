@@ -1,8 +1,8 @@
 //! Layout × config × flags: existing users keep the same resolved paths.
 
 use ensembly_paths::{
-    resolve_data_paths, ResolveError, DEFAULT_MEMORY_PATH, DEFAULT_OPS_PATH, LEGACY_MEMORY_PATH,
-    LEGACY_OPS_PATH, LEGACY_OPS_PRIVATE_PATH,
+    resolve_data_paths, DEFAULT_MEMORY_PATH, DEFAULT_OPS_PATH, LEGACY_MEMORY_PATH, LEGACY_OPS_PATH,
+    LEGACY_OPS_PRIVATE_PATH,
 };
 use serial_test::serial;
 use std::fs;
@@ -18,13 +18,10 @@ struct MatrixCase {
     explicit_memory: Option<&'static str>,
     expect_ops: &'static str,
     expect_memory: &'static str,
-    expect_err: Option<fn(ResolveError) -> bool>,
 }
 
 enum ConfigMode {
-    /// `share/ensembly` exists under temp root.
     Present,
-    /// Path configured but directory missing → error.
     Missing,
 }
 
@@ -56,6 +53,11 @@ fn seed_private_state_new_ops_data_local_mem(root: &Path) {
     fs::write(root.join(DEFAULT_MEMORY_PATH), b"m").unwrap();
 }
 
+fn seed_private_state_ops_only(root: &Path) {
+    fs::create_dir_all(root.join("private/state")).unwrap();
+    fs::write(root.join(LEGACY_OPS_PRIVATE_PATH), b"o").unwrap();
+}
+
 fn seed_mcp_only_new_memory(root: &Path) {
     fs::create_dir_all(root.join("data/local")).unwrap();
     fs::write(root.join(DEFAULT_MEMORY_PATH), b"{}").unwrap();
@@ -71,6 +73,19 @@ fn seed_local_ops_only(root: &Path) {
     fs::write(root.join(DEFAULT_OPS_PATH), b"o").unwrap();
 }
 
+fn seed_ops_in_both_folders(root: &Path) {
+    fs::create_dir_all(root.join("data/local")).unwrap();
+    fs::create_dir_all(root.join("private/state")).unwrap();
+    fs::write(root.join(DEFAULT_OPS_PATH), b"local").unwrap();
+    fs::write(root.join("private/state/ensembly-ops.sqlite"), b"priv").unwrap();
+}
+
+fn seed_mixed_new_ops_legacy_memory(root: &Path) {
+    fs::create_dir_all(root.join("data/local")).unwrap();
+    fs::write(root.join(DEFAULT_OPS_PATH), b"o").unwrap();
+    fs::write(root.join(LEGACY_MEMORY_PATH), b"m").unwrap();
+}
+
 fn config_path(root: &Path, mode: &ConfigMode) -> PathBuf {
     match mode {
         ConfigMode::Present => root.join("share/ensembly"),
@@ -79,16 +94,9 @@ fn config_path(root: &Path, mode: &ConfigMode) -> PathBuf {
 }
 
 fn ensure_config(root: &Path, mode: &ConfigMode) {
-    match mode {
-        ConfigMode::Present => {
-            fs::create_dir_all(config_path(root, mode)).unwrap();
-        }
-        ConfigMode::Missing => {}
+    if matches!(mode, ConfigMode::Present) {
+        fs::create_dir_all(config_path(root, mode)).unwrap();
     }
-}
-
-fn is_config_missing(err: ResolveError) -> bool {
-    matches!(err, ResolveError::ConfigDataDirMissing { .. })
 }
 
 #[serial]
@@ -103,7 +111,6 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: DEFAULT_OPS_PATH,
             expect_memory: DEFAULT_MEMORY_PATH,
-            expect_err: None,
         },
         MatrixCase {
             name: "new local pair",
@@ -113,7 +120,6 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: DEFAULT_OPS_PATH,
             expect_memory: DEFAULT_MEMORY_PATH,
-            expect_err: None,
         },
         MatrixCase {
             name: "legacy local pair",
@@ -123,7 +129,6 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: LEGACY_OPS_PATH,
             expect_memory: LEGACY_MEMORY_PATH,
-            expect_err: None,
         },
         MatrixCase {
             name: "private/state legacy ops + data/local legacy memory",
@@ -133,7 +138,6 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: LEGACY_OPS_PRIVATE_PATH,
             expect_memory: LEGACY_MEMORY_PATH,
-            expect_err: None,
         },
         MatrixCase {
             name: "private/state new ops + data/local new memory",
@@ -143,7 +147,42 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: "private/state/ensembly-ops.sqlite",
             expect_memory: DEFAULT_MEMORY_PATH,
-            expect_err: None,
+        },
+        MatrixCase {
+            name: "private/state ops only no config",
+            seed: seed_private_state_ops_only,
+            config: None,
+            explicit_db: None,
+            explicit_memory: None,
+            expect_ops: LEGACY_OPS_PRIVATE_PATH,
+            expect_memory: "private/state/ensembly-memory.json",
+        },
+        MatrixCase {
+            name: "private/state ops only missing config",
+            seed: seed_private_state_ops_only,
+            config: Some(ConfigMode::Missing),
+            explicit_db: None,
+            explicit_memory: None,
+            expect_ops: LEGACY_OPS_PRIVATE_PATH,
+            expect_memory: "private/state/ensembly-memory.json",
+        },
+        MatrixCase {
+            name: "ops in data/local and private/state",
+            seed: seed_ops_in_both_folders,
+            config: None,
+            explicit_db: None,
+            explicit_memory: None,
+            expect_ops: DEFAULT_OPS_PATH,
+            expect_memory: DEFAULT_MEMORY_PATH,
+        },
+        MatrixCase {
+            name: "mixed new ops legacy memory",
+            seed: seed_mixed_new_ops_legacy_memory,
+            config: None,
+            explicit_db: None,
+            explicit_memory: None,
+            expect_ops: DEFAULT_OPS_PATH,
+            expect_memory: LEGACY_MEMORY_PATH,
         },
         MatrixCase {
             name: "MCP-only new memory + config",
@@ -153,7 +192,6 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: "share/ensembly/ensembly-ops.sqlite",
             expect_memory: DEFAULT_MEMORY_PATH,
-            expect_err: None,
         },
         MatrixCase {
             name: "MCP-only legacy memory + config",
@@ -163,7 +201,24 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: "share/ensembly/ensembly-ops.sqlite",
             expect_memory: LEGACY_MEMORY_PATH,
-            expect_err: None,
+        },
+        MatrixCase {
+            name: "MCP-only new memory + missing config",
+            seed: seed_mcp_only_new_memory,
+            config: Some(ConfigMode::Missing),
+            explicit_db: None,
+            explicit_memory: None,
+            expect_ops: DEFAULT_OPS_PATH,
+            expect_memory: DEFAULT_MEMORY_PATH,
+        },
+        MatrixCase {
+            name: "local ops only + missing config",
+            seed: seed_local_ops_only,
+            config: Some(ConfigMode::Missing),
+            explicit_db: None,
+            explicit_memory: None,
+            expect_ops: DEFAULT_OPS_PATH,
+            expect_memory: DEFAULT_MEMORY_PATH,
         },
         MatrixCase {
             name: "fresh install config data_dir only",
@@ -173,17 +228,15 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: "share/ensembly/ensembly-ops.sqlite",
             expect_memory: "share/ensembly/ensembly-memory.json",
-            expect_err: None,
         },
         MatrixCase {
-            name: "config data_dir missing directory",
+            name: "missing config falls back to data/local",
             seed: seed_empty,
             config: Some(ConfigMode::Missing),
             explicit_db: None,
             explicit_memory: None,
-            expect_ops: "",
-            expect_memory: "",
-            expect_err: Some(is_config_missing),
+            expect_ops: DEFAULT_OPS_PATH,
+            expect_memory: DEFAULT_MEMORY_PATH,
         },
         MatrixCase {
             name: "local ops wins over config",
@@ -193,7 +246,6 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: DEFAULT_OPS_PATH,
             expect_memory: DEFAULT_MEMORY_PATH,
-            expect_err: None,
         },
         MatrixCase {
             name: "--db alone pairs memory from config",
@@ -203,7 +255,15 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: "share/ensembly/ensembly-ops.sqlite",
             expect_memory: "share/ensembly/ensembly-memory.json",
-            expect_err: None,
+        },
+        MatrixCase {
+            name: "--db alone missing config uses legacy default memory",
+            seed: seed_empty,
+            config: Some(ConfigMode::Missing),
+            explicit_db: Some("custom/ops.sqlite"),
+            explicit_memory: None,
+            expect_ops: "custom/ops.sqlite",
+            expect_memory: "custom/ensembly-memory.json",
         },
         MatrixCase {
             name: "--memory alone pairs ops from config",
@@ -213,7 +273,24 @@ fn layout_flag_config_matrix() {
             explicit_memory: Some("share/ensembly/ensembly-memory.json"),
             expect_ops: "share/ensembly/ensembly-ops.sqlite",
             expect_memory: "share/ensembly/ensembly-memory.json",
-            expect_err: None,
+        },
+        MatrixCase {
+            name: "--memory alone missing config uses legacy default ops",
+            seed: seed_empty,
+            config: Some(ConfigMode::Missing),
+            explicit_db: None,
+            explicit_memory: Some("custom/mem.json"),
+            expect_ops: DEFAULT_OPS_PATH,
+            expect_memory: "custom/mem.json",
+        },
+        MatrixCase {
+            name: "--memory alone MCP-only layout missing config",
+            seed: seed_mcp_only_new_memory,
+            config: Some(ConfigMode::Missing),
+            explicit_db: None,
+            explicit_memory: Some("custom/mem.json"),
+            expect_ops: DEFAULT_OPS_PATH,
+            expect_memory: "custom/mem.json",
         },
         MatrixCase {
             name: "both flags explicit",
@@ -223,7 +300,15 @@ fn layout_flag_config_matrix() {
             explicit_memory: Some("custom/b.json"),
             expect_ops: "custom/a.sqlite",
             expect_memory: "custom/b.json",
-            expect_err: None,
+        },
+        MatrixCase {
+            name: "both flags missing config",
+            seed: seed_empty,
+            config: Some(ConfigMode::Missing),
+            explicit_db: Some("custom/a.sqlite"),
+            explicit_memory: Some("custom/b.json"),
+            expect_ops: "custom/a.sqlite",
+            expect_memory: "custom/b.json",
         },
         MatrixCase {
             name: "--db alone keeps cwd data/local memory",
@@ -233,7 +318,6 @@ fn layout_flag_config_matrix() {
             explicit_memory: None,
             expect_ops: "custom/ops.sqlite",
             expect_memory: DEFAULT_MEMORY_PATH,
-            expect_err: None,
         },
         MatrixCase {
             name: "--memory alone keeps cwd local ops",
@@ -243,7 +327,6 @@ fn layout_flag_config_matrix() {
             explicit_memory: Some("share/ensembly/ensembly-memory.json"),
             expect_ops: DEFAULT_OPS_PATH,
             expect_memory: "share/ensembly/ensembly-memory.json",
-            expect_err: None,
         },
     ];
 
@@ -269,20 +352,7 @@ fn layout_flag_config_matrix() {
             p
         });
 
-        let result = resolve_data_paths(root.path(), db, mem, config.as_deref());
-
-        if let Some(pred) = case.expect_err {
-            let err = result.expect_err(case.name);
-            assert!(
-                pred(err.clone()),
-                "{}: unexpected error {:?}",
-                case.name,
-                err
-            );
-            continue;
-        }
-
-        let got = result.unwrap_or_else(|e| panic!("{}: resolve failed: {e}", case.name));
+        let got = resolve_data_paths(root.path(), db, mem, config.as_deref());
         assert_eq!(
             got.ops_db,
             root.path().join(case.expect_ops),
