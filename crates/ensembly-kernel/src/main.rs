@@ -9,9 +9,9 @@ use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ensembly_bundle::{
-    export_bundle, import_bundle, load_backup_sources, merge_jsonl_text, merge_ops_bundles,
-    restore_bundle, verify_bundle, ConfigSourcesError, EnsemblyStorePaths, ExportOpts, ImportOpts,
-    OpsBundleMerge, RestoreOpts,
+    export_bundle, import_bundle, load_backup_sources, merge_json_objects, merge_jsonl_records,
+    merge_ops_preserve_existing, restore_bundle, verify_bundle, ConfigSourcesError,
+    EnsemblyStorePaths, ExportOpts, ImportOpts, OpsBundleMerge, RestoreOpts,
 };
 use ensembly_kernel::approvals::{list_pending, Snapshot};
 use ensembly_kernel::backup::{
@@ -1753,11 +1753,40 @@ fn resolve_into_data_dir(
     (into_ops, into_memory)
 }
 
-fn merge_bundle_structs(a: &OpsBundle, b: &OpsBundle) -> Result<OpsBundle> {
+fn merge_bundle_structs(
+    a: &OpsBundle,
+    b: &OpsBundle,
+) -> Result<(OpsBundle, Vec<ensembly_bundle::KvRow>)> {
     let ea: OpsBundleMerge = serde_json::from_value(serde_json::to_value(a)?)?;
     let eb: OpsBundleMerge = serde_json::from_value(serde_json::to_value(b)?)?;
-    let merged = merge_ops_bundles(&ea, &eb);
-    Ok(serde_json::from_value(serde_json::to_value(merged)?)?)
+    let (merged, conflicts) = merge_ops_preserve_existing(&ea, &eb);
+    let out: OpsBundle = serde_json::from_value(serde_json::to_value(merged)?)?;
+    Ok((out, conflicts))
+}
+
+fn write_ops_conflicts_sidecar(ops_db: &Path, conflicts: &[ensembly_bundle::KvRow]) -> Result<()> {
+    if conflicts.is_empty() {
+        return Ok(());
+    }
+    let stamp = Utc::now().format("%Y%m%dT%H%M%SZ");
+    let side = ops_db.with_extension(format!("incoming-{stamp}.jsonl"));
+    let mut body = String::new();
+    for row in conflicts {
+        let line = serde_json::json!({
+            "key": row.key,
+            "value": row.value,
+            "updated_at": row.updated_at,
+        });
+        body.push_str(&serde_json::to_string(&line)?);
+        body.push('\n');
+    }
+    std::fs::write(&side, body)?;
+    eprintln!(
+        "warn: ops kv conflicts; kept existing DB {}; incoming rows → {}",
+        ops_db.display(),
+        side.display()
+    );
+    Ok(())
 }
 
 fn restore_ops_from_bundle(bundle: &Path, ops_db: &Path, merge: bool, dry_run: bool) -> Result<()> {
@@ -1772,8 +1801,9 @@ fn restore_ops_from_bundle(bundle: &Path, ops_db: &Path, merge: bool, dry_run: b
     let store = OpsStore::open(ops_db)?;
     if merge && ops_db.exists() {
         let existing = store.export_bundle()?;
-        let merged = merge_bundle_structs(&existing, &incoming)?;
+        let (merged, conflicts) = merge_bundle_structs(&existing, &incoming)?;
         store.import_bundle(&merged)?;
+        write_ops_conflicts_sidecar(ops_db, &conflicts)?;
     } else {
         store.import_bundle(&incoming)?;
     }
@@ -1799,7 +1829,11 @@ fn restore_memory_from_bundle(
     if let Some(parent) = mem_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::copy(&src, mem_path)?;
+    if merge && mem_path.is_file() {
+        merge_json_objects(&src, mem_path).map_err(|e| anyhow::anyhow!(e))?;
+    } else {
+        std::fs::copy(&src, mem_path)?;
+    }
     Ok(())
 }
 
@@ -1817,19 +1851,23 @@ fn restore_ledger_from_bundle(
     if dry_run {
         return Ok(());
     }
-    let merged = if merge && ledger_path.is_file() {
-        let existing = std::fs::read_to_string(ledger_path)?;
-        merge_jsonl_text(&existing, &incoming)
+    if let Some(parent) = ledger_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if merge && ledger_path.is_file() {
+        let tmp = std::env::temp_dir().join(format!(
+            "ensembly-ledger-in-{}.jsonl",
+            Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::write(&tmp, &incoming)?;
+        merge_jsonl_records(&tmp, ledger_path).map_err(|e| anyhow::anyhow!(e))?;
+        let _ = std::fs::remove_file(tmp);
     } else {
         if ledger_path.exists() && !merge {
             bail!("refusing overwrite {}; pass --merge", ledger_path.display());
         }
-        incoming
-    };
-    if let Some(parent) = ledger_path.parent() {
-        std::fs::create_dir_all(parent)?;
+        std::fs::write(ledger_path, incoming)?;
     }
-    std::fs::write(ledger_path, merged)?;
     Ok(())
 }
 

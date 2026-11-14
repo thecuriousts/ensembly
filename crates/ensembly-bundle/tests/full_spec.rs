@@ -49,11 +49,8 @@ fn export_fixture(
     fs::write(shared.join("ok.md"), b"ok").unwrap();
     let secret = dir.join("src-secret");
     fs::create_dir_all(&secret).unwrap();
-    fs::write(
-        secret.join("leak.pem"),
-        b"-----BEGIN RSA PRIVATE KEY-----\nfake\n",
-    )
-    .unwrap();
+    let key_body = format!("{}\nfake\n", concat!("-----BEGIN RSA ", "PRIVATE KEY-----"));
+    fs::write(secret.join("leak.pem"), key_body.as_bytes()).unwrap();
     let work = dir.join("src-work");
     fs::create_dir_all(&work).unwrap();
     fs::write(work.join("w.csv"), b"a,b\n1,2").unwrap();

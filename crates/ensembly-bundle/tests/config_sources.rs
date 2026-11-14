@@ -31,6 +31,26 @@ kind = "dir"
 }
 
 #[test]
+fn invalid_source_name() {
+    let dir = tempdir().unwrap();
+    let cfg = dir.path().join("config.toml");
+    fs::write(
+        &cfg,
+        r#"
+[[backup.sources]]
+name = "bad.name"
+section = "shared"
+path = "~/notes"
+kind = "dir"
+"#,
+    )
+    .unwrap();
+    std::env::set_var("HOME", dir.path());
+    let err = load_backup_sources(&cfg).unwrap_err();
+    assert!(err.to_string().contains("invalid source name"));
+}
+
+#[test]
 fn invalid_section_name() {
     let dir = tempdir().unwrap();
     let cfg = dir.path().join("config.toml");

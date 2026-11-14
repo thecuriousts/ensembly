@@ -1,7 +1,8 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::file_merge::restore_file_with_merge;
 use crate::manifest::BundleManifest;
+use crate::path_safety::{bundle_file_path, refuse_symlink_in_target, restore_dest_path};
 use crate::verify::verify_bundle;
 
 #[derive(Debug, Clone, Default)]
@@ -22,6 +23,7 @@ pub struct RestoreOpts {
 #[derive(Debug, Clone, Default)]
 pub struct RestorePlan {
     pub copies: Vec<(PathBuf, PathBuf)>,
+    pub sidecars: Vec<PathBuf>,
 }
 
 pub fn import_bundle(bundle_root: &Path, opts: &ImportOpts) -> Result<(), String> {
@@ -33,9 +35,6 @@ pub fn import_bundle(bundle_root: &Path, opts: &ImportOpts) -> Result<(), String
         return Ok(());
     }
     let _manifest = BundleManifest::read(bundle_root)?;
-    if !opts.merge {
-        // import is verify-only unless merge destinations are added later
-    }
     Ok(())
 }
 
@@ -45,6 +44,10 @@ pub fn plan_restore(bundle_root: &Path, opts: &RestoreOpts) -> Result<RestorePla
         return Err(report.errors.join("; "));
     }
     let manifest = BundleManifest::read(bundle_root)?;
+    let base = opts
+        .sources_to
+        .as_ref()
+        .ok_or_else(|| "plan_restore requires sources_to".to_string())?;
     let mut plan = RestorePlan::default();
     for entry in &manifest.files {
         if entry.excluded == Some(true) || entry.view == Some(true) {
@@ -53,40 +56,36 @@ pub fn plan_restore(bundle_root: &Path, opts: &RestoreOpts) -> Result<RestorePla
         if entry.section == "ensembly" {
             continue;
         }
-        let src = bundle_root.join(&entry.path);
+        let src = bundle_file_path(bundle_root, &entry.path)?;
         let under_source = entry
             .path
             .strip_prefix(&format!("{}/{}", entry.section, entry.source))
             .map(|s| s.trim_start_matches('/'))
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| entry.path.rsplit('/').next().unwrap_or("file"));
-        if let Some(base) = &opts.sources_to {
-            let dest = base
-                .join(entry.section.as_str())
-                .join(&entry.source)
-                .join(under_source);
-            plan.copies.push((src, dest));
-        }
+        let dest = restore_dest_path(base, &entry.section, &entry.source, under_source)?;
+        refuse_symlink_in_target(base, &dest)?;
+        plan.copies.push((src, dest));
     }
     Ok(plan)
 }
 
 pub fn restore_bundle(bundle_root: &Path, opts: &RestoreOpts) -> Result<RestorePlan, String> {
+    let Some(base) = opts.sources_to.as_ref() else {
+        return Ok(RestorePlan::default());
+    };
     let plan = plan_restore(bundle_root, opts)?;
     if opts.dry_run {
         return Ok(plan);
     }
+    let mut sidecars = Vec::new();
     for (src, dest) in &plan.copies {
-        if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-        }
-        if dest.exists() && !opts.merge {
-            return Err(format!(
-                "refusing overwrite {}; pass --merge",
-                dest.display()
-            ));
-        }
-        fs::copy(src, dest).map_err(|e| e.to_string())?;
+        refuse_symlink_in_target(base, dest)?;
+        let sc = restore_file_with_merge(src, dest, opts.merge)?;
+        sidecars.extend(sc);
     }
-    Ok(plan)
+    Ok(RestorePlan {
+        copies: plan.copies,
+        sidecars,
+    })
 }

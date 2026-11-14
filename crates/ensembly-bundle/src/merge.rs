@@ -17,6 +17,36 @@ pub struct OpsBundleMerge {
     pub kv: Vec<KvRow>,
 }
 
+/// Union kv rows by key; on conflict keep existing row; conflicting incoming rows returned for sidecar.
+pub fn merge_ops_preserve_existing(
+    existing: &OpsBundleMerge,
+    incoming: &OpsBundleMerge,
+) -> (OpsBundleMerge, Vec<KvRow>) {
+    let mut map: BTreeMap<String, KvRow> = BTreeMap::new();
+    for row in &existing.kv {
+        map.insert(row.key.clone(), row.clone());
+    }
+    let mut conflicts = Vec::new();
+    for row in &incoming.kv {
+        match map.get(&row.key) {
+            None => {
+                map.insert(row.key.clone(), row.clone());
+            }
+            Some(prev) if prev.value == row.value && prev.updated_at == row.updated_at => {}
+            Some(_) => conflicts.push(row.clone()),
+        }
+    }
+    let mut kv: Vec<KvRow> = map.into_values().collect();
+    kv.sort_by(|a, b| a.key.cmp(&b.key));
+    let merged = OpsBundleMerge {
+        format: incoming.format.clone(),
+        schema_version: incoming.schema_version.max(existing.schema_version),
+        exported_at: incoming.exported_at.clone(),
+        kv,
+    };
+    (merged, conflicts)
+}
+
 /// Union kv rows by key; on conflict keep the row with the lexicographically greatest `updated_at`
 /// (ties → incoming wins). Never drops a key present in either side.
 pub fn merge_ops_bundles(existing: &OpsBundleMerge, incoming: &OpsBundleMerge) -> OpsBundleMerge {
@@ -79,6 +109,28 @@ mod tests {
             value: format!("v-{k}"),
             updated_at: u.into(),
         }
+    }
+
+    #[test]
+    fn merge_ops_preserve_existing_sidecars_conflicts() {
+        let a = OpsBundleMerge {
+            format: "f".into(),
+            schema_version: 1,
+            exported_at: "t".into(),
+            kv: vec![row("k1", "2026-01-01T00:00:00Z")],
+        };
+        let mut b_row = row("k1", "2026-02-01T00:00:00Z");
+        b_row.value = "other".into();
+        let b = OpsBundleMerge {
+            format: "f".into(),
+            schema_version: 1,
+            exported_at: "t2".into(),
+            kv: vec![b_row, row("k2", "2026-02-01T00:00:00Z")],
+        };
+        let (merged, conflicts) = merge_ops_preserve_existing(&a, &b);
+        assert_eq!(merged.kv.len(), 2);
+        assert_eq!(merged.kv[0].value, "v-k1");
+        assert_eq!(conflicts.len(), 1);
     }
 
     #[test]

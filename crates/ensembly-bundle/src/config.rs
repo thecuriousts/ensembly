@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::section::normalize_section;
+use crate::section::{normalize_section, validate_source_name};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -126,13 +126,11 @@ pub fn load_backup_sources(config_path: &Path) -> Result<Vec<BackupSource>, Conf
                 detail,
             }
         })?;
-        if entry.name.trim().is_empty() {
-            return Err(ConfigSourcesError::Source {
-                path: config_path.to_path_buf(),
-                line,
-                detail: "name must not be empty".into(),
-            });
-        }
+        validate_source_name(&entry.name).map_err(|detail| ConfigSourcesError::Source {
+            path: config_path.to_path_buf(),
+            line,
+            detail,
+        })?;
         let key = (section.clone(), entry.name.clone());
         if !seen.insert(key) {
             return Err(ConfigSourcesError::Source {

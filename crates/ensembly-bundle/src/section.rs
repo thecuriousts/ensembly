@@ -7,6 +7,22 @@ pub const DEFAULT_SECTION: &str = "shared";
 pub static SECTION_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[A-Za-z0-9_-]+$").expect("section re"));
 
+pub fn validate_safe_segment(s: &str, label: &str) -> Result<(), String> {
+    if s.is_empty() {
+        return Err(format!("{label} must not be empty"));
+    }
+    if !SECTION_RE.is_match(s) {
+        return Err(format!(
+            "invalid {label} {s:?}: use letters, digits, '-' or '_' only"
+        ));
+    }
+    Ok(())
+}
+
+pub fn validate_source_name(name: &str) -> Result<(), String> {
+    validate_safe_segment(name.trim(), "source name")
+}
+
 /// Safe folder segment for bundle layout. Default `shared` when empty.
 pub fn normalize_section(raw: Option<&str>) -> Result<String, String> {
     let s = raw.unwrap_or(DEFAULT_SECTION).trim();

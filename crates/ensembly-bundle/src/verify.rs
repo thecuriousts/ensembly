@@ -3,6 +3,7 @@ use std::path::Path;
 
 use crate::hash::hash_file;
 use crate::manifest::BundleManifest;
+use crate::path_safety::{bundle_file_path, validate_manifest_paths};
 
 #[derive(Debug, Clone, Default)]
 pub struct VerifyReport {
@@ -23,11 +24,25 @@ pub fn verify_bundle(bundle_root: &Path) -> VerifyReport {
             return report;
         }
     };
+    if let Err(paths) = validate_manifest_paths(&manifest) {
+        report.ok = false;
+        report.errors.extend(paths);
+        return report;
+    }
     for entry in &manifest.files {
         if entry.excluded == Some(true) {
             continue;
         }
-        let path = bundle_root.join(&entry.path);
+        let path = match bundle_file_path(bundle_root, &entry.path) {
+            Ok(p) => p,
+            Err(e) => {
+                report.ok = false;
+                report
+                    .errors
+                    .push(format!("unsafe path {}: {e}", entry.path));
+                continue;
+            }
+        };
         if !path.is_file() {
             report.ok = false;
             report.errors.push(format!("missing file {}", entry.path));
