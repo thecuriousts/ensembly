@@ -3,7 +3,7 @@
 Date: Saturday 14 November 2026, 06:52–06:59 CET (Stockholm).
 ensembly commit: `d62cf28d047c3d131debb672663e804f3cfb88c1` (master), crate `ensembly-kernel` 0.5.1.
 
-**Result.** After install, the `ensembly` CLI and the `ensembly-mcp` server made **no network connections** in any traced command, on Linux or macOS. Install-time downloads came only from rustup (`sh.rustup.rs`, `static.rust-lang.org`), GitHub (`git clone`) and crates.io (`index.crates.io`, `static.crates.io`). The one network call ensembly makes by default is in `ensembly doctor` **without** `--offline`: it runs `git ls-remote` against the GitHub repo to look for a newer release tag.
+**Result.** After install, `ensembly init`, `ensembly doctor --offline`, the runtime and pulse-pack commands, and `ensembly-mcp` made **no network connections**, on Linux or macOS. Online `ensembly doctor`'s only network call is `git ls-remote` to github.com:443, to look for a newer release tag. Install-time downloads came only from rustup (`sh.rustup.rs`, `static.rust-lang.org`), GitHub (`git clone`) and crates.io (`index.crates.io`, `static.crates.io`).
 
 ## Method
 
@@ -44,7 +44,7 @@ macOS (mac-mini) setup: the mac-mini has about 300 MB free and a standing rule o
 | b | `ensembly init` | **none** (0 connects) | — | — | 0 |
 | c | `ensembly doctor --offline` | **none** (0 connects) | — | — | 0 |
 | c2 | `ensembly doctor` (online) | github.com:443 | git-remote-http (child of `git ls-remote`) | latest release tag lookup | 2 |
-| d1 | `runtime load/status/tick/approve/claim/complete/reflect`, `pulse-pack export/import`, `version` | **none** (0 connects) | — | — | 0 |
+| d1 | `runtime load/status/tick/approve/claim/complete/reflect`, `pulse-pack export/import`, `version` | **none** (0 connects) | — | pulse-pack export/import only; premflow not traced | 0 |
 | d2 | `cargo build --release -p ensembly-agents --bin ensembly-mcp` | **none** (crates already cached) | — | — | 0 |
 | d3 | `ensembly-mcp` over stdio: `initialize`, `tools/list`, `tools/call memory_get_report` | **none** (0 connects) | — | — | 0 |
 | e | `ensembly export` | not run: the bundle commands (PR #81) are not merged yet | | | |
@@ -61,7 +61,7 @@ Static check of the Linux release binaries: `ensembly` and `ensembly-mcp` import
 | b | `ensembly init` | 0 | none |
 | c | `ensembly doctor --offline` | 0 | none |
 | c2 | `ensembly doctor` | 0 (`latest offline`) | git-remote-http: `network-outbound` to the DNS resolver |
-| d1 | runtime load/status/tick/approve/claim/complete/reflect, pulse-pack export/import | 0 | none |
+| d1 | runtime load/status/tick/approve/claim/complete/reflect, pulse-pack export/import only (premflow not traced) | 0 | none |
 | d3 | `ensembly-mcp` stdio, same three calls | 0 | none |
 
 Every runtime command worked with all networking blocked, and the sandbox log has no entry for `ensembly` or `ensembly-mcp`.
@@ -70,7 +70,7 @@ Every runtime command worked with all networking blocked, and the sandbox log ha
 
 Search of non-test Rust code in `crates/` for `reqwest`, `ureq`, `hyper`, `TcpStream`, `UdpSocket`, `TcpListener`, `std::net`, `curl` and `Command::new`, plus `Cargo.lock` for HTTP, TLS and async-network crates (`reqwest`, `ureq`, `hyper`, `tokio`, `mio`, `socket2`, `rustls`, `native-tls`, `openssl`, `curl`).
 
-- **No HTTP client, socket API or TLS library** is used anywhere in the workspace, and none is in `Cargo.lock`.
+- **No HTTP/TLS client crates**, socket API or TLS library are used anywhere in the workspace, and none is in `Cargo.lock`.
 - URLs in source are strings only (documentation links, test fixtures, the repo homepage).
 
 Every code path that can reach the network does it by running another program:
@@ -92,7 +92,7 @@ The optional `opportunity-finder` feature has no network code (no HTTP client, s
 What the evidence supports:
 
 1. ensembly has no telemetry: no HTTP client, socket or TLS code in the workspace, and zero network syscalls from `ensembly init`, `ensembly doctor --offline`, the runtime and pulse-pack commands, and `ensembly-mcp`, on Linux (strace) and macOS (sandbox).
-2. Because those commands open no connections, none of the data or secrets they read can leave the machine through them.
+2. The traced phases showed zero ensembly-originated connections, and the code has no HTTP/TLS client crates. This proof does not cover the `--version` subprocesses `doctor` runs on `git`, `python3`, `claude` and `cursor-agent`.
 3. Install-time traffic comes only from the toolchain and the package registry: rustup, GitHub for the clone, and crates.io.
 4. `ensembly doctor` without `--offline` contacts GitHub through `git ls-remote` to check for updates. It sends a git ref request, no ensembly data.
 
@@ -126,14 +126,14 @@ run doctor ensembly doctor --offline
 grep -v AF_UNIX "$T"/strace-init.txt "$T"/strace-doctor.txt   # expect no output
 ```
 
-macOS (no install needed if `ensembly` is already on `PATH`):
+macOS (run from the repo root; no install needed if `ensembly` is already on `PATH`):
 
 ```sh
-D=$(mktemp -d); mkdir "$D/home"; cd "$D/home"
+D=$(mktemp -d); mkdir "$D/home"
 start=$(date '+%Y-%m-%d %H:%M:%S')
 for c in "init" "doctor --offline" "runtime status"; do
   env -i HOME="$D/home" PATH="$(dirname "$(command -v ensembly)"):/usr/bin:/bin" \
-    sandbox-exec -f /path/to/ensembly/docs/proof/network-trace/no-net.sb ensembly $c; done
+    sandbox-exec -f docs/proof/network-trace/no-net.sb ensembly $c; done
 /usr/bin/log show --start "$start" --style compact --predicate 'eventMessage CONTAINS "Sandbox:" AND eventMessage CONTAINS "network"'
 # expect no line naming ensembly
 ```

@@ -14,7 +14,7 @@ Bots and harnesses **propose**. ensembly **authorizes, claims, and completes**. 
 
 ## Quickstart
 
-Prereqs: `git` and `cargo` on `PATH` (the installer tells you how to get them; it never installs toolchains or uses `sudo`). The first `cargo build` or `install.sh` run may download the pinned toolchain from `rust-toolchain.toml` via rustup — network use is cargo/rustup only, not ensembly telemetry.
+Prereqs: `git` and `cargo` on `PATH` (the installer tells you how to get them; it never installs toolchains or uses `sudo`). The first `cargo build` or `install.sh` run may download the pinned toolchain from `rust-toolchain.toml` via rustup — install-time network use is `git clone` (plus `git pull` on `--update`) and rustup/cargo, not ensembly telemetry.
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1e3a5f","primaryTextColor":"#ffffff","lineColor":"#f59e0b","fontFamily":"Inter"}}}%%
@@ -133,7 +133,7 @@ Paste one prompt into Grok Bot and it installs, configures and checks ensembly f
 
 ## Privacy: no telemetry
 
-ensembly has no telemetry and no HTTP client. In a recorded trace of a clean install and first run (commit `d62cf28`, 14 Nov 2026), `ensembly init`, `ensembly doctor --offline`, the runtime and pulse-pack commands and `ensembly-mcp` made no network connections on Linux, and the same commands ran with all networking blocked on macOS. Install-time downloads came only from rustup, GitHub (the clone) and crates.io. The one default network call is `ensembly doctor` without `--offline`, which runs `git ls-remote` against this repo to check for a newer release; `--offline` or `ENSEMBLY_OFFLINE=1` skips it. Method, per-phase tables, code audit and limits: [docs/proof/network-trace.md](docs/proof/network-trace.md).
+ensembly has no telemetry — no analytics, crash reporting or update pings beyond `doctor`'s `git ls-remote` — and no HTTP client. In a recorded trace of a clean install and first run (commit `d62cf28`, 14 Nov 2026), `ensembly init`, `ensembly doctor --offline`, the runtime and pulse-pack commands and `ensembly-mcp` made no network connections on Linux. The macOS trace was runtime-only, using cross-built binaries, with no `install.sh` run on the mac-mini; the same commands ran with all networking blocked. Install-time downloads came only from rustup, GitHub (the clone) and crates.io. The one default network call is `ensembly doctor` without `--offline`, which runs `git ls-remote` against this repo to check for a newer release; `--offline` or `ENSEMBLY_OFFLINE=1` skips it. Method, per-phase tables, code audit and limits: [docs/proof/network-trace.md](docs/proof/network-trace.md).
 
 ---
 
