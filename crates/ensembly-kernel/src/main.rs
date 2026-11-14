@@ -1003,6 +1003,7 @@ fn pulse_resolve_cmd(cfg: &pc::PulseCfg, req: ps::ResolveRequest, json: bool) ->
 fn should_skip_eager_config(cli: &Cli) -> bool {
     matches!(cli.cmd, Commands::Version | Commands::Init { .. })
         || (cli.db.is_some() && cli.memory.is_some())
+        || (cli.db.is_some() ^ cli.memory.is_some())
 }
 
 fn load_operator_config(cli: &Cli) -> (Option<PathBuf>, Option<ConfigError>) {

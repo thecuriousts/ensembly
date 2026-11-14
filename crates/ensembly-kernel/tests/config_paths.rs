@@ -117,6 +117,25 @@ fn malformed_config_blocks_runtime_not_version() {
 
 #[serial]
 #[test]
+fn single_db_flag_skips_malformed_config() {
+    let t = tempfile::tempdir().unwrap();
+    let home = t.path().to_path_buf();
+    let cfg_dir = home.join("cfg/ensembly");
+    fs::create_dir_all(&cfg_dir).unwrap();
+    fs::write(cfg_dir.join("config.toml"), "schema = 1\n[paths\n").unwrap();
+    let scratch = t.path().join("only.sqlite");
+
+    let o = Command::new(env!("CARGO_BIN_EXE_ensembly"))
+        .args(["--db", scratch.to_str().unwrap(), "version"])
+        .env("HOME", &home)
+        .env("XDG_CONFIG_HOME", home.join("cfg"))
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(0), "{:?}", o);
+}
+
+#[serial]
+#[test]
 fn both_flags_skip_malformed_config_load() {
     let t = tempfile::tempdir().unwrap();
     let home = t.path().to_path_buf();

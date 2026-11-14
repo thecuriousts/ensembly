@@ -45,7 +45,12 @@ pub fn resolve_data_paths(
     explicit_memory: Option<PathBuf>,
     config_data: Option<&Path>,
 ) -> DataPaths {
-    let effective = effective_config_data_dir(config_data);
+    let single_flag = explicit_db.is_some() ^ explicit_memory.is_some();
+    let effective = if single_flag {
+        config_data.filter(|p| p.is_dir())
+    } else {
+        effective_config_data_dir(config_data)
+    };
     let paths = match (&explicit_db, &explicit_memory) {
         (Some(db), Some(mem)) => DataPaths {
             ops_db: db.clone(),
@@ -115,28 +120,34 @@ fn resolve_implicit(root: &Path, config_data: Option<&Path>) -> DataPaths {
     }
 }
 
-/// Single `--db`: peer memory only in the flagged file's directory (never config or cwd).
+/// Single `--db`: existing peer beside flag, else cwd `data/local`, else fresh beside flag (never config).
 fn paired_memory_for_explicit_db(root: &Path, db: &Path) -> PathBuf {
     if let Some(peer) = peer_memory_file_in_dir(db.parent()) {
         return peer;
     }
+    if let Some(mem) = find_existing_memory_file(root) {
+        return mem;
+    }
     let paired = db.parent().unwrap_or(root).join(CONFIG_MEMORY_NAME);
     eprintln!(
-        "note: --db {} pairs memory with {} (not configured data_dir or cwd peers)",
+        "note: --db {} pairs memory with {} (no existing peer beside flag or in cwd data/local)",
         db.display(),
         paired.display()
     );
     paired
 }
 
-/// Single `--memory`: peer ops only in the flagged file's directory (never config or cwd).
+/// Single `--memory`: existing peer beside flag, else cwd ops paths, else fresh beside flag (never config).
 fn paired_ops_for_explicit_memory(root: &Path, mem: &Path) -> PathBuf {
     if let Some(peer) = peer_ops_file_in_dir(mem.parent()) {
         return peer;
     }
+    if let Some(ops) = find_existing_ops_file(root) {
+        return ops;
+    }
     let paired = mem.parent().unwrap_or(root).join(CONFIG_OPS_NAME);
     eprintln!(
-        "note: --memory {} pairs ops DB with {} (not configured data_dir or cwd peers)",
+        "note: --memory {} pairs ops DB with {} (no existing peer beside flag or in cwd)",
         mem.display(),
         paired.display()
     );
