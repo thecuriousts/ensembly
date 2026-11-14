@@ -55,8 +55,28 @@ exclude = ["*.pem"]
 | `ensembly verify BUNDLE` | Manifest paths, checksums, parse rules, **no missing/extra files** |
 | `ensembly import BUNDLE [--dry-run]` | Always **verify-first** (exit 1 on failure) |
 | `ensembly restore BUNDLE --sources-to DIR` | **Verify-first**, then restore sources under `DIR/<section>/<name>/…` |
+| `ensembly bundle pack BUNDLE_DIR --out DIR [--split-mb N]` | Deterministic tar split (default **16** MiB); writes `<name>.parts.json` + `<name>.tar.partNNN` |
+| `ensembly bundle join PARTS_JSON --out DIR` | Verify parts + total hash, safe unpack, **verify** joined bundle |
 
 Never restores config sources to their original paths without an explicit destination.
+
+## Moving a bundle in parts
+
+When a channel limits individual files (e.g. **16 MiB**), pack the bundle directory without changing it:
+
+```bash
+ensembly bundle pack /tmp/bundle-fixture --out /tmp/chunks --split-mb 16
+```
+
+That directory gets `bundle-fixture.parts.json` and `bundle-fixture.tar.part001`, `part002`, … Each part’s size and SHA-256 are listed; the manifest also carries the **total** tar SHA-256. Transfer every part file **and** the JSON manifest.
+
+Reassemble on the receiver (empty target directory):
+
+```bash
+ensembly bundle join /tmp/chunks/bundle-fixture.parts.json --out /tmp/rejoined
+```
+
+Join refuses checksum mismatches, missing or extra part files, non-empty output, tar path traversal, symlinks, and absolute paths. It finishes with the same **verify** rules as `ensembly verify` on the unpacked tree.
 
 ## Flow
 

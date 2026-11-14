@@ -30,6 +30,19 @@ ensembly verify /tmp/bundle-fixture
 
 Exit 0 when every manifest file is present with a matching checksum, **no extra files** on disk (except `MANIFEST.json`), and jsonl/ics parse rules pass. Exit 1 on any failure.
 
+## Pack / join (size limits)
+
+When each transferred file must stay under a cap (default **16 MiB**):
+
+```bash
+ensembly bundle pack /tmp/bundle-fixture --out /tmp/chunks
+# move chunks/bundle-fixture.parts.json and all bundle-fixture.tar.partNNN
+ensembly bundle join /tmp/chunks/bundle-fixture.parts.json --out /tmp/rejoined
+ensembly verify /tmp/rejoined
+```
+
+Pack does not edit the source bundle. Join checks every part hash and the total tar hash, refuses extra/missing parts and a non-empty `--out`, unpacks with the same path-safety rules as restore, then runs **verify** on the result.
+
 ## Import / restore
 
 ```bash
