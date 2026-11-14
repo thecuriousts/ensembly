@@ -44,7 +44,9 @@ To update later, paste the same prompt again. The optional bot is described in [
 
 ## The prompt
 
-Copy everything in the box and paste it into a new Grok Bot chat.
+**One click:** [Open in Grok Bot](https://cursor.com/grok-bot/link/v1/prompt?text=Set%20up%20ensembly%20for%20me%20on%20your%20own%20computer.%20Its%20source%20is%20https%3A%2F%2Fgithub.com%2Fthecuriousts%2Fensembly.%20Talk%20to%20me%20in%20plain%20words%3B%20I%20may%20not%20be%20a%20developer.%20%201.%20If%20~%2Fensembly%20does%20not%20exist%2C%20run%20%60git%20clone%20https%3A%2F%2Fgithub.com%2Fthecuriousts%2Fensembly%20~%2Fensembly%60.%20%20%20%20If%20it%20exists%2C%20check%20that%20%60git%20-C%20~%2Fensembly%20remote%20get-url%20origin%60%20points%20to%20thecuriousts%2Fensembly%20and%20that%20%60git%20-C%20~%2Fensembly%20status%20--porcelain%60%20prints%20nothing%2C%20then%20run%20%60git%20-C%20~%2Fensembly%20pull%20--ff-only%60.%20If%20any%20of%20that%20fails%2C%20ask%20me%20with%20a%20question%20card%20before%20going%20on.%202.%20Read%20~%2Fensembly%2Fdocs%2Fgrokbot%2FFIRST-RUN.md%20and%20follow%20every%20step%20in%20order%2C%20as%20one%20continuous%20run.%20Never%20skip%20a%20step.%20Never%20end%20your%20turn%20in%20the%20middle%20of%20setup%3B%20stop%20only%20to%20show%20me%20a%20question%20card.%20%20Never%20ask%20me%20for%20a%20password%2C%20token%20or%20API%20key.%20Never%20use%20sudo.%20Never%20delete%2C%20move%20or%20overwrite%20anything%20of%20mine%20without%20asking%20first.). It opens Grok Bot with the prompt below already typed in the message box, not sent: read it, then press send. It needs the Grok Bot app installed and signed in, uses your primary Bot, and does nothing if you have not set one ([how deep links work](https://docs.x.ai/grok-bot/deep-links)). Newlines become spaces in the link; the steps read the same.
+
+If the link does nothing, copy everything in the box and paste it into a new Grok Bot chat.
 
 ```text
 Set up ensembly for me on your own computer. Its source is https://github.com/thecuriousts/ensembly. Talk to me in plain words; I may not be a developer.

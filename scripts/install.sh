@@ -10,7 +10,7 @@ usage: scripts/install.sh [--harness cursor|claude|grok|cli|all] [--prefix DIR] 
 
   --harness H   what to wire after the CLI is installed (default: cli)
                   cli     the `ensembly` binary only
-                  cursor  link the ensembly plugin into ~/.cursor/plugins/local
+                  cursor  copy the ensembly plugin into ~/.cursor/plugins/local
                   claude  link the ensembly skills into ${CLAUDE_CONFIG_DIR:-~/.claude}/skills
                   grok    print how to load the plugin in Grok Bot (writes nothing)
                   all     every one of the above
@@ -171,10 +171,43 @@ link() {
   run ln -s "$src" "$dest"
 }
 
+# Copy src to dest. Cursor skips symlinks in ~/.cursor/plugins/local that point outside it,
+# so Cursor gets a real copy. A copy this script made (marker file) or an old link to src is
+# replaced; anything else is left alone.
+MARKER=.ensembly-installed-from
+copy_plugin() {
+  src=$1
+  dest=$2
+  if [ -L "$dest" ]; then
+    cur=$(readlink "$dest")
+    if [ "$cur" != "$src" ]; then
+      warn "skip $dest: links to $cur, not this checkout. Remove it and re-run."
+      SKIPPED=1
+      return 0
+    fi
+    run rm -- "$dest"
+  elif [ -e "$dest" ]; then
+    if [ -f "$dest/$MARKER" ] && [ "$(cat "$dest/$MARKER")" = "$src" ]; then
+      run rm -rf -- "$dest"
+    else
+      warn "skip $dest: exists and was not installed from this checkout. Move it aside and re-run."
+      SKIPPED=1
+      return 0
+    fi
+  fi
+  # Marker first, then contents: an interrupted copy still carries the marker,
+  # so the next run replaces it instead of skipping it.
+  run mkdir -p "$dest"
+  printf '+ record source in %s\n' "$dest/$MARKER"
+  [ "$DRY_RUN" = 1 ] || printf '%s\n' "$src" > "$dest/$MARKER"
+  run cp -R "$src/." "$dest/"
+}
+
 wire_cursor() {
   say "== cursor"
-  link "$PLUGIN" "$HOME/.cursor/plugins/local/ensembly"
-  say "Restart Cursor, then load the \`ensembly\` skill. \`ensembly doctor\` lists the plugin."
+  copy_plugin "$PLUGIN" "$HOME/.cursor/plugins/local/ensembly"
+  say "Restart Cursor (or run Developer: Reload Window), then load the \`ensembly\` skill. \`ensembly doctor --offline\` lists the plugin."
+  say "The copy does not follow git pull; re-run this script (add --update to pull first) to refresh it. A re-run replaces the copy, so edits made inside it are lost."
 }
 
 wire_claude() {
@@ -209,5 +242,5 @@ say "== next"
 say "ensembly init            # writes ${XDG_CONFIG_HOME:-$HOME/.config}/ensembly/config.toml"
 say "ensembly doctor --offline"
 [ "$DRY_RUN" = 0 ] || say "dry run: nothing was changed"
-[ "$SKIPPED" = 0 ] || die "some links were skipped (see warnings)"
+[ "$SKIPPED" = 0 ] || die "some links or copies were skipped (see warnings)"
 say "done"

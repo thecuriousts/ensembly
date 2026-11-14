@@ -27,6 +27,10 @@ jobs:
           fetch-depth: 0
       - name: version-check tests
         run: python3 -m unittest discover -s scripts -p 'test_version_check.py'
+      - name: Open in Grok Bot link matches the prompt
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_grokbot_link.py'
+          scripts/grokbot-link --check
       - name: versions match tags
         run: scripts/version-check
       - name: release tag equals version

@@ -61,12 +61,37 @@ run sh "$REPO/scripts/install.sh" --harness all --prefix "$WORK/prefix"
 [ -x "$WORK/prefix/bin/ensembly" ] || fail "ensembly not installed under $WORK/prefix/bin"
 run ensembly version
 PLUGIN="$REPO/marketplaces/grokbot/ensembly"
-cursor_link="$HOME/.cursor/plugins/local/ensembly"
-[ -L "$cursor_link" ] || fail "cursor plugin link missing: $cursor_link"
-case "$(readlink "$cursor_link")" in
-  "$PLUGIN") ;;
-  *) fail "cursor plugin link: want $PLUGIN got $(readlink "$cursor_link")" ;;
-esac
+cursor_copy="$HOME/.cursor/plugins/local/ensembly"
+# Cursor skips symlinks that leave ~/.cursor/plugins/local, so install.sh must copy.
+[ -d "$cursor_copy" ] && [ ! -L "$cursor_copy" ] || fail "cursor plugin copy missing or a symlink: $cursor_copy"
+[ -f "$cursor_copy/.cursor-plugin/plugin.json" ] || fail "cursor plugin manifest missing in $cursor_copy"
+[ "$(cat "$cursor_copy/.ensembly-installed-from")" = "$PLUGIN" ] || fail "cursor plugin copy: source marker is not $PLUGIN"
+printf '+ install.sh --harness cursor   (again: must refresh its own copy)\n'
+sh "$REPO/scripts/install.sh" --harness cursor --prefix "$WORK/prefix" >/dev/null || fail "cursor re-install failed"
+[ -f "$cursor_copy/.cursor-plugin/plugin.json" ] || fail "cursor plugin copy missing after re-install"
+# Guard paths: never touch a folder or link this checkout did not make; migrate an old link.
+guard_home() { g="$WORK/guard-$1"; mkdir -p "$g/.cursor/plugins/local"; printf '%s' "$g"; }
+cursor_only() { HOME=$1 sh "$REPO/scripts/install.sh" --harness cursor --prefix "$WORK/prefix" >/dev/null 2>&1; }
+g=$(guard_home foreign-dir); mkdir "$g/.cursor/plugins/local/ensembly"; printf 'keep\n' > "$g/.cursor/plugins/local/ensembly/mine.txt"
+printf '+ install.sh --harness cursor   (foreign folder: must skip, exit 1, leave it)\n'
+if cursor_only "$g"; then fail "foreign folder: install did not fail"; fi
+[ "$(cat "$g/.cursor/plugins/local/ensembly/mine.txt")" = keep ] || fail "foreign folder was changed"
+[ ! -e "$g/.cursor/plugins/local/ensembly/.ensembly-installed-from" ] || fail "foreign folder got a marker"
+g=$(guard_home foreign-link); mkdir "$g/elsewhere"; ln -s "$g/elsewhere" "$g/.cursor/plugins/local/ensembly"
+printf '+ install.sh --harness cursor   (foreign symlink: must skip, exit 1, leave it)\n'
+if cursor_only "$g"; then fail "foreign symlink: install did not fail"; fi
+[ "$(readlink "$g/.cursor/plugins/local/ensembly")" = "$g/elsewhere" ] || fail "foreign symlink was changed"
+[ -z "$(ls -A "$g/elsewhere")" ] || fail "foreign symlink target was written to"
+g=$(guard_home old-link); ln -s "$PLUGIN" "$g/.cursor/plugins/local/ensembly"
+printf '+ install.sh --harness cursor   (old link to this checkout: must become a copy)\n'
+cursor_only "$g" || fail "old link: install failed"
+[ -d "$g/.cursor/plugins/local/ensembly" ] && [ ! -L "$g/.cursor/plugins/local/ensembly" ] || fail "old link was not replaced by a copy"
+[ -f "$g/.cursor/plugins/local/ensembly/.cursor-plugin/plugin.json" ] || fail "old link: copy has no manifest"
+[ -d "$PLUGIN/skills" ] || fail "old link: source plugin was damaged"
+g=$(guard_home half-copy); mkdir "$g/.cursor/plugins/local/ensembly"; printf '%s\n' "$PLUGIN" > "$g/.cursor/plugins/local/ensembly/.ensembly-installed-from"
+printf '+ install.sh --harness cursor   (interrupted copy with marker: must be replaced)\n'
+cursor_only "$g" || fail "half copy: install failed"
+[ -f "$g/.cursor/plugins/local/ensembly/.cursor-plugin/plugin.json" ] || fail "half copy was not completed"
 skills_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
 for skill in ensembly record-layer verified-retrieve; do
   dest="$skills_dir/$skill"
@@ -106,7 +131,8 @@ step "doctor before the sample"
 printf '+ ensembly doctor --offline\n'
 out=$(ensembly --no-memory doctor --offline) || fail "doctor exit $?"
 printf '%s\n' "$out"
-expect_line "$out" "harness cursor present" "ops-db absent" "latest skipped"
+cursor_version=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$PLUGIN/.cursor-plugin/plugin.json")
+expect_line "$out" "harness cursor present" "plugin cursor ensembly $cursor_version" "ops-db absent" "latest skipped"
 
 step "sample: runtime HITL/HOOTL loop on fixtures/issue-1-runtime.json (config default memory)"
 run ensembly runtime load --fixture "$FIX"
