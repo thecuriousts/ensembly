@@ -41,6 +41,35 @@ class ReleaseResolve(unittest.TestCase):
         self.assertNotEqual(proc.returncode, 0, proc.stdout)
         self.assertIn("ensembly-cli", proc.stderr + proc.stdout)
 
+    def test_github_output_writes_file(self):
+        ver = subprocess.check_output(
+            [
+                sys.executable,
+                "-c",
+                "import tomllib; print(tomllib.load(open('crates/ensembly-kernel/Cargo.toml','rb'))['package']['version'])",
+            ],
+            cwd=REPO,
+            text=True,
+        ).strip()
+        tag = f"ensembly-cli--v{ver}"
+        with tempfile.NamedTemporaryFile("w", delete=False) as handle:
+            out_path = handle.name
+        self.addCleanup(os.unlink, out_path)
+        env = os.environ.copy()
+        env["GITHUB_OUTPUT"] = out_path
+        proc = subprocess.run(
+            [sys.executable, RESOLVE, tag, "--github-output"],
+            cwd=REPO,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr + proc.stdout)
+        with open(out_path, encoding="utf-8") as handle:
+            body = handle.read()
+        self.assertIn(f"tag={tag}\n", body)
+        self.assertIn(f"version={ver}\n", body)
+
     def test_version_mismatch_fails(self):
         ver = subprocess.check_output(
             [

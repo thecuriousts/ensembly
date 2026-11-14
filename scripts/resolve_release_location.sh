@@ -1,15 +1,8 @@
 #!/bin/sh
 # Validate a releases/latest Location header against a release repo root; print the CLI tag.
 # Usage: resolve_release_location.sh ROOT LOCATION
+# Or: . scripts/resolve_release_location.sh && resolve_release_location ROOT LOCATION
 # Exit 0 and print tag on success; exit 1 on refuse; exit 2 on usage error.
-set -eu
-
-usage() {
-  printf 'usage: %s ROOT LOCATION\n' "$(basename "$0")" >&2
-  exit 2
-}
-
-[ $# -eq 2 ] || usage
 
 release_repo_canonical() {
   printf '%s' "$1" | sed 's#/*$##'
@@ -42,62 +35,82 @@ valid_cli_release_tag() {
   printf '%s' "$1" | grep -Eq '^ensembly-cli--v[0-9]+\.[0-9]+\.[0-9]+$'
 }
 
-root=$(release_repo_canonical "$1")
-loc=$2
-repo_path=$(release_repo_path "$root")
+# shellcheck disable=SC2034
+resolve_release_location() {
+  if [ $# -ne 2 ]; then
+    return 2
+  fi
+  root=$(release_repo_canonical "$1")
+  loc=$2
+  repo_path=$(release_repo_path "$root")
 
-case $loc in
-  *://*@*)
-    exit 1
-    ;;
-esac
+  case $loc in
+    *://*@*)
+      return 1
+      ;;
+  esac
 
-case $loc in
-  http://*|https://*)
-    root_scheme=$(release_repo_scheme "$root")
-    loc_scheme=$(release_repo_scheme "$loc")
-    if [ "$root_scheme" = https ] && [ "$loc_scheme" = http ]; then
-      exit 1
-    fi
-    prefix="${root}/releases/tag/"
-    case $loc in
-      "${prefix}"*)
-        tag="${loc#"$prefix"}"
-        ;;
-      *)
-        exit 1
-        ;;
-    esac
-    ;;
-  /*)
-    if [ -n "$repo_path" ]; then
-      prefix="${repo_path}/releases/tag/"
+  case $loc in
+    http://*|https://*)
+      root_scheme=$(release_repo_scheme "$root")
+      loc_scheme=$(release_repo_scheme "$loc")
+      if [ "$root_scheme" = https ] && [ "$loc_scheme" = http ]; then
+        return 1
+      fi
+      prefix="${root}/releases/tag/"
       case $loc in
         "${prefix}"*)
           tag="${loc#"$prefix"}"
           ;;
         *)
-          exit 1
+          return 1
           ;;
       esac
-    else
-      case $loc in
-        /releases/tag/*)
-          tag="${loc#/releases/tag/}"
-          ;;
-        *)
-          exit 1
-          ;;
-      esac
-    fi
-    ;;
-  *)
-    exit 1
+      ;;
+    /*)
+      if [ -n "$repo_path" ]; then
+        prefix="${repo_path}/releases/tag/"
+        case $loc in
+          "${prefix}"*)
+            tag="${loc#"$prefix"}"
+            ;;
+          *)
+            return 1
+            ;;
+        esac
+      else
+        case $loc in
+          /releases/tag/*)
+            tag="${loc#/releases/tag/}"
+            ;;
+          *)
+            return 1
+            ;;
+        esac
+      fi
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  if [ -z "$tag" ] || ! valid_cli_release_tag "$tag"; then
+    return 1
+  fi
+
+  printf '%s' "$tag"
+  return 0
+}
+
+case $(basename "$0") in
+  resolve_release_location.sh)
+    set -eu
+    resolve_release_location "$@" || {
+      ec=$?
+      if [ "$ec" -eq 2 ]; then
+        printf 'usage: %s ROOT LOCATION\n' "$(basename "$0")" >&2
+      fi
+      exit "$ec"
+    }
     ;;
 esac
-
-if [ -z "$tag" ] || ! valid_cli_release_tag "$tag"; then
-  exit 1
-fi
-
-printf '%s' "$tag"
