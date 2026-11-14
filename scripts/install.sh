@@ -40,7 +40,7 @@ install_root_from_toml() {
     in_install && /^[[:space:]]*root[[:space:]]*=/ {
       sub(/^[^=]*=[[:space:]]*/, "", $0)
       gsub(/"/, "", $0)
-      gsub(/'/, "", $0)
+      gsub(/\047/, "", $0)
       sub(/[[:space:]]*#.*$/, "", $0)
       gsub(/[[:space:]]+$/, "", $0)
       print $0
