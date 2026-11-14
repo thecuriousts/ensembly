@@ -120,7 +120,7 @@ Restart Cursor, or run **Developer: Reload Window**. Open **Customize**: the flo
 
 ## Part of thecuriousts/ensembly
 
-flowingstack ships in the [thecuriousts/ensembly](https://github.com/thecuriousts/ensembly) repo and works on its own. The repo's main piece is a separate command-line tool: it records which tasks are approved, claimed and completed in one local SQLite file, and moves memory between machines with pulse packs. To install that tool, follow [START-HERE](https://github.com/thecuriousts/ensembly/blob/master/docs/START-HERE.md) in the repo. The repo installer copies the ensembly Cursor plugin and writes a small marker file so a later install from the same checkout can replace that copy safely ([START-HERE](https://github.com/thecuriousts/ensembly/blob/master/docs/START-HERE.md) step 5).
+flowingstack ships in the [thecuriousts/ensembly](https://github.com/thecuriousts/ensembly) repo and works on its own. The repo's main piece is a separate command-line tool: it records which tasks are approved, claimed and completed in one local SQLite file, and moves memory between machines with pulse packs. To install that tool, follow [START-HERE](https://github.com/thecuriousts/ensembly/blob/master/docs/START-HERE.md) in the repo. The repo installer also copies the Cursor plugin from this tree and writes a small marker file so a later install from the same checkout can replace that copy safely ([START-HERE](https://github.com/thecuriousts/ensembly/blob/master/docs/START-HERE.md) step 5).
 
 The job-search pack (opportunity-finder) is off by default. It is built only with `--features opportunity-finder` and is not part of this plugin.
 
