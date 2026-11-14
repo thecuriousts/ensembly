@@ -15,6 +15,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 INSTALL = REPO / "scripts" / "install.sh"
+RESOLVE_LOC = REPO / "scripts" / "resolve_release_location.sh"
 TAG = "ensembly-cli--v9.9.9"
 VER = "9.9.9"
 TARGET = "x86_64-unknown-linux-gnu"
@@ -153,6 +154,55 @@ class InstallRelease(unittest.TestCase):
         proc = self.invoke(asset, sums)
         self.assertNotIn("release asset", proc.stdout)
         self.assertIn("building from source", proc.stdout + proc.stderr)
+
+    def test_look_alike_host_refuses_release(self):
+        """Repo root with an owner/repo path; redirect must not use the bare /releases/tag/ prefix."""
+        old = ReleaseHandler.latest_location
+        ReleaseHandler.latest_location = f"/releases/tag/{TAG}"
+        self.addCleanup(setattr, ReleaseHandler, "latest_location", old)
+        server = ThreadingHTTPServer(("127.0.0.1", 0), ReleaseHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        port = server.server_address[1]
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: shutil.rmtree(root, ignore_errors=True))
+        try:
+            prefix = root / "prefix"
+            env = os.environ.copy()
+            env["HOME"] = str(root / "home")
+            Path(env["HOME"]).mkdir()
+            env["ENSEMBLY_RELEASE_REPO"] = f"http://127.0.0.1:{port}/thecuriousts/ensembly"
+            proc = subprocess.run(
+                ["sh", str(INSTALL), "--harness", "cli", "--prefix", str(prefix)],
+                cwd=REPO,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=5)
+        self.assertNotIn("release asset", proc.stdout)
+        self.assertIn("building from source", proc.stdout + proc.stderr)
+
+    def test_userinfo_location_refuses(self):
+        proc = subprocess.run(
+            ["sh", str(RESOLVE_LOC), "https://github.com/thecuriousts/ensembly",
+             "https://user:pass@github.com/thecuriousts/ensembly/releases/tag/ensembly-cli--v9.9.9"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 1)
+
+    def test_https_downgrade_refuses(self):
+        proc = subprocess.run(
+            ["sh", str(RESOLVE_LOC), "https://github.com/thecuriousts/ensembly",
+             "http://github.com/thecuriousts/ensembly/releases/tag/ensembly-cli--v9.9.9"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 1)
 
 
 if __name__ == "__main__":

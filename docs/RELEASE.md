@@ -67,11 +67,13 @@ Workflow [`.github/workflows/release.yml`](../.github/workflows/release.yml) bui
 | Target | Runner |
 |--------|--------|
 | `aarch64-apple-darwin` | `macos-latest` (native) |
-| `x86_64-apple-darwin` | `macos-latest` (`rustup target add x86_64-apple-darwin`; `file` / `lipo -info` in CI) |
-| `x86_64-unknown-linux-gnu` | `ubuntu-latest` |
-| `aarch64-unknown-linux-gnu` | `ubuntu-latest` (cross-linked) |
+| `x86_64-apple-darwin` | `macos-latest` (`rustup target add x86_64-apple-darwin`; `lipo -archs` must print `x86_64`) |
+| `x86_64-unknown-linux-gnu` | `ubuntu-latest` (`file` must report `x86-64`) |
+| `aarch64-unknown-linux-gnu` | `ubuntu-latest` (cross-linked; `file` must report `aarch64`) |
 
-Trigger: push tag `ensembly-cli--vX.Y.Z`, or `workflow_dispatch` with the same tag shape. The job runs `scripts/version-check --tag …`, then uploads `ensembly-<version>-<target>.tar.gz` plus `SHA256SUMS` to a **draft** GitHub release (`gh release create --draft`). Never publish a non-draft release from CI.
+Each build job runs `file` on the stripped binary and **fails the workflow** if the architecture does not match the matrix target (Darwin also checks `lipo -archs`).
+
+Trigger: push tag `ensembly-cli--vX.Y.Z`, or `workflow_dispatch` with the same tag shape. The **resolve** job runs `scripts/release-resolve` (tag shape, `version-check --product ensembly-cli`, and `Cargo.toml` match); plugins CI runs the same resolver on every PR. Artifacts upload as `ensembly-<version>-<target>.tar.gz` plus `SHA256SUMS` to a **draft** GitHub release (`gh release create --draft --target <sha>`). Never publish a non-draft release from CI.
 
 Checksums locally or in CI:
 
