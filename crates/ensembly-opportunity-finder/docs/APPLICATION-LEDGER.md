@@ -7,7 +7,7 @@ Trello are **views only** and never win a conflict with this ledger.
 ## Row format
 
 One JSON object per line (JSONL). Schema: [`schemas/application-ledger-row.schema.json`](../schemas/application-ledger-row.schema.json).
-Code: `crates/ensembly-kernel/src/application_ledger.rs`.
+Code: `crates/ensembly-opportunity-finder/src/application_ledger.rs` (kernel feature `opportunity-finder`).
 
 | Field | Rule |
 |---|---|
@@ -74,7 +74,7 @@ lines stay valid, so history is kept and exports show only the corrected row.
 |---|---|---|
 | Real rows | `data/local/applications/ledger.jsonl` | local-only (`data/` is gitignored) |
 | Exports | `data/local/applications/exports/applications.{csv,md}` | local-only |
-| Fictional sample | `fixtures/application-ledger-sample.jsonl` | committed |
+| Fictional sample | `crates/ensembly-opportunity-finder/fixtures/application-ledger-sample.jsonl` | committed |
 
 ## CLI
 
@@ -97,8 +97,9 @@ ensembly apps export --tracker [--join FILE] [--prepared FILE] [--stamp "YYYY-MM
 
 Writes only `DIR/TRACKER.md` (temp file + rename) and prints a JSON summary.
 It replaces the ops script `gen_tracker.py` and is byte-equal to it for the
-same inputs (golden test `tests/tracker_golden.rs`, synthetic fixtures in
-`fixtures/tracker/`). Code: `crates/ensembly-kernel/src/tracker.rs`.
+same inputs (golden test `crates/ensembly-kernel/tests/tracker_golden.rs`, synthetic
+fixtures in `crates/ensembly-opportunity-finder/fixtures/tracker/`). Code:
+`crates/ensembly-opportunity-finder/src/tracker.rs`.
 
 - Current state: last ledger row per tracker link key, ordered as in the exports.
 - `--join`: side file with Posted, Lane, Linear, Trello, Pack per row. Format by

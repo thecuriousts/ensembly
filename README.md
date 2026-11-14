@@ -84,6 +84,8 @@ Honest mesh scope: multiplies *where* approved work can run. Does **not** own th
 
 See **Quickstart** above for `scripts/install.sh`. Developers hacking the kernel without installing:
 
+Optional **opportunity-finder** pack (application ledger / company audit CLI): [`crates/ensembly-opportunity-finder/README.md`](crates/ensembly-opportunity-finder/README.md) — enable with `cargo … -p ensembly-kernel --features opportunity-finder`.
+
 ```bash
 cargo test -p ensembly-kernel
 cargo test -p ensembly-memory

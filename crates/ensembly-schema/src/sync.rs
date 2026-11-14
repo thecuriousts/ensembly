@@ -1,6 +1,6 @@
 //! Domain-agnostic sync: offline merge, TTL expiry, clock-skew bounds.
 
-use crate::record::{AggregateId, EventEnvelope, IdempotencyKey, Status, StockholmTime};
+use crate::record::{AggregateId, EventEnvelope, IdempotencyKey, Rfc3339Time, Status};
 use crate::{encode_line, Checked, SCHEMA_VERSION};
 use chrono::{DateTime, FixedOffset, TimeDelta};
 use serde::Serialize;
@@ -8,16 +8,16 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncConfig {
-    /// When [`StockholmTime`] is past `stale_after` on a fact, status becomes [`Status::Expired`].
+    /// When [`Rfc3339Time`] is past `stale_after` on a fact, status becomes [`Status::Expired`].
     pub ttl_grace: TimeDelta,
     /// Maximum allowed gap between `event_time` and `record_time` on one envelope.
     pub max_clock_skew: TimeDelta,
     /// Reference "now" for TTL and skew checks (Europe/Stockholm RFC3339).
-    pub now: StockholmTime,
+    pub now: Rfc3339Time,
 }
 
 impl SyncConfig {
-    pub fn new(now: StockholmTime, ttl_grace: TimeDelta, max_clock_skew: TimeDelta) -> Self {
+    pub fn new(now: Rfc3339Time, ttl_grace: TimeDelta, max_clock_skew: TimeDelta) -> Self {
         Self {
             ttl_grace,
             max_clock_skew,
@@ -103,7 +103,7 @@ where
 /// If `stale_after` is before `config.now` (plus optional grace), return `Expired`.
 pub fn expire_if_stale(
     status: Status,
-    stale_after: Option<StockholmTime>,
+    stale_after: Option<Rfc3339Time>,
     config: &SyncConfig,
 ) -> Result<Status, SyncError> {
     let Some(deadline) = stale_after else {
@@ -156,8 +156,8 @@ mod tests {
         }
     }
 
-    fn t(s: &str) -> StockholmTime {
-        StockholmTime::new(s).unwrap()
+    fn t(s: &str) -> Rfc3339Time {
+        Rfc3339Time::new(s).unwrap()
     }
 
     fn cfg(now: &str) -> SyncConfig {

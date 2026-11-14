@@ -290,7 +290,7 @@ fn prepare_mcp_unit(raw: &str) -> Result<String, Value> {
             ))
         }
     };
-    let record_time = ensembly_schema::stockholm_record_now();
+    let record_time = ensembly_schema::record_now_local();
     for event in events.iter_mut() {
         let Some(obj) = event.as_object_mut() else {
             return Err(invalid_params("event must be an object"));

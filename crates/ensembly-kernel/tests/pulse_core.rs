@@ -620,28 +620,15 @@ fn cli_read_and_refused_write() {
 /// 5 unaudited or stale (1/2 errors). 0 is success in both.
 #[test]
 fn pulse_and_audit_exit_codes_do_not_clash() {
-    use ensembly_kernel::audit_exit_code;
-    use ensembly_kernel::company_audit::GateStatus;
-    let audit: Vec<i32> = [
-        GateStatus::Flag,
-        GateStatus::Block,
-        GateStatus::Unaudited,
-        GateStatus::Stale,
-    ]
-    .iter()
-    .map(|s| audit_exit_code(*s))
-    .collect();
-    assert_eq!(
-        audit,
-        [3, 4, 5, 5],
-        "audit codes are a contract with callers"
-    );
-    assert_eq!(audit_exit_code(GateStatus::Pass), 0);
+    use ensembly_schema::{EXIT_BLOCK, EXIT_FLAG, EXIT_PASS, EXIT_UNAUDITED_OR_STALE};
     let pulse = [1, 2, pc::REFUSED_WRITE_EXIT];
+    // Opportunity-finder pack uses 3/4/5 for company audit; pulse must not reuse those.
+    let audit_only = [EXIT_FLAG, EXIT_BLOCK, EXIT_UNAUDITED_OR_STALE];
+    assert_eq!(EXIT_PASS, 0);
     for c in pulse {
         assert!(
-            !audit.contains(&c),
-            "pulse exit {c} is also an audit status"
+            !audit_only.contains(&c),
+            "pulse exit {c} collides with audit"
         );
     }
 }

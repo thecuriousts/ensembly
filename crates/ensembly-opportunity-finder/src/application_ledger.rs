@@ -1,5 +1,11 @@
 //! Application ledger (Stage 1) — Ensembly is SoT for job applications.
 //! Append-only JSONL; later row for the same `link` supersedes earlier ones.
+//!
+//! # Compile-fail checks
+//!
+//! ```compile_fail
+//! let _ = ensembly_opportunity_finder::application_ledger::append_row;
+//! ```
 use std::path::Path;
 
 pub use ensembly_schema::{link_key, LedgerRow, Status, SubmitTime};
@@ -13,8 +19,7 @@ pub const DEFAULT_LEDGER_PATH: &str = "data/local/applications/ledger.jsonl";
 pub const LEGACY_UNKNOWN_CV: &str = "legacy-unknown";
 pub const DEFAULT_EXPORT_DIR: &str = "data/local/applications/exports";
 
-/// Europe/Stockholm is +01:00 (CET) or +02:00 (CEST). `Z` and other offsets are refused
-/// so every row reads in the operator's zone without conversion.
+/// `submit_time` must be RFC 3339 with a numeric offset or `Z`/`z` (UTC).
 pub(crate) fn check_submit_time(t: &str) -> anyhow::Result<()> {
     ensembly_schema::check_submit_time(t).map_err(anyhow::Error::msg)
 }
@@ -255,7 +260,7 @@ pub fn write_exports(rows: &[Row], dir: &Path) -> anyhow::Result<()> {
 pub(crate) mod tests {
     use super::*;
 
-    const SAMPLE: &str = include_str!("../../../fixtures/application-ledger-sample.jsonl");
+    const SAMPLE: &str = include_str!("../fixtures/application-ledger-sample.jsonl");
 
     fn row(link: &str, status: &str, t: Option<&str>) -> String {
         let t = t
@@ -285,23 +290,25 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn rejects_non_stockholm_offset_and_missing_offset() {
-        for t in [
-            "2026-10-26T18:59:00Z",
-            "2026-10-26T18:59:00+05:30",
-            "2026-10-26T18:59:00",
-        ] {
-            assert!(
-                parse_ledger(&row("https://example.test/j/1", "submitted", Some(t))).is_err(),
-                "{t}"
-            );
-        }
+    fn rejects_missing_offset_and_accepts_rfc3339_offsets() {
         assert!(parse_ledger(&row(
             "https://example.test/j/1",
             "submitted",
-            Some("2026-07-01T10:00:00+02:00")
+            Some("2026-10-26T18:59:00")
         ))
-        .is_ok());
+        .is_err());
+        for t in [
+            "2026-07-01T10:00:00+02:00",
+            "2026-10-26T18:59:00+05:30",
+            "2026-03-15T12:00:00-05:00",
+            "2026-10-26T18:59:00Z",
+            "2026-10-26T18:59:00z",
+        ] {
+            assert!(
+                parse_ledger(&row("https://example.test/j/1", "submitted", Some(t))).is_ok(),
+                "{t}"
+            );
+        }
     }
 
     #[test]
@@ -566,7 +573,7 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read_to_string(&p).unwrap().lines().count(), 1);
     }
 
-    const SCHEMA: &str = include_str!("../../../schemas/application-ledger-row.schema.json");
+    const SCHEMA: &str = include_str!("../schemas/application-ledger-row.schema.json");
 
     fn str_array(v: &serde_json::Value) -> Vec<&str> {
         v.as_array()
@@ -608,9 +615,10 @@ pub(crate) mod tests {
     fn assert_time_pattern_agrees(re: &regex::Regex) {
         for (t, ok) in [
             ("2026-10-20T09:15:00+02:00", true),
+            ("2026-10-20T09:15:00+05:30", true),
             ("2026-10-20T09:15+02:00", false),
-            ("2026-10-20T09:15:00Z", false),
-            ("2026-10-20T09:15:00+05:30", false),
+            ("2026-10-20T09:15:00Z", true),
+            ("2026-10-20T09:15:00z", true),
         ] {
             assert_eq!(re.is_match(t), ok, "schema {t}");
             assert_eq!(check_submit_time(t).is_ok(), ok, "rust {t}");

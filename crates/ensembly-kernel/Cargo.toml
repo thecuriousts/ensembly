@@ -15,6 +15,14 @@ path = "src/main.rs"
 name = "peram"
 path = "src/main.rs"
 
+[features]
+default = []
+opportunity-finder = [
+    "dep:ensembly-opportunity-finder",
+    "ensembly-opportunity-finder/kernel-bridge",
+    "ensembly-schema/opportunity-finder",
+]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -31,8 +39,34 @@ regex = "1"
 ensembly-memory = { path = "../ensembly-memory" }
 ensembly-agents = { path = "../ensembly-agents" }
 ensembly-schema = { path = "../ensembly-schema" }
+ensembly-opportunity-finder = { path = "../ensembly-opportunity-finder", optional = true }
 unicode-normalization = "0.1.26"
 
 [dev-dependencies]
 tempfile = "3"
 ensembly-schema = { path = "../ensembly-schema" }
+
+[[test]]
+name = "single_writer_ledger"
+required-features = ["opportunity-finder"]
+
+[[test]]
+name = "tracker_golden"
+required-features = ["opportunity-finder"]
+
+[[test]]
+name = "apps_record_cli"
+required-features = ["opportunity-finder"]
+
+[[test]]
+name = "opportunity_cli_golden"
+path = "tests/opportunity_cli_golden.rs"
+required-features = ["opportunity-finder"]
+
+[[test]]
+name = "decision_model"
+required-features = ["opportunity-finder"]
+
+[[test]]
+name = "decision_gate_adversarial"
+required-features = ["opportunity-finder"]

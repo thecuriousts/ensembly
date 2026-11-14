@@ -1,4 +1,4 @@
-use crate::ledger;
+use crate::url;
 use crate::{Checked, SCHEMA_VERSION};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -25,12 +25,12 @@ pub struct Version(pub u64);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(transparent)]
-pub struct StockholmTime(String);
+pub struct Rfc3339Time(String);
 
-impl StockholmTime {
+impl Rfc3339Time {
     pub fn new(raw: impl Into<String>) -> Result<Self, String> {
         let s = raw.into();
-        ledger::check_submit_time(&s)?;
+        url::check_submit_time(&s)?;
         Ok(Self(s))
     }
 
@@ -121,7 +121,7 @@ pub enum Source {
 #[serde(deny_unknown_fields)]
 pub struct Evidence {
     pub source: Source,
-    pub at: StockholmTime,
+    pub at: Rfc3339Time,
     pub text: TextForm,
 }
 
@@ -129,7 +129,7 @@ pub struct Evidence {
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum SubmitTime {
-    Known { at: StockholmTime },
+    Known { at: Rfc3339Time },
     Unknown,
 }
 
@@ -142,8 +142,8 @@ pub enum Status {
     Confirmed { evidence: Evidence },
     Rejected { evidence: Evidence },
     NextStage { n: u8, evidence: Evidence },
-    Silent { since: StockholmTime },
-    Expired { at: StockholmTime },
+    Silent { since: Rfc3339Time },
+    Expired { at: Rfc3339Time },
     Withdrawn,
 }
 
@@ -155,7 +155,7 @@ pub struct Aggregate {
     pub status: Status,
     pub version: Version,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub stale_after: Option<StockholmTime>,
+    pub stale_after: Option<Rfc3339Time>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -206,8 +206,8 @@ pub struct EventEnvelope<P> {
     pub aggregate: AggregateId,
     pub key: IdempotencyKey,
     pub version: Version,
-    pub event_time: StockholmTime,
-    pub record_time: StockholmTime,
+    pub event_time: Rfc3339Time,
+    pub record_time: Rfc3339Time,
     pub source: Source,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prev_hash: Option<Hash>,
@@ -223,8 +223,8 @@ impl<P: Checked> Checked for EventEnvelope<P> {
                 self.schema_v
             ));
         }
-        ledger::check_submit_time(self.event_time.as_str())?;
-        ledger::check_submit_time(self.record_time.as_str())?;
+        url::check_submit_time(self.event_time.as_str())?;
+        url::check_submit_time(self.record_time.as_str())?;
         self.payload.check()?;
         Ok(())
     }
@@ -234,16 +234,16 @@ impl Status {
     pub fn check_invariants(&self) -> Result<(), String> {
         match self {
             Status::Confirmed { evidence } | Status::Rejected { evidence } => {
-                ledger::check_submit_time(evidence.at.as_str())?;
+                url::check_submit_time(evidence.at.as_str())?;
             }
             Status::Submitted { submit } => match submit {
-                SubmitTime::Known { at } => ledger::check_submit_time(at.as_str())?,
+                SubmitTime::Known { at } => url::check_submit_time(at.as_str())?,
                 SubmitTime::Unknown => {}
             },
-            Status::Silent { since } => ledger::check_submit_time(since.as_str())?,
-            Status::Expired { at } => ledger::check_submit_time(at.as_str())?,
+            Status::Silent { since } => url::check_submit_time(since.as_str())?,
+            Status::Expired { at } => url::check_submit_time(at.as_str())?,
             Status::NextStage { evidence, .. } => {
-                ledger::check_submit_time(evidence.at.as_str())?;
+                url::check_submit_time(evidence.at.as_str())?;
             }
             Status::Intended | Status::Withdrawn => {}
         }
@@ -262,7 +262,7 @@ pub fn transition(
     kind: EventKind,
     ev: Option<Evidence>,
     submit: Option<SubmitTime>,
-    at: Option<StockholmTime>,
+    at: Option<Rfc3339Time>,
 ) -> Result<Status, IllegalTransition> {
     use EventKind::*;
     let err = |reason: &'static str| IllegalTransition {
@@ -280,7 +280,7 @@ pub fn transition(
         (Status::Intended, Withdraw) => Ok(Status::Withdrawn),
         (Status::Intended, Expire) => {
             let Some(t) = at else {
-                return Err(err("expire needs StockholmTime"));
+                return Err(err("expire needs Rfc3339Time"));
             };
             Ok(Status::Expired { at: t })
         }
@@ -311,7 +311,7 @@ pub fn transition(
         (Status::Submitted { .. }, Withdraw) => Ok(Status::Withdrawn),
         (Status::Submitted { .. }, Expire) => {
             let Some(t) = at else {
-                return Err(err("expire needs StockholmTime"));
+                return Err(err("expire needs Rfc3339Time"));
             };
             Ok(Status::Expired { at: t })
         }
@@ -376,9 +376,17 @@ pub fn transition(
     }
 }
 
-impl From<ledger::Status> for Status {
-    fn from(s: ledger::Status) -> Self {
-        use ledger::Status as L;
+#[cfg(feature = "opportunity-finder")]
+impl From<crate::ledger::Status> for Status {
+    fn from(s: crate::ledger::Status) -> Self {
+        use crate::ledger::Status as L;
+        fn ledger_map_evidence(label: &str) -> Evidence {
+            Evidence {
+                source: Source::LegacyUnknown,
+                at: Rfc3339Time::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
+                text: TextForm(format!("from-ledger-{label}")),
+            }
+        }
         match s {
             L::Prepared => Status::Intended,
             L::Submitted => Status::Submitted {
@@ -393,17 +401,9 @@ impl From<ledger::Status> for Status {
             },
             L::Withdrawn => Status::Withdrawn,
             L::SilentClosed => Status::Silent {
-                since: StockholmTime::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
+                since: Rfc3339Time::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
             },
         }
-    }
-}
-
-fn ledger_map_evidence(label: &str) -> Evidence {
-    Evidence {
-        source: Source::LegacyUnknown,
-        at: StockholmTime::new("2026-01-01T00:00:00+01:00").expect("fixture time"),
-        text: TextForm(format!("from-ledger-{label}")),
     }
 }
 
@@ -442,13 +442,13 @@ mod tests {
     use crate::{decode_line, encode_line, SCHEMA_VERSION};
     use serde_json::json;
 
-    type LegalEdgeArgs = fn() -> (Option<Evidence>, Option<SubmitTime>, Option<StockholmTime>);
+    type LegalEdgeArgs = fn() -> (Option<Evidence>, Option<SubmitTime>, Option<Rfc3339Time>);
     type LegalEdge = (Status, EventKind, LegalEdgeArgs);
 
     const FIXTURE: &str = "fixtures/record-events-v1.jsonl";
 
-    fn t() -> StockholmTime {
-        StockholmTime::new("2026-10-26T18:59:00+01:00").unwrap()
+    fn t() -> Rfc3339Time {
+        Rfc3339Time::new("2026-10-26T18:59:00+01:00").unwrap()
     }
 
     fn ev(label: &str) -> Evidence {
@@ -551,9 +551,10 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "opportunity-finder")]
     #[test]
     fn from_ledger_status_exhaustive() {
-        use ledger::Status as L;
+        use crate::ledger::Status as L;
         let _ = Status::from(L::Prepared);
         let _ = Status::from(L::Submitted);
         let _ = Status::from(L::Interview);
@@ -562,22 +563,21 @@ mod tests {
         let _ = Status::from(L::SilentClosed);
     }
 
+    #[cfg(feature = "opportunity-finder")]
     #[test]
     fn from_ledger_maps_names() {
+        use crate::ledger::Status as L;
+        assert!(matches!(Status::from(L::Prepared), Status::Intended));
         assert!(matches!(
-            Status::from(ledger::Status::Prepared),
-            Status::Intended
-        ));
-        assert!(matches!(
-            Status::from(ledger::Status::Submitted),
+            Status::from(L::Submitted),
             Status::Submitted { .. }
         ));
         assert!(matches!(
-            Status::from(ledger::Status::Interview),
+            Status::from(L::Interview),
             Status::NextStage { n: 1, .. }
         ));
         assert!(matches!(
-            Status::from(ledger::Status::SilentClosed),
+            Status::from(L::SilentClosed),
             Status::Silent { .. }
         ));
     }
