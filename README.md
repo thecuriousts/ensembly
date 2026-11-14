@@ -125,6 +125,12 @@ cargo build -p ensembly-agents --bin ensembly-mcp
 
 ---
 
+## Install with Grok Bot
+
+Paste one prompt into Grok Bot and it installs, configures and checks ensembly for you: [docs/install-with-grokbot.md](docs/install-with-grokbot.md). Optional dedicated bot: [docs/ensembly-bot-template.md](docs/ensembly-bot-template.md).
+
+---
+
 ## Plugins
 
 Catalog `thecuriousts-plugins` ([.cursor-plugin/marketplace.json](.cursor-plugin/marketplace.json)).
