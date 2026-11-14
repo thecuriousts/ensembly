@@ -109,11 +109,6 @@ pub fn record_now_local() -> String {
     chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
-/// Alias kept for callers migrating off the old name.
-pub fn stockholm_record_now() -> String {
-    record_now_local()
-}
-
 #[derive(Debug)]
 pub enum RecordSurfaceError {
     Json(String),

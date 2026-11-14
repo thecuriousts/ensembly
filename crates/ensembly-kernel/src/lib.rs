@@ -11,12 +11,14 @@ pub mod agent;
 pub mod approvals;
 pub mod backup;
 pub mod channel_pulse;
+pub mod config;
 pub mod critical_path;
 #[cfg(feature = "opportunity-finder")]
 pub mod decision;
 pub mod digital_flow;
 pub mod doctor;
 pub mod graph;
+pub mod hitl;
 pub mod life_state;
 pub mod memory_sink;
 pub mod msg_bus;

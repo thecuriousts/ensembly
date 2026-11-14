@@ -77,8 +77,8 @@ pub use sealed_io::{
 };
 pub use surface::{
     commit_json, configured_writer, feed_json, record_now_local, recover_json,
-    require_configured_writer, snapshot_json, stockholm_record_now, validate_writer_identity,
-    JsonPayload, RecordSurfaceError, WRITER_ENV,
+    require_configured_writer, snapshot_json, validate_writer_identity, JsonPayload,
+    RecordSurfaceError, WRITER_ENV,
 };
 pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};
 pub use url::{check_submit_time, link_key};

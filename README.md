@@ -14,7 +14,7 @@ Bots and harnesses **propose**. ensembly **authorizes, claims, and completes**. 
 
 ## Quickstart
 
-Prereqs: `git` and `cargo` on `PATH` (the installer tells you how to get them; it never installs toolchains or uses `sudo`).
+Prereqs: `git` and `cargo` on `PATH` (the installer tells you how to get them; it never installs toolchains or uses `sudo`). The first `cargo build` or `install.sh` run may download the pinned toolchain from `rust-toolchain.toml` via rustup — network use is cargo/rustup only, not ensembly telemetry.
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#1e3a5f","primaryTextColor":"#ffffff","lineColor":"#f59e0b","fontFamily":"Inter"}}}%%

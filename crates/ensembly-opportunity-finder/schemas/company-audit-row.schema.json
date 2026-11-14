@@ -12,9 +12,9 @@
     "apply_url": { "type": "string", "pattern": "^https://\\S+$" },
     "verdict": { "enum": ["pass", "flag", "block"] },
     "checks": { "type": "array", "minItems": 8, "maxItems": 8, "items": { "$ref": "#/$defs/check" } },
-    "audited_at": { "description": "RFC 3339 with seconds and the Europe/Stockholm offset.", "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\+0[12]:00$" },
+    "audited_at": { "description": "RFC 3339 with seconds and a numeric offset or Z/z (UTC).", "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?([+-]\\d{2}:\\d{2}|[Zz])$" },
     "audited_by": { "type": "string", "pattern": "\\S" },
-    "reused_from": { "description": "Optional audited_at of the earlier audit whose result this row reuses.", "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\+0[12]:00$" }
+    "reused_from": { "description": "Optional audited_at of the earlier audit whose result this row reuses.", "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?([+-]\\d{2}:\\d{2}|[Zz])$" }
   },
   "$defs": {
     "check": {

@@ -12,7 +12,7 @@ pub struct SyncConfig {
     pub ttl_grace: TimeDelta,
     /// Maximum allowed gap between `event_time` and `record_time` on one envelope.
     pub max_clock_skew: TimeDelta,
-    /// Reference "now" for TTL and skew checks (Europe/Stockholm RFC3339).
+    /// Reference "now" for TTL and skew checks (RFC 3339 with any numeric offset or `Z`).
     pub now: Rfc3339Time,
 }
 

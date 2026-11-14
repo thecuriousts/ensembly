@@ -31,17 +31,6 @@ pub struct Classifiable {
     pub body: Option<String>,
 }
 
-fn hitl_kinds() -> &'static [&'static str] {
-    &[
-        "external_email_send",
-        "job_application_submit",
-        "calendar_mutate",
-        "finance_transfer",
-        "git_push_shared",
-        "publish_private_data",
-    ]
-}
-
 fn private_res() -> &'static [Regex] {
     static RE: OnceLock<Vec<Regex>> = OnceLock::new();
     RE.get_or_init(|| {
@@ -84,7 +73,7 @@ pub fn classify_item(item: &Classifiable) -> Classification {
     let area = item.area.clone().unwrap_or_default();
     let kind = item.kind.clone().unwrap_or_default();
 
-    let high_stakes = hitl_kinds().contains(&kind.as_str())
+    let high_stakes = crate::hitl::is_hitl_kind(&kind)
         || Regex::new(r"(?i)submit|send_email|wire_transfer|force.?push")
             .unwrap()
             .is_match(&text);

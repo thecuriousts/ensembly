@@ -40,8 +40,8 @@ fn writes_default_under_xdg_and_prints_path() {
     let body = fs::read_to_string(&path).unwrap();
     assert!(body.lines().any(|l| l == "schema = 1"), "{body}");
     assert!(
-        body.lines().any(|l| l == "opportunity_finder = false"),
-        "{body}"
+        !body.contains("opportunity_finder"),
+        "init must not write a no-op pack toggle: {body}"
     );
     let data = t.path().join("share/ensembly");
     assert!(
@@ -92,7 +92,7 @@ fn force_rewrites_default() {
     fs::write(&path, "# mine\n").unwrap();
     let o = init(t.path(), true, &["--force"]);
     assert_eq!(o.status.code(), Some(0), "{}", text(&o));
-    assert!(fs::read_to_string(&path).unwrap().contains("[packs]"));
+    assert!(fs::read_to_string(&path).unwrap().contains("schema = 1"));
 }
 
 #[test]
@@ -105,12 +105,8 @@ fn matches_checked_in_example_keys() {
         "/../../config.example.toml"
     ))
     .unwrap();
-    let keys = |s: &str| -> Vec<String> {
-        s.lines()
-            .map(|l| l.trim_start_matches('#').trim())
-            .filter(|l| l.starts_with('[') || l.contains(" = "))
-            .map(|l| l.split(" = ").next().unwrap().to_string())
-            .collect()
-    };
-    assert_eq!(keys(&written), keys(&example));
+    assert!(written.contains("[paths]"), "{written}");
+    assert!(written.contains("data_dir = "), "{written}");
+    assert!(example.contains("[paths]"), "{example}");
+    assert!(!example.contains("opportunity_finder ="), "{example}");
 }

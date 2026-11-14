@@ -29,16 +29,8 @@ pub struct ReconcileReport {
 
 /// HITL kinds mirrored from `DepGraph` / `ensure_snap` — observation only.
 fn action_requires_hitl(a: &Action) -> bool {
-    matches!(
-        a.kind.as_deref(),
-        Some("job_application_submit")
-            | Some("finance_transfer")
-            | Some("external_email_send")
-            | Some("calendar_mutate")
-            | Some("git_push_shared")
-            | Some("publish_private_data")
-            | Some("bill_pay")
-    ) || a.area.as_deref() == Some("Finance")
+    crate::hitl::action_requires_auth_gate(a.kind.as_deref())
+        || a.area.as_deref() == Some("Finance")
 }
 
 fn action_is_physical(a: &Action) -> bool {

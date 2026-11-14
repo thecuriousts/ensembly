@@ -34,8 +34,13 @@ check_help() {
   assert_no_leak "$label" "$help"
 }
 
-check_help "ensembly --help" --help
-for cmd in record pulse runtime doctor turn digital-flow backup ops-bundle pulse-pack channel-pulse migrate-local-paths version init; do
+top=$("$BIN" --help 2>&1) || fail "$BIN --help exited $?"
+assert_no_leak "ensembly --help" "$top"
+printf '%s\n' "$top" | sed -n 's/^  \([a-z0-9][-a-z0-9]*\).*/\1/p' | while read -r cmd; do
+  [ -n "$cmd" ] || continue
+  case $cmd in
+    help|help*) continue ;;
+  esac
   check_help "ensembly $cmd --help" "$cmd" --help
 done
 printf 'ok: default CLI surface has no apps/decision leaks\n'

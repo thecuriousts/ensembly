@@ -16,6 +16,9 @@ pub const LEGACY_OPS_PRIVATE_PATH: &str = "private/state/peram-ops.sqlite";
 pub const DEFAULT_MEMORY_PATH: &str = "data/local/ensembly-memory.json";
 pub const LEGACY_MEMORY_PATH: &str = "data/local/peram-memory.json";
 
+const CONFIG_OPS_NAME: &str = "ensembly-ops.sqlite";
+const CONFIG_MEMORY_NAME: &str = "ensembly-memory.json";
+
 /// Replica id for **new** empty memory documents. Existing docs keep theirs.
 pub const DEFAULT_AGENT_ID: &str = "ensembly-swarm";
 pub const LEGACY_AGENT_ID: &str = "peram-swarm";
@@ -31,7 +34,25 @@ pub fn env_alias(primary: &str, legacy: &str) -> Option<String> {
 /// `--db` wins. Else existing ensembly file, else existing legacy file, else
 /// create-default (parent-dir discover, new names).
 pub fn resolve_ops_db(explicit: Option<PathBuf>) -> PathBuf {
-    resolve_ops_db_at(Path::new(""), explicit)
+    resolve_ops_db_config(explicit, None)
+}
+
+/// Like [`resolve_ops_db`] but honors `paths.data_dir` from `ensembly init` when set.
+pub fn resolve_ops_db_config(explicit: Option<PathBuf>, config_data: Option<&Path>) -> PathBuf {
+    if let Some(p) = explicit {
+        return p;
+    }
+    let cwd_default = resolve_ops_db_at(Path::new(""), None);
+    if cwd_default.is_file() {
+        return cwd_default;
+    }
+    if let Some(data) = config_data {
+        let path = data.join(CONFIG_OPS_NAME);
+        if path.is_file() || data.is_dir() {
+            return path;
+        }
+    }
+    cwd_default
 }
 
 pub fn resolve_ops_db_at(root: &Path, explicit: Option<PathBuf>) -> PathBuf {
@@ -63,7 +84,28 @@ pub fn resolve_ops_db_at(root: &Path, explicit: Option<PathBuf>) -> PathBuf {
 /// `--memory` wins. Else existing ensembly file, else existing legacy file,
 /// else the fresh `ensembly-memory.json` default.
 pub fn resolve_memory_path(explicit: Option<PathBuf>) -> PathBuf {
-    resolve_memory_path_at(Path::new(""), explicit)
+    resolve_memory_path_config(explicit, None)
+}
+
+/// Like [`resolve_memory_path`] but honors `paths.data_dir` from `ensembly init` when set.
+pub fn resolve_memory_path_config(
+    explicit: Option<PathBuf>,
+    config_data: Option<&Path>,
+) -> PathBuf {
+    if let Some(p) = explicit {
+        return p;
+    }
+    let cwd_default = resolve_memory_path_at(Path::new(""), None);
+    if cwd_default.is_file() {
+        return cwd_default;
+    }
+    if let Some(data) = config_data {
+        let path = data.join(CONFIG_MEMORY_NAME);
+        if path.is_file() || data.is_dir() {
+            return path;
+        }
+    }
+    cwd_default
 }
 
 pub fn resolve_memory_path_at(root: &Path, explicit: Option<PathBuf>) -> PathBuf {
