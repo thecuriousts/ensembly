@@ -13,6 +13,7 @@ mod path_safety;
 mod safe_io;
 mod scan;
 mod section;
+mod split_join;
 mod verify;
 mod views;
 
@@ -31,6 +32,10 @@ pub use path_safety::{
 pub use section::{
     normalize_section, validate_safe_segment, validate_source_name, RESERVED_SECTION_ENSEMBLY,
     SECTION_RE,
+};
+pub use split_join::{
+    build_evil_tar, build_symlink_tar, join_bundle, pack_bundle, unpack_tar_to_bundle, JoinOpts,
+    JoinReport, PackOpts, PackReport, PartEntry, PartsManifest, PARTS_FORMAT,
 };
 pub use verify::{verify_bundle, VerifyReport};
 pub use views::{derive_views_from_ops_bundle, DerivedViews};

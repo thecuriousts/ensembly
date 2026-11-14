@@ -18,6 +18,7 @@ regex = "1"
 toml = "0.8"
 walkdir = "2"
 glob = "0.3"
+tar = "0.4"
 ensembly-paths = { path = "../ensembly-paths" }
 
 [dev-dependencies]

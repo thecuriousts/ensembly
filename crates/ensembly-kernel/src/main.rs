@@ -9,10 +9,11 @@ use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
 use ensembly_bundle::{
-    export_bundle, import_bundle, load_backup_sources, manifest_file_path, merge_json_objects,
-    merge_jsonl_records, merge_ops_preserve_existing, restore_bundle, verify_bundle,
-    BundleManifest, ConfigSourcesError, EnsemblyStorePaths, ExportOpts, ImportOpts, OpsBundleMerge,
-    RestoreOpts, MANIFEST_LEDGER_PATH, MANIFEST_MEMORY_PATH, MANIFEST_OPS_PATH,
+    export_bundle, import_bundle, join_bundle, load_backup_sources, manifest_file_path,
+    merge_json_objects, merge_jsonl_records, merge_ops_preserve_existing, pack_bundle,
+    restore_bundle, verify_bundle, BundleManifest, ConfigSourcesError, EnsemblyStorePaths,
+    ExportOpts, ImportOpts, JoinOpts, OpsBundleMerge, PackOpts, RestoreOpts, MANIFEST_LEDGER_PATH,
+    MANIFEST_MEMORY_PATH, MANIFEST_OPS_PATH,
 };
 use ensembly_kernel::approvals::{list_pending, Snapshot};
 use ensembly_kernel::backup::{
@@ -345,6 +346,11 @@ enum Commands {
         #[arg(long)]
         merge: bool,
     },
+    /// Split or join portable bundles for size-limited transfers (does not rewrite the source tree)
+    Bundle {
+        #[command(subcommand)]
+        sub: BundleCmd,
+    },
     /// Portable pulse + memory sync (laptop ↔ bot; no dual-writer ops)
     #[command(name = "pulse-pack")]
     PulsePack {
@@ -461,6 +467,24 @@ enum RecordViewCmd {
         log: PathBuf,
         #[arg(long)]
         since: u64,
+    },
+}
+
+#[derive(Subcommand)]
+enum BundleCmd {
+    /// Write a deterministic tar split into parts (does not modify the bundle directory)
+    Pack {
+        bundle_dir: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        #[arg(long, default_value_t = 16)]
+        split_mb: u64,
+    },
+    /// Verify parts, unpack safely, then verify the joined bundle
+    Join {
+        parts_json: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
     },
 }
 
@@ -1204,6 +1228,7 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
             dry_run,
             merge,
         ),
+        Commands::Bundle { sub } => cmd_bundle(sub),
         Commands::Pulse {
             pulse_db,
             premflow_bin,
@@ -1716,6 +1741,44 @@ fn cmd_portable_export(
         report.skipped_secret
     );
     Ok(())
+}
+
+fn cmd_bundle(sub: BundleCmd) -> Result<()> {
+    match sub {
+        BundleCmd::Pack {
+            bundle_dir,
+            out,
+            split_mb,
+        } => {
+            let report = pack_bundle(PackOpts {
+                bundle_dir: bundle_dir.clone(),
+                out: out.clone(),
+                split_mb,
+            })
+            .map_err(|e| anyhow::anyhow!(e))?;
+            println!(
+                "BUNDLE_PACK_OK bundle={} parts={} bytes={} manifest={}",
+                bundle_dir.display(),
+                report.part_count,
+                report.total_bytes,
+                report.parts_json.display()
+            );
+            Ok(())
+        }
+        BundleCmd::Join { parts_json, out } => {
+            let report = join_bundle(JoinOpts {
+                parts_json: parts_json.clone(),
+                out: out.clone(),
+            })
+            .map_err(|e| anyhow::anyhow!(e))?;
+            println!(
+                "BUNDLE_JOIN_OK parts={} bundle={}",
+                parts_json.display(),
+                report.bundle_root.display()
+            );
+            Ok(())
+        }
+    }
 }
 
 fn cmd_portable_verify(bundle: &Path) -> Result<()> {
