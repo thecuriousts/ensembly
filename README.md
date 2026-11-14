@@ -52,6 +52,9 @@ flowchart TB
 | **All** | `sh scripts/install.sh --harness all` |
 
 Then: `ensembly init` (writes `${XDG_CONFIG_HOME:-~/.config}/ensembly/config.toml`; see [docs/CONFIG.md](docs/CONFIG.md)).  
+
+**Config caveat:** `init` records `paths.data_dir` under XDG, but the runtime still defaults to `data/local/` under your working directory until it reads that key — pass explicit paths, e.g. `ensembly --db "$DATA/ensembly-ops.sqlite" --memory "$DATA/ensembly-memory.json" runtime …` (same as `scripts/stranger-test.sh`).
+
 Verify like a stranger: `sh scripts/stranger-test.sh` (temp `HOME`, synthetic fixture, full workspace tests).  
 Update an existing checkout: `sh scripts/install.sh --update --harness …`.
 

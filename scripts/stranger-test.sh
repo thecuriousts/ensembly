@@ -56,10 +56,17 @@ unset CLAUDE_CONFIG_DIR ENSEMBLY_MEMORY PERAM_MEMORY ENSEMBLY_DB PERAM_DB 2>/dev
 mkdir -p "$HOME"
 printf 'work %s\n' "$WORK"
 
-step "install (cli harness)"
-run sh "$REPO/scripts/install.sh" --harness cli --prefix "$WORK/prefix"
+step "install (all harnesses)"
+run sh "$REPO/scripts/install.sh" --harness all --prefix "$WORK/prefix"
 [ -x "$WORK/prefix/bin/ensembly" ] || fail "ensembly not installed under $WORK/prefix/bin"
 run ensembly version
+
+step "generic CLI surface (job-hunt pack must be gated — needs master with #74)"
+printf '+ ensembly --help\n'
+help=$(ensembly --help) || fail "ensembly --help exit $?"
+printf '%s\n' "$help"
+printf '%s\n' "$help" | grep -qE '^  apps[[:space:]]' && \
+  fail "ensembly --help lists apps (merge #74 into master, then merge master here)"
 
 step "init"
 printf '+ ensembly init\n'

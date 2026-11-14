@@ -1359,19 +1359,36 @@ fn default_config(data_dir: &Path) -> Result<String> {
     ))
 }
 
+/// True if the path is present (file, directory, or symlink, including dangling).
+fn init_target_present(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+fn write_config_atomically(path: &Path, body: &str) -> Result<()> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("init: config path has no parent"))?;
+    std::fs::create_dir_all(parent)?;
+    let stem = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("config.toml");
+    let tmp = parent.join(format!(".{stem}.init.tmp"));
+    std::fs::write(&tmp, body)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 fn cmd_init(force: bool) -> Result<()> {
     let path = xdg_dir("XDG_CONFIG_HOME", ".config")?.join("ensembly/config.toml");
     let data_dir = xdg_dir("XDG_DATA_HOME", ".local/share")?.join("ensembly");
-    if path.exists() && !force {
+    if init_target_present(&path) && !force {
         eprintln!("init: {} exists; refused without --force", path.display());
         std::process::exit(INIT_EXISTS_EXIT);
     }
     let body = default_config(&data_dir)?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
     std::fs::create_dir_all(&data_dir)?;
-    std::fs::write(&path, body)?;
+    write_config_atomically(&path, &body)?;
     println!("{}", path.display());
     Ok(())
 }

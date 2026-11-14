@@ -60,6 +60,18 @@ fn falls_back_to_home_when_xdg_unset() {
     assert!(t.path().join(".local/share/ensembly").is_dir());
 }
 
+#[cfg(unix)]
+#[test]
+fn refuses_dangling_symlink_without_force() {
+    let t = tempfile::tempdir().unwrap();
+    let path = t.path().join("cfg/ensembly/config.toml");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink("/nonexistent-ensembly-config", &path).unwrap();
+    let o = init(t.path(), true, &[]);
+    assert_eq!(o.status.code(), Some(7), "{}", text(&o));
+    assert!(text(&o).contains("refused without --force"));
+}
+
 #[test]
 fn refuses_overwrite_without_force() {
     let t = tempfile::tempdir().unwrap();
