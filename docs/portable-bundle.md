@@ -17,6 +17,16 @@ bundle/
 
 Reserved section name: **`ensembly`** (kernel stores only). User sources must use other section names (`shared`, `work`, `life`, …).
 
+### What `ensembly/` includes (and what it does not)
+
+| File | SoT | Notes |
+|------|-----|--------|
+| `ops/ops-bundle.json` | T1 ops SQLite (`kv` + schema) | Same shape as `ensembly ops-bundle export`. Chores, deadlines, and HITL wait state live inside `kv` (e.g. `life_state`, `wait_snapshot`) — not separate tables. |
+| `memory/ensembly-memory.json` | Episodic CRDT | Plain JSON on disk. |
+| `ledger/ledger.jsonl` | Application ledger | Present only when the ledger file exists (`opportunity-finder` build). |
+
+Plain **md / csv / ics** in the bundle come from **`[[backup.sources]]`** (or future derived exporters). This path does **not** replace **`pulse-pack`** (traces, optional audit tail, CRDT merge sync).
+
 ## Config
 
 ```toml
