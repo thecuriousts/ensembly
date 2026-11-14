@@ -35,9 +35,9 @@ pub use section::{
     SECTION_RE,
 };
 pub use split_join::{
-    build_bundle_tar, build_evil_gnu_longname_tar, build_evil_tar, build_symlink_tar,
-    join_bundle, pack_bundle, unpack_tar_to_bundle, JoinOpts, JoinReport, PackOpts, PackReport,
-    PartEntry, PartsManifest, PARTS_FORMAT,
+    build_bundle_tar, build_evil_gnu_longname_tar, build_evil_tar, build_symlink_tar, join_bundle,
+    pack_bundle, unpack_tar_to_bundle, JoinOpts, JoinReport, PackOpts, PackReport, PartEntry,
+    PartsManifest, PARTS_FORMAT,
 };
 pub use verify::{verify_bundle, VerifyReport};
 pub use views::{derive_views_from_ops_bundle, DerivedViews};
