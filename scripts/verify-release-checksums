@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Verify release tarball SHA256SUMS in a directory.
+
+Usage:
+  scripts/verify-release-checksums DIR
+
+Expects SHA256SUMS (or SHA256SUMS.txt) and the listed archives in DIR.
+Exit 0 when every line verifies, 1 on mismatch or missing file, 2 on bad args.
+
+Users can also run:
+  shasum -a 256 -c SHA256SUMS
+after downloading assets from the draft release page.
+"""
+from __future__ import annotations
+
+import hashlib
+import sys
+from pathlib import Path
+
+
+def fail(msg: str, code: int = 1) -> None:
+    print(f"error: {msg}", file=sys.stderr)
+    raise SystemExit(code)
+
+
+def sums_file(directory: Path) -> Path:
+    for name in ("SHA256SUMS", "SHA256SUMS.txt"):
+        path = directory / name
+        if path.is_file():
+            return path
+    fail(f"no SHA256SUMS in {directory}")
+
+
+def parse_line(line: str) -> tuple[str, str] | None:
+    line = line.strip()
+    if not line or line.startswith("#"):
+        return None
+    parts = line.split()
+    if len(parts) < 2:
+        fail(f"bad sums line: {line!r}")
+    digest, name = parts[0], parts[-1]
+    if len(digest) != 64:
+        fail(f"bad digest on line: {line!r}")
+    return digest, name
+
+
+def sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        fail("usage: scripts/verify-release-checksums DIR", 2)
+    root = Path(sys.argv[1]).resolve()
+    if not root.is_dir():
+        fail(f"not a directory: {root}", 2)
+    listing = sums_file(root)
+    pairs = []
+    for raw in listing.read_text().splitlines():
+        pair = parse_line(raw)
+        if pair:
+            pairs.append(pair)
+    if not pairs:
+        fail(f"empty {listing.name}")
+    bad = 0
+    for expected, name in pairs:
+        path = root / name
+        if not path.is_file():
+            print(f"MISSING {name}")
+            bad += 1
+            continue
+        got = sha256(path)
+        if got != expected:
+            print(f"FAIL {name}: expected {expected}, got {got}")
+            bad += 1
+        else:
+            print(f"OK {name}")
+    if bad:
+        fail(f"{bad} file(s) failed verification")
+    print("OK: checksums")
+
+
+if __name__ == "__main__":
+    main()

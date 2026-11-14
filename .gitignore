@@ -45,3 +45,4 @@ __pycache__/
 
 # Local model weights must never be committed
 *.gguf
+/actionlint

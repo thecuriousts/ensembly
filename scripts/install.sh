@@ -6,7 +6,7 @@ set -eu
 
 usage() {
   cat <<'EOF'
-usage: scripts/install.sh [--harness cursor|claude|grok|cli|all] [--prefix DIR] [--update] [--dry-run]
+usage: scripts/install.sh [--harness cursor|claude|grok|cli|all] [--prefix DIR] [--update] [--from-source] [--dry-run]
 
   --harness H   what to wire after the CLI is installed (default: cli)
                   cli     the `ensembly` binary only
@@ -14,8 +14,9 @@ usage: scripts/install.sh [--harness cursor|claude|grok|cli|all] [--prefix DIR] 
                   claude  link the ensembly skills into ${CLAUDE_CONFIG_DIR:-~/.claude}/skills
                   grok    print how to load the plugin in Grok Bot (writes nothing)
                   all     every one of the above
-  --prefix DIR  cargo install root; the binary lands in DIR/bin (default: cargo's own)
+  --prefix DIR  install root; the binary lands in DIR/bin (default: cargo's own)
   --update      git pull --ff-only in this checkout, then reinstall
+  --from-source skip GitHub release assets; build with cargo only
   --dry-run     print every command, run none
 EOF
 }
@@ -51,11 +52,13 @@ install_root_from_toml() {
 
 expand_tilde() {
   p=$1
-  case $p in
-    "~") printf '%s' "$HOME" ;;
-    "~/"*) printf '%s' "$HOME/${p#\~/}" ;;
-    *) printf '%s' "$p" ;;
-  esac
+  if [ "$p" = "~" ]; then
+    printf '%s' "$HOME"
+  elif [ "${p#\~/}" != "$p" ]; then
+    printf '%s' "$HOME/${p#\~/}"
+  else
+    printf '%s' "$p"
+  fi
 }
 
 cargo_install_root() {
@@ -77,6 +80,7 @@ cargo_install_root() {
 HARNESS=cli
 PREFIX=
 UPDATE=0
+FROM_SOURCE=0
 DRY_RUN=0
 while [ $# -gt 0 ]; do
   case $1 in
@@ -85,6 +89,7 @@ while [ $# -gt 0 ]; do
     --prefix) [ $# -ge 2 ] || { usage >&2; exit 2; }; PREFIX=$2; shift 2 ;;
     --prefix=*) PREFIX=${1#--prefix=}; shift ;;
     --update) UPDATE=1; shift ;;
+    --from-source) FROM_SOURCE=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'error: unknown argument: %s\n' "$1" >&2; usage >&2; exit 2 ;;
@@ -100,18 +105,182 @@ PLUGIN=$REPO/marketplaces/grokbot/ensembly
 [ -d "$PLUGIN/skills" ] || die "plugin folder missing: $PLUGIN"
 : "${HOME:?HOME must be set}"
 
+release_target() {
+  os=$(uname -s)
+  arch=$(uname -m)
+  case $os in
+    Darwin)
+      case $arch in
+        arm64) printf '%s' 'aarch64-apple-darwin' ;;
+        x86_64) printf '%s' 'x86_64-apple-darwin' ;;
+        *) return 1 ;;
+      esac ;;
+    Linux)
+      case $arch in
+        x86_64) printf '%s' 'x86_64-unknown-linux-gnu' ;;
+        aarch64|arm64) printf '%s' 'aarch64-unknown-linux-gnu' ;;
+        *) return 1 ;;
+      esac ;;
+    *) return 1 ;;
+  esac
+}
+
+release_repo_root() {
+  printf '%s' "${ENSEMBLY_RELEASE_REPO:-https://github.com/thecuriousts/ensembly}"
+}
+
+# Verify one asset using its line from SHA256SUMS. Fail closed on missing file or bad digest.
+verify_release_checksum() {
+  sums_file=$1
+  asset_name=$2
+  if [ ! -f "$sums_file" ]; then
+    die "release checksum file missing: $sums_file"
+  fi
+  dir=$(CDPATH='' cd -- "$(dirname -- "$sums_file")" && pwd)
+  # shellcheck disable=SC2155
+  line=$(grep -F " ${asset_name}" "$sums_file" || true)
+  if [ -z "$line" ]; then
+    die "no SHA256SUMS entry for ${asset_name}"
+  fi
+  if [ ! -f "${dir}/${asset_name}" ]; then
+    die "release asset missing for checksum: ${asset_name}"
+  fi
+  if ! (cd "$dir" && printf '%s\n' "$line" | checksum_from_sums -); then
+    die "checksum verification failed for ${asset_name}"
+  fi
+}
+
+checksum_from_sums() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum -c "$@"
+  else
+    shasum -a 256 -c "$@"
+  fi
+}
+
+release_repo_canonical() {
+  printf '%s' "$1" | sed 's#/*$##'
+}
+
+release_repo_path() {
+  root=$1
+  after_host=${root#*://}
+  case $after_host in
+    */*)
+      repo_path="/${after_host#*/}"
+      repo_path=${repo_path%/}
+      printf '%s' "$repo_path"
+      ;;
+    *)
+      printf ''
+      ;;
+  esac
+}
+
+valid_cli_release_tag() {
+  printf '%s' "$1" | grep -Eq '^ensembly-cli--v[0-9]+\.[0-9]+\.[0-9]+$'
+}
+
+resolve_latest_release_tag() {
+  root=$(release_repo_canonical "$1")
+  repo_path=$(release_repo_path "$root")
+  loc=""
+  loc=$(curl -sS -D - -o /dev/null "${root}/releases/latest" 2>/dev/null | awk '/^[Ll]ocation:/ {sub(/\r$/,"",$2); print $2; exit}') || loc=
+  if [ -z "$loc" ]; then
+    return 1
+  fi
+  tag=""
+  case $loc in
+    http://*|https://*)
+      prefix="${root}/releases/tag/"
+      case $loc in
+        "${prefix}"*) tag="${loc#"$prefix"}" ;;
+        *) return 1 ;;
+      esac
+      ;;
+    /*)
+      if [ -n "$repo_path" ]; then
+        prefix="${repo_path}/releases/tag/"
+        case $loc in
+          "${prefix}"*) tag="${loc#"$prefix"}" ;;
+          *) return 1 ;;
+        esac
+      else
+        case $loc in
+          /releases/tag/*) tag="${loc#/releases/tag/}" ;;
+          *) return 1 ;;
+        esac
+      fi
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  if [ -z "$tag" ] || ! valid_cli_release_tag "$tag"; then
+    return 1
+  fi
+  printf '%s' "$tag"
+}
+
+try_install_from_release() {
+  root=$(release_repo_root)
+  tgt=$1
+  tag=""
+  tag=$(resolve_latest_release_tag "$root") || return 1
+  ver=${tag#ensembly-cli--v}
+  asset="ensembly-${ver}-${tgt}.tar.gz"
+  base="${root}/releases/download/${tag}"
+  say "release asset $asset"
+  if ! curl -fsSL -o "$2/$asset" "${base}/${asset}"; then
+    return 1
+  fi
+  if ! curl -fsSL -o "$2/SHA256SUMS" "${base}/SHA256SUMS"; then
+    die "failed to download SHA256SUMS for ${tag}"
+  fi
+  verify_release_checksum "$2/SHA256SUMS" "$asset"
+  run tar -xzf "$2/$asset" -C "$2"
+  unpacked="$2/ensembly-${ver}-${tgt}/ensembly"
+  [ -f "$unpacked" ] || die "release archive missing binary: $unpacked"
+  if [ -n "$PREFIX" ]; then
+    run mkdir -p "$PREFIX/bin"
+    run cp "$unpacked" "$PREFIX/bin/ensembly"
+    run chmod +x "$PREFIX/bin/ensembly"
+    BIN_DIR=$PREFIX/bin
+  else
+    root_bin=$(cargo_install_root)
+    run mkdir -p "${root_bin}/bin"
+    run cp "$unpacked" "${root_bin}/bin/ensembly"
+    run chmod +x "${root_bin}/bin/ensembly"
+    BIN_DIR=$(CDPATH='' cd -- "${root_bin}" && pwd)/bin
+  fi
+  case $(uname -s) in
+    Darwin)
+      quarantine_path="${BIN_DIR}/ensembly"
+      warn "If macOS blocks the binary, run: xattr -d com.apple.quarantine ${quarantine_path:?}"
+      ;;
+  esac
+  return 0
+}
+
 # --- prerequisites: report, never install ---
+need_cargo=1
 missing=0
 if ! command -v git >/dev/null 2>&1; then
   missing=1
   warn "git not found. Install it from your OS packages (macOS: xcode-select --install; Debian/Ubuntu: apt install git; Fedora: dnf install git)."
 fi
-if ! command -v cargo >/dev/null 2>&1; then
-  missing=1
-  warn "cargo not found. Install Rust with rustup: see https://rustup.rs and read the installer before you run it."
-  warn "rust-toolchain.toml pins the toolchain; rustup fetches it on the first build."
-elif ! command -v rustup >/dev/null 2>&1; then
-  warn "rustup not found; cargo must already be the version in rust-toolchain.toml."
+target=$(release_target 2>/dev/null || true)
+if [ "$FROM_SOURCE" = 0 ] && [ -n "$target" ] && command -v curl >/dev/null 2>&1; then
+  need_cargo=0
+fi
+if [ "$need_cargo" = 1 ]; then
+  if ! command -v cargo >/dev/null 2>&1; then
+    missing=1
+    warn "cargo not found. Install Rust with rustup: see https://rustup.rs and read the installer before you run it."
+    warn "rust-toolchain.toml pins the toolchain; rustup fetches it on the first build."
+  elif ! command -v rustup >/dev/null 2>&1; then
+    warn "rustup not found; cargo must already be the version in rust-toolchain.toml."
+  fi
 fi
 [ "$missing" = 0 ] || die "missing prerequisites above; re-run when they are on PATH"
 if [ -n "$PREFIX" ] && [ "$DRY_RUN" = 0 ]; then
@@ -127,16 +296,34 @@ if [ "$UPDATE" = 1 ]; then
 fi
 
 # --- CLI ---
-# --force: a path install keeps its version string across commits, so reinstall every time.
-if [ -n "$PREFIX" ]; then
-  run cargo install --path "$REPO/crates/ensembly-kernel" --locked --force --bin ensembly --root "$PREFIX"
-  BIN_DIR=$PREFIX/bin
-elif [ "$DRY_RUN" = 1 ]; then
-  run cargo install --path "$REPO/crates/ensembly-kernel" --locked --force --bin ensembly
-  BIN_DIR=$(CDPATH='' cd -- "$(cargo_install_root)" && pwd)/bin
-else
-  run cargo install --path "$REPO/crates/ensembly-kernel" --locked --force --bin ensembly
-  BIN_DIR=$(CDPATH='' cd -- "$(cargo_install_root)" && pwd)/bin
+RELEASE_OK=0
+if [ "$FROM_SOURCE" = 0 ] && [ -n "$target" ] && command -v curl >/dev/null 2>&1; then
+  if [ "$DRY_RUN" = 1 ]; then
+    say "+ try GitHub release asset for target $target ($(release_repo_root)/releases/latest redirect)"
+  else
+    tmp=$(mktemp -d) || die "mktemp failed"
+    trap 'rm -rf "$tmp"' EXIT HUP INT TERM
+    if try_install_from_release "$target" "$tmp"; then
+      RELEASE_OK=1
+    fi
+    trap - EXIT HUP INT TERM
+    rm -rf "$tmp"
+  fi
+fi
+if [ "$RELEASE_OK" = 0 ]; then
+  if [ "$FROM_SOURCE" = 0 ]; then
+    warn "no matching release for $target; building from source with cargo"
+  fi
+  if [ -n "$PREFIX" ]; then
+    run cargo install --path "$REPO/crates/ensembly-kernel" --locked --force --bin ensembly --root "$PREFIX"
+    BIN_DIR=$PREFIX/bin
+  elif [ "$DRY_RUN" = 1 ]; then
+    run cargo install --path "$REPO/crates/ensembly-kernel" --locked --force --bin ensembly
+    BIN_DIR=$(CDPATH='' cd -- "$(cargo_install_root)" && pwd)/bin
+  else
+    run cargo install --path "$REPO/crates/ensembly-kernel" --locked --force --bin ensembly
+    BIN_DIR=$(CDPATH='' cd -- "$(cargo_install_root)" && pwd)/bin
+  fi
 fi
 case :${PATH}: in
   *:"$BIN_DIR":*) ;;

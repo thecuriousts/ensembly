@@ -20,11 +20,31 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: shellcheck and actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          shellcheck scripts/install.sh
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          printf '%s  actionlint.tar.gz\n' "$ACTIONLINT_SHA256" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color .github/workflows/*.yml
+      - name: cursor manifest schemas
+        run: |
+          python3 -m pip install --quiet jsonschema
+          python3 scripts/validate_cursor_manifests.py
+      - name: install.sh release checksums
+        run: python3 -m unittest scripts.test_install_release
       - name: grokbot ensembly
         working-directory: marketplaces/grokbot/ensembly/test
         run: |
           python3 check_plugin.py
-          python3 -m unittest test_check_plugin
+          python3 -m unittest discover -s . -p 'test_*.py'
       - name: cursor flowingstack
         working-directory: marketplaces/cursor/flowingstack
         run: python3 -m unittest discover -s test

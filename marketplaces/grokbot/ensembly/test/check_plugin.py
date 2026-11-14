@@ -13,7 +13,7 @@ REPO = ROOT.parents[2]
 CATALOG = REPO / ".cursor-plugin/marketplace.json"
 ROW_SOURCE = "marketplaces/grokbot/ensembly"
 RED_FIXTURES = {"test/fixtures/catalog-leak.json"}
-REQUIRED_PLUGIN_KEYS = {"name", "version", "description", "author", "license", "skills"}
+REQUIRED_PLUGIN_KEYS = {"name", "version", "description", "author", "publisher", "license", "skills", "logo"}
 HOST_PATTERNS = [
     (re.compile(r"/home/(?!box\b)[A-Za-z0-9._-]+"), "home path"),
     (re.compile(r"/Users/[A-Za-z0-9._-]+"), "home path"),
@@ -53,6 +53,18 @@ def check_plugin_json(path: Path) -> dict:
     author = data.get("author")
     if not isinstance(author, dict) or not author.get("name"):
         fail(f"{path}: author.name required")
+    if "email" in author:
+        fail(f"{path}: author must not include email")
+    pub = data.get("publisher")
+    if not isinstance(pub, str) or not pub.strip():
+        fail(f"{path}: publisher required")
+    if author.get("name") != pub:
+        fail(f"{path}: author.name and publisher must match")
+    logo = data.get("logo")
+    if not isinstance(logo, str) or ".." in logo or logo.startswith("/"):
+        fail(f"{path}: logo must be a safe relative path")
+    if not (ROOT / logo).is_file():
+        fail(f"{path}: logo file missing: {logo}")
     return data
 
 def frontmatter(text: str) -> dict[str, str]:
@@ -160,11 +172,14 @@ def main() -> None:
     readme = (ROOT / "README.md").read_text()
     if MERMAID_FILL not in readme or MERMAID_COLOR not in readme:
         fail("README mermaid must use dark fill and white text")
+    for heading in ("## Install", "## Usage", "## Configuration"):
+        if heading not in readme:
+            fail(f"README missing {heading}")
     if not (ROOT / "LICENSE").exists():
         fail("LICENSE missing")
     license_text = (ROOT / "LICENSE").read_text()
-    if "Copyright (c) 2026 thecuriousts" not in license_text:
-        fail("LICENSE must be MIT under thecuriousts, 2026")
+    if "Copyright (c) 2026 Peramanathan Sathyamoorthy" not in license_text:
+        fail("LICENSE must be MIT under Peramanathan Sathyamoorthy, 2026")
     for path in ROOT.rglob("*"):
         if path.is_file():
             scan_public(path)

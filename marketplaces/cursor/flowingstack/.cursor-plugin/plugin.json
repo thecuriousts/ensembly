@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "description": "Task contracts, a run ledger, frozen eval sets, a review rubric, and doc and privacy checks for agent work",
   "author": {
-    "name": "thecuriousts"
+    "name": "Peramanathan Sathyamoorthy"
   },
-  "publisher": "thecuriousts",
+  "publisher": "Peramanathan Sathyamoorthy",
   "homepage": "https://github.com/thecuriousts/ensembly/tree/master/marketplaces/cursor/flowingstack",
   "repository": "https://github.com/thecuriousts/ensembly/",
   "license": "MIT",

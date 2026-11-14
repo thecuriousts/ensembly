@@ -23,9 +23,9 @@ flowchart LR
 
 **Before you start, know this:**
 
-- There is no ready-made download yet. Your computer builds ensembly from its source code, so you install two developer tools first: **git** (downloads the code) and **Rust** (builds it).
-- Plan on 20 to 40 minutes the first time. Most of it is waiting while things download and build.
-- You need an internet connection and about **4 GB of free disk space** (Rust itself takes most of it).
+- **Fast path:** download a prebuilt `ensembly` command from [GitHub releases](https://github.com/thecuriousts/ensembly/releases/latest) (see **Path A** below). That takes a few minutes and needs only **curl** (or a browser).
+- **Fallback:** build from source (**Path B**) when no file matches your computer, the release is still a draft, or you hack the kernel. That path needs **git**, **Rust**, and about **4 GB** of free disk space the first time.
+- You need an internet connection for either path.
 - macOS and Linux are tested. Windows works through WSL (a Linux system inside Windows); that path is not tested yet.
 - The example in step 7 uses made-up data. ensembly keeps its files on your own computer. The only thing it reaches out for is `ensembly doctor` without `--offline`, which asks GitHub for the newest version number.
 
@@ -52,6 +52,56 @@ Rust needs a C compiler to finish building, and git downloads the code.
 | **Fedora** | `sudo dnf install -y git curl gcc` | Same as above. |
 
 Check it worked: paste `git --version`. You should see something like `git version 2.47.3`.
+
+You can jump to **Path A** below if you only want the prebuilt command (you still need a terminal from step 1).
+
+## Path A — Prebuilt command (recommended)
+
+Open [https://github.com/thecuriousts/ensembly/releases/latest](https://github.com/thecuriousts/ensembly/releases/latest). If the page says there are no releases yet, use **Path B**.
+
+| Your computer | File to download |
+|---|---|
+| **Mac (Apple Silicon, M1/M2/M3…)** | `ensembly-*-aarch64-apple-darwin.tar.gz` |
+| **Mac (Intel)** | `ensembly-*-x86_64-apple-darwin.tar.gz` |
+| **Linux (Intel/AMD 64-bit)** | `ensembly-*-x86_64-unknown-linux-gnu.tar.gz` |
+| **Linux (ARM 64-bit, e.g. Raspberry Pi 4+)** | `ensembly-*-aarch64-unknown-linux-gnu.tar.gz` |
+
+The `*` is the version number (for example `0.5.1`). Also download **`SHA256SUMS`** from the same release page.
+
+1. Open a terminal in the folder where the files downloaded.
+2. Check the archive (replace the filename with yours):
+
+```sh
+shasum -a 256 -c SHA256SUMS
+```
+
+You should see `OK` for your `.tar.gz` file.
+
+3. Unpack and install on your PATH:
+
+```sh
+tar -xzf ensembly-0.5.1-x86_64-unknown-linux-gnu.tar.gz
+mkdir -p ~/.local/bin
+cp ensembly-0.5.1-x86_64-unknown-linux-gnu/ensembly ~/.local/bin/
+```
+
+Use the folder name that matches your download. On macOS you can use `~/bin` instead of `~/.local/bin` if that is already on your PATH.
+
+4. **macOS only** — if the computer says the app is from an unidentified developer:
+
+```sh
+xattr -d com.apple.quarantine ~/.local/bin/ensembly
+```
+
+5. Add the folder to PATH if needed (`export PATH="$HOME/.local/bin:$PATH"` in your shell profile), then check:
+
+```sh
+ensembly version
+```
+
+6. Continue at **step 6** below (`ensembly init`). For Cursor, Claude, or Grok plugins you still need the repo: clone in step 4 of **Path B** and run `sh scripts/install.sh --harness …` (the script prefers the same release asset when published).
+
+## Path B — Build from source
 
 ## 3. Install Rust
 

@@ -84,11 +84,14 @@ def main():
     a = argparse.ArgumentParser()
     a.add_argument("--repo", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     a.add_argument("--tag", help="release tag being cut, NAME--vX.Y.Z")
+    a.add_argument("--product", choices=sorted(PRODUCTS), metavar="NAME",
+                   help="check only this product (with --tag, reject other NAME--v prefixes)")
     o = a.parse_args()
     errs, versions = [], {}
+    names = [o.product] if o.product else list(PRODUCTS)
     try:
-        for name, spec in PRODUCTS.items():
-            v, e = check(o.repo, name, spec)
+        for name in names:
+            v, e = check(o.repo, name, PRODUCTS[name])
             versions[name] = v
             errs += e
     except Unreadable as e:
@@ -96,10 +99,12 @@ def main():
         return 2
     if o.tag:
         name, sep, v = o.tag.partition("--v")
-        if not sep or name not in PRODUCTS:
+        if o.product and name != o.product:
+            errs.append(f"{o.tag}: not a {o.product} tag")
+        elif not sep or name not in PRODUCTS:
             errs.append(f"{o.tag}: not a product tag; use one of " + ", ".join(f"{n}--vX.Y.Z" for n in PRODUCTS))
-        elif v != versions[name]:
-            errs.append(f"{o.tag}: tag {v} differs from {name} version {versions[name]}")
+        elif name not in versions or v != versions[name]:
+            errs.append(f"{o.tag}: tag {v} differs from {name} version {versions.get(name)}")
     for e in errs:
         print(f"fail {e}", file=sys.stderr)
     return 1 if errs else 0
