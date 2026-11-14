@@ -1,6 +1,10 @@
 //! `ensembly` CLI — dogfood entry for the operator kernel.
 //! Compat alias: `peram` (one release; same binary).
 
+#[cfg(feature = "opportunity-finder")]
+mod decision_cli;
+#[cfg(feature = "opportunity-finder")]
+mod opportunity_cli;
 use anyhow::{bail, Result};
 use chrono::Utc;
 use clap::{Parser, Subcommand};
@@ -32,7 +36,9 @@ use ensembly_kernel::turn::{
 };
 use ensembly_kernel::{kernel_version, private_path_patterns};
 use ensembly_schema::{commit_json, feed_json, recover_json, snapshot_json, CommitFault};
-use std::path::{Path, PathBuf};
+#[cfg(feature = "opportunity-finder")]
+use opportunity_cli::{AppsCmd, RecordAppsCmd};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = env!("CARGO_BIN_NAME"), about = "ensembly operator kernel (Rust)")]
@@ -199,6 +205,7 @@ enum MissionsCmd {
     },
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Commands {
     /// Print kernel version + law banner
@@ -307,6 +314,7 @@ enum Commands {
         sub: ChannelPulseCmd,
     },
     /// Application ledger (SoT for job applications): validate, append, export
+    #[cfg(feature = "opportunity-finder")]
     Apps {
         /// Ledger JSONL (default data/local/applications/ledger.jsonl; local-only, gitignored)
         #[arg(long)]
@@ -320,9 +328,10 @@ enum Commands {
         sub: RecordCmd,
     },
     /// Decision model: eval, propose-and-wait, empty labelling template. The decider is not live.
+    #[cfg(feature = "opportunity-finder")]
     Decision {
         #[command(subcommand)]
-        sub: DecisionCmd,
+        sub: decision_cli::DecisionCmd,
     },
     /// One-shot copy-if-missing: peram-* local files → ensembly-* (never overwrite, never delete)
     #[command(name = "migrate-local-paths")]
@@ -335,77 +344,6 @@ enum Commands {
         root: Option<PathBuf>,
         #[arg(long, default_value_t = false)]
         json: bool,
-    },
-}
-
-#[derive(Subcommand)]
-enum DecisionCmd {
-    /// Fit on train and report split metrics. Held-out scores wait for labels.
-    Eval {
-        #[arg(long)]
-        labels: PathBuf,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Write an empty labelling CSV from a posting list. Does not invent labels.
-    Template {
-        #[arg(long)]
-        from: PathBuf,
-        #[arg(long)]
-        out: PathBuf,
-    },
-    /// Append a proposal (or a gate skip) to a sealed decision log.
-    Propose {
-        #[arg(long)]
-        labels: PathBuf,
-        #[arg(long)]
-        id: String,
-        #[arg(long)]
-        events: PathBuf,
-        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
-        #[arg(long)]
-        writer: String,
-        #[arg(long)]
-        at: String,
-        #[arg(long)]
-        deadline: Option<String>,
-    },
-    Confirm {
-        #[arg(long)]
-        rid: String,
-        #[arg(long)]
-        events: PathBuf,
-        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
-        #[arg(long)]
-        writer: String,
-        #[arg(long)]
-        at: String,
-    },
-    Override {
-        #[arg(long)]
-        rid: String,
-        #[arg(long)]
-        events: PathBuf,
-        /// apply or skip
-        #[arg(long)]
-        label: String,
-        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
-        #[arg(long)]
-        writer: String,
-        #[arg(long)]
-        at: String,
-    },
-    /// Record timeout with no action. Silence never becomes apply.
-    Expire {
-        #[arg(long)]
-        rid: String,
-        #[arg(long)]
-        events: PathBuf,
-        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
-        #[arg(long)]
-        writer: String,
-        #[arg(long)]
-        at: String,
     },
 }
 
@@ -432,34 +370,10 @@ enum RecordCmd {
         sub: RecordViewCmd,
     },
     /// Map the application ledger onto a record log, or compare the two
+    #[cfg(feature = "opportunity-finder")]
     Apps {
         #[command(subcommand)]
         sub: RecordAppsCmd,
-    },
-}
-
-#[derive(Subcommand)]
-enum RecordAppsCmd {
-    /// Append one record event per current ledger row. Does not write the ledger.
-    Import {
-        #[arg(long)]
-        ledger: PathBuf,
-        #[arg(long)]
-        log: PathBuf,
-        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
-        #[arg(long)]
-        writer: String,
-        /// Stockholm time stored when a row has no submit time. Marked synthetic.
-        #[arg(long)]
-        at: Option<String>,
-    },
-    /// Replay the record log and diff it against the ledger. Writes nothing.
-    /// Exit 1 when a link differs. Exit 2 when the ledger or the log cannot be read.
-    Compare {
-        #[arg(long)]
-        ledger: PathBuf,
-        #[arg(long)]
-        log: PathBuf,
     },
 }
 
@@ -616,86 +530,6 @@ enum DfCmd {
     Status {
         #[arg(long)]
         json: bool,
-    },
-}
-
-#[derive(Subcommand)]
-enum AppsCmd {
-    /// Company audit store (scam-risk / due-diligence gate before packs and applications)
-    Audit {
-        /// Audit store JSONL (default data/local/applications/company-audits.jsonl; local-only)
-        #[arg(long)]
-        store: Option<PathBuf>,
-        #[command(subcommand)]
-        sub: AuditCmd,
-    },
-    /// Validate every line; print row count and current-state count
-    Validate,
-    /// Append one validated row (identical row refused)
-    Append {
-        #[arg(long)]
-        company: String,
-        #[arg(long)]
-        role: String,
-        /// Canonical posting URL (not the form URL)
-        #[arg(long)]
-        link: String,
-        /// Optional application-form URL (e.g. …/application)
-        #[arg(long)]
-        apply_url: Option<String>,
-        /// prepared|submitted|interview|rejected|withdrawn|silent-closed
-        #[arg(long)]
-        status: String,
-        /// RFC 3339 with +01:00/+02:00 (omit only for prepared)
-        #[arg(long)]
-        submit_time: Option<String>,
-        /// Sent, but the time was never recorded (submit_time stays null)
-        #[arg(long, default_value_t = false)]
-        submit_time_unknown: bool,
-        #[arg(long)]
-        cv_version: String,
-    },
-    /// Write applications.csv + applications.md (byte-identical on re-run), or TRACKER.md with --tracker
-    Export {
-        /// Output dir (default data/local/applications/exports)
-        #[arg(long)]
-        out_dir: Option<PathBuf>,
-        /// Write only TRACKER.md (ledger state joined with a side file), atomically
-        #[arg(long)]
-        tracker: bool,
-        /// Side file keyed by canonical link: Posted, Lane, Linear, Trello, Pack (.md hand tracker, .jsonl or .csv)
-        #[arg(long, requires = "tracker")]
-        join: Option<PathBuf>,
-        /// Extra rows for the "Prepared, not submitted" section (.md, .jsonl or .csv)
-        #[arg(long, requires = "tracker")]
-        prepared: Option<PathBuf>,
-        /// Header time "YYYY-MM-DD HH:MM" (default: now, local time)
-        #[arg(long, requires = "tracker")]
-        stamp: Option<String>,
-    },
-}
-
-#[derive(Subcommand)]
-enum AuditCmd {
-    /// Validate every line (or a FILE instead of the store); print counts
-    Validate {
-        /// Validate this JSONL file instead of the store
-        file: Option<PathBuf>,
-    },
-    /// Append audits from a JSONL FILE ('-' = stdin): all lines validated first; rows already stored are skipped
-    Append { file: PathBuf },
-    /// Write company-audits.csv + .md (byte-identical on re-run)
-    Export {
-        /// Output dir (default data/local/applications/exports)
-        #[arg(long)]
-        out_dir: Option<PathBuf>,
-    },
-    /// Print JSON status for a company name or domain; exit 0 pass, 3 = flag (not approvable), 4 block, 5 unaudited or stale
-    Status {
-        query: String,
-        /// Evaluate staleness at this RFC 3339 time instead of now (tests/replays)
-        #[arg(long)]
-        now: Option<String>,
     },
 }
 
@@ -1225,10 +1059,12 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
         } => run_pulse(pulse_db, premflow_bin, missions_dir, now, sub),
         Commands::PulsePack { sub } => cmd_pulse_pack(ctx, sub),
         Commands::Runtime { sub } => cmd_runtime(ctx, sub),
-        Commands::Apps { ledger, sub } => cmd_apps(ledger, sub),
+        #[cfg(feature = "opportunity-finder")]
+        Commands::Apps { ledger, sub } => opportunity_cli::cmd_apps(ledger, sub),
         Commands::ChannelPulse { sub } => cmd_channel_pulse(&ctx.db_path, sub),
         Commands::Record { sub } => cmd_record(sub),
-        Commands::Decision { sub } => cmd_decision(sub),
+        #[cfg(feature = "opportunity-finder")]
+        Commands::Decision { sub } => decision_cli::run(sub),
     }
 }
 
@@ -1256,42 +1092,9 @@ fn cmd_record(cmd: RecordCmd) -> Result<()> {
                 Ok(())
             }
         },
-        RecordCmd::Apps { sub } => cmd_record_apps(sub),
+        #[cfg(feature = "opportunity-finder")]
+        RecordCmd::Apps { sub } => opportunity_cli::cmd_record_apps(sub),
     }
-}
-
-fn cmd_record_apps(cmd: RecordAppsCmd) -> Result<()> {
-    match cmd {
-        RecordAppsCmd::Import {
-            ledger,
-            log,
-            writer,
-            at,
-        } => {
-            let at = at.unwrap_or_else(ensembly_schema::stockholm_record_now);
-            let receipt = ensembly_kernel::import_ledger(&ledger, &log, &writer, &at)
-                .map_err(anyhow::Error::msg)?;
-            println!("{}", serde_json::to_string(&receipt)?);
-            Ok(())
-        }
-        RecordAppsCmd::Compare { ledger, log } => {
-            match ensembly_kernel::compare_files(&ledger, &log) {
-                Ok(report) => finish_compare(&report),
-                Err(err) => {
-                    eprintln!("Error: {err}");
-                    std::process::exit(2);
-                }
-            }
-        }
-    }
-}
-
-fn finish_compare(report: &ensembly_schema::CompareReport) -> Result<()> {
-    println!("{}", serde_json::to_string(report)?);
-    if !report.mismatches.is_empty() {
-        std::process::exit(1);
-    }
-    Ok(())
 }
 
 fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
@@ -2086,202 +1889,6 @@ fn runtime_dive(rt: &Runtime, probe_budget: u32, json: bool) -> Result<()> {
     Ok(())
 }
 
-fn read_side(p: Option<&std::path::Path>) -> Result<ensembly_kernel::tracker::Side> {
-    use ensembly_kernel::tracker as tr;
-    let Some(p) = p else {
-        return Ok(tr::Side::default());
-    };
-    let text =
-        std::fs::read_to_string(p).map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))?;
-    tr::parse_side(&text, tr::SideFormat::from_path(p))
-        .map_err(|e| anyhow::anyhow!("{}: {e}", p.display()))
-}
-
-/// `apps export --tracker`: TRACKER.md into `dir`, replaced atomically.
-fn export_tracker(
-    rows: &[ensembly_kernel::application_ledger::Row],
-    dir: &std::path::Path,
-    join: Option<&std::path::Path>,
-    prepared: Option<&std::path::Path>,
-    stamp: Option<String>,
-) -> Result<()> {
-    use ensembly_kernel::tracker as tr;
-    let side = read_side(join)?;
-    let extra = read_side(prepared)?;
-    let t = tr::build(rows, &side, &extra.rows);
-    let stamp = stamp.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d %H:%M").to_string());
-    std::fs::create_dir_all(dir)?;
-    tr::write_atomic(
-        &dir.join(tr::TRACKER_FILE),
-        tr::render(&t, &stamp).as_bytes(),
-    )?;
-    println!(
-        "{}",
-        tr::summary(&t, side.rows.len(), tr::current_rows(rows).len())
-    );
-    Ok(())
-}
-
-fn read_file(p: &PathBuf) -> Result<String> {
-    std::fs::read_to_string(p).map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))
-}
-
-fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
-    use ensembly_kernel::application_ledger as al;
-    let ledger = ledger.unwrap_or_else(|| PathBuf::from(al::DEFAULT_LEDGER_PATH));
-    let read = |p: &PathBuf| -> Result<Vec<al::Row>> { al::parse_ledger(&read_file(p)?) };
-    match sub {
-        AppsCmd::Audit { store, sub } => cmd_audit(store, sub),
-        AppsCmd::Validate => {
-            let rows = read(&ledger)?;
-            println!(
-                "ok: {} rows, {} current applications",
-                rows.len(),
-                al::current_rows(&rows).len()
-            );
-            Ok(())
-        }
-        AppsCmd::Append {
-            company,
-            role,
-            link,
-            apply_url,
-            status,
-            submit_time,
-            submit_time_unknown,
-            cv_version,
-        } => {
-            let status: al::Status = serde_json::from_value(serde_json::Value::String(status))
-                .map_err(|e| anyhow::anyhow!("status: {e}"))?;
-            let row = al::Row {
-                company,
-                role,
-                link,
-                apply_url,
-                status,
-                submit_time,
-                submit_time_unknown: submit_time_unknown.then_some(true),
-                cv_version,
-            };
-            let writer = ensembly_kernel::KernelWriter::open_ledger(&ledger)?;
-            if !ledger.exists() {
-                writer.init_ledger()?;
-            }
-            let receipt = writer.append_ledger(&row)?;
-            if receipt.appended {
-                println!("appended: {} ({})", row.link, row.status.as_str());
-            } else {
-                println!("already present: {} ({})", row.link, row.status.as_str());
-            }
-            Ok(())
-        }
-        AppsCmd::Export {
-            out_dir,
-            tracker: true,
-            join,
-            prepared,
-            stamp,
-        } => {
-            let rows = read(&ledger)?;
-            let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
-            export_tracker(&rows, &dir, join.as_deref(), prepared.as_deref(), stamp)
-        }
-        AppsCmd::Export { out_dir, .. } => {
-            let rows = read(&ledger)?;
-            let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
-            al::write_exports(&rows, &dir)?;
-            println!(
-                "exported {} applications to {}",
-                al::current_rows(&rows).len(),
-                dir.display()
-            );
-            Ok(())
-        }
-    }
-}
-
-fn read_audit_store(store: &PathBuf) -> Result<Vec<ensembly_kernel::company_audit::Audit>> {
-    use ensembly_kernel::company_audit as ca;
-    match std::fs::read_to_string(store) {
-        Ok(t) => ca::parse_audits(&t),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(anyhow::anyhow!("read {}: {e}", store.display())),
-    }
-}
-
-fn cmd_audit(store: Option<PathBuf>, sub: AuditCmd) -> Result<()> {
-    use ensembly_kernel::application_ledger as al;
-    use ensembly_kernel::company_audit as ca;
-    let store = store.unwrap_or_else(|| PathBuf::from(ca::DEFAULT_AUDIT_PATH));
-    match sub {
-        AuditCmd::Validate { file } => audit_validate(&store, file),
-        AuditCmd::Append { file } => {
-            let text = if file.as_os_str() == "-" {
-                let mut t = String::new();
-                std::io::Read::read_to_string(&mut std::io::stdin(), &mut t)?;
-                t
-            } else {
-                read_file(&file)?
-            };
-            let (n, skipped) = ca::append_audits(&store, &text)?;
-            println!("appended {n}, skipped {skipped} already stored");
-            Ok(())
-        }
-        AuditCmd::Export { out_dir } => {
-            let rows = read_audit_store(&store)?;
-            let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
-            ca::write_exports(&rows, &dir)?;
-            println!(
-                "exported {} companies to {}",
-                ca::current_audits(&rows).len(),
-                dir.display()
-            );
-            Ok(())
-        }
-        AuditCmd::Status { query, now } => audit_status(&store, &query, now),
-    }
-}
-
-fn audit_validate(store: &PathBuf, file: Option<PathBuf>) -> Result<()> {
-    use ensembly_kernel::company_audit as ca;
-    let rows = match file {
-        Some(f) => ca::parse_audits(&read_file(&f)?)?,
-        None => read_audit_store(store)?,
-    };
-    println!(
-        "ok: {} audits, {} companies",
-        rows.len(),
-        ca::current_audits(&rows).len()
-    );
-    for i in ca::dangling_reuse(&rows) {
-        eprintln!("warning: audit {} ({}) has a reused_from that names no earlier stored audit of that domain", i + 1, rows[i].domain);
-    }
-    Ok(())
-}
-
-fn audit_status(store: &PathBuf, query: &str, now: Option<String>) -> Result<()> {
-    use ensembly_kernel::company_audit as ca;
-    let rows = read_audit_store(store)?;
-    let now = match now {
-        Some(t) => {
-            chrono::DateTime::parse_from_rfc3339(&t).map_err(|e| anyhow::anyhow!("--now: {e}"))?
-        }
-        None => chrono::Local::now().fixed_offset(),
-    };
-    let (status, audit) = ca::status_for(&rows, query, now);
-    let out = serde_json::json!({
-        "query": query,
-        "status": status,
-        "company": audit.as_ref().map(|a| a.company.clone()),
-        "domain": audit.as_ref().map(|a| a.domain.clone()),
-        "verdict": audit.as_ref().map(|a| a.effective_verdict()),
-        "audited_at": audit.as_ref().map(|a| a.audited_at.clone()),
-        "stale_after_days": ca::STALE_AFTER_DAYS,
-    });
-    println!("{out}");
-    std::process::exit(ca::audit_exit_code(status));
-}
-
 fn cmd_channel_pulse(db_path: &PathBuf, sub: ChannelPulseCmd) -> Result<()> {
     let ChannelPulseCmd::Reconcile {
         out,
@@ -2367,201 +1974,5 @@ fn gate_via_runtime(
         })
     );
     eprintln!("GATE_OK via=runtime decision={decision} id={resolved_id}");
-    Ok(())
-}
-
-fn cmd_decision(cmd: DecisionCmd) -> Result<()> {
-    match cmd {
-        DecisionCmd::Eval { labels, json } => cmd_decision_eval(&labels, json),
-        DecisionCmd::Template { from, out } => cmd_decision_template(&from, &out),
-        DecisionCmd::Propose {
-            labels,
-            id,
-            events,
-            writer,
-            at,
-            deadline,
-        } => cmd_decision_propose(&labels, &id, &events, &writer, &at, deadline.as_deref()),
-        DecisionCmd::Confirm {
-            rid,
-            events,
-            writer,
-            at,
-        } => {
-            let w = open_decision_log(&events)?;
-            let receipt = w.confirm_decision(&rid, &writer, &at)?;
-            println!(
-                "rid={} type={} appended={}",
-                receipt.rid,
-                receipt.event_type.as_str(),
-                receipt.appended
-            );
-            Ok(())
-        }
-        DecisionCmd::Override {
-            rid,
-            events,
-            label,
-            writer,
-            at,
-        } => {
-            let label = parse_override(&label)?;
-            let w = open_decision_log(&events)?;
-            let receipt = w.override_decision(&rid, &writer, &at, label)?;
-            println!(
-                "rid={} type={} appended={}",
-                receipt.rid,
-                receipt.event_type.as_str(),
-                receipt.appended
-            );
-            Ok(())
-        }
-        DecisionCmd::Expire {
-            rid,
-            events,
-            writer,
-            at,
-        } => {
-            let w = open_decision_log(&events)?;
-            let receipt = w.expire_decision(&rid, &writer, &at)?;
-            println!(
-                "rid={} type={} appended={}",
-                receipt.rid,
-                receipt.event_type.as_str(),
-                receipt.appended
-            );
-            Ok(())
-        }
-    }
-}
-
-fn open_decision_log(path: &Path) -> Result<ensembly_kernel::KernelWriter> {
-    let w = ensembly_kernel::KernelWriter::open_decisions(path)?;
-    if !path.exists() {
-        w.init_decisions()?;
-    }
-    Ok(w)
-}
-
-fn parse_override(label: &str) -> Result<ensembly_schema::ModelDecision> {
-    match label {
-        "apply" => Ok(ensembly_schema::ModelDecision::Apply),
-        "skip" => Ok(ensembly_schema::ModelDecision::Skip),
-        _ => anyhow::bail!("override label must be apply or skip"),
-    }
-}
-
-fn cmd_decision_eval(labels: &Path, json: bool) -> Result<()> {
-    use ensembly_kernel::decision::{load_labels, run_eval, FlagList};
-    let rows = load_labels(labels)?;
-    let report = run_eval(&rows, &FlagList::default(), 0.90)?;
-    if json {
-        println!("{}", serde_json::to_string_pretty(&report)?);
-        return Ok(());
-    }
-    println!("{}", report.claim);
-    println!("triage: {}", report.triage_question);
-    println!(
-        "trained_on={} t_skip={:.3} t_apply={:.3}",
-        report.trained_on, report.band.t_skip, report.band.t_apply
-    );
-    for split in &report.splits {
-        print!(
-            "{} n={} labelled={}",
-            split.bucket, split.n, split.n_labelled
-        );
-        if let Some(m) = &split.model {
-            if let (Some(p), Some(a)) = (m.apply_precision, m.accuracy_answered) {
-                print!(" precision={p:.3} accuracy={a:.3}");
-                if let Some(w) = &m.apply_precision_wilson {
-                    print!(" precision_wilson=[{:.3},{:.3}] n={}", w.low, w.high, w.n);
-                }
-            }
-        }
-        if let Some(note) = &split.note {
-            print!(" ({note})");
-        }
-        println!();
-    }
-    Ok(())
-}
-
-fn cmd_decision_template(from: &Path, out: &Path) -> Result<()> {
-    use ensembly_kernel::decision::load_labels;
-    let rows = load_labels(from)?;
-    let mut body = String::from(
-        "id,link_key,company,role,location,url,posting_text,split,decision,reason_tag,outcome,provenance\n",
-    );
-    for row in rows {
-        let loc = row.location.clone().unwrap_or_default();
-        let fields = [
-            row.id.as_str(),
-            row.link_key.as_str(),
-            row.company.as_str(),
-            row.role.as_str(),
-            loc.as_str(),
-            row.url.as_str(),
-            row.posting_text.as_str(),
-            row.split().as_str(),
-            "", // decision left blank
-            "",
-            "",
-            "operator-label",
-        ];
-        body.push_str(
-            &fields
-                .into_iter()
-                .map(csv_field)
-                .collect::<Vec<_>>()
-                .join(","),
-        );
-        body.push('\n');
-    }
-    if let Some(dir) = out.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    std::fs::write(out, body)?;
-    println!("wrote empty labelling sheet to {}", out.display());
-    Ok(())
-}
-
-fn csv_field(value: &str) -> String {
-    if value.contains([',', '"', '\n', '\r']) {
-        format!("\"{}\"", value.replace('"', "\"\""))
-    } else {
-        value.to_string()
-    }
-}
-
-fn cmd_decision_propose(
-    labels: &Path,
-    id: &str,
-    events: &Path,
-    writer: &str,
-    at: &str,
-    deadline: Option<&str>,
-) -> Result<()> {
-    use ensembly_kernel::decision::{fit, load_labels, score, FlagList};
-    use ensembly_schema::SplitBucket;
-    let rows = load_labels(labels)?;
-    let row = rows
-        .iter()
-        .find(|r| r.id == id)
-        .ok_or_else(|| anyhow::anyhow!("no posting with id {id}"))?;
-    let train: Vec<&_> = rows
-        .iter()
-        .filter(|r| r.split() == SplitBucket::Train && r.decision.is_some())
-        .collect();
-    let model = fit(&train, &FlagList::default(), 0.90).map_err(|e| anyhow::anyhow!(e))?;
-    let scored = score(&model, row, &FlagList::default());
-    let w = open_decision_log(events)?;
-    let receipt = w.propose_decision(row, &scored, writer, at, deadline)?;
-    println!(
-        "rid={} type={} appended={} decision={}",
-        receipt.rid,
-        receipt.event_type.as_str(),
-        receipt.appended,
-        scored.decision.as_str()
-    );
     Ok(())
 }

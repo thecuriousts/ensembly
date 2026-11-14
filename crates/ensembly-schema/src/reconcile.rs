@@ -1,6 +1,6 @@
 //! Domain-agnostic reconciler: detect owner/copy mismatch, resolve conflict states.
 
-use crate::record::{AggregateId, ConflictState, Source, StockholmTime, TextForm, Version};
+use crate::record::{AggregateId, ConflictState, Rfc3339Time, Source, TextForm, Version};
 use crate::Checked;
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,7 @@ pub struct OwnerSnapshot {
     pub aggregate: AggregateId,
     pub version: Version,
     pub text: TextForm,
-    pub at: StockholmTime,
+    pub at: Rfc3339Time,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -20,7 +20,7 @@ pub struct CopySnapshot {
     pub aggregate: AggregateId,
     pub version: Version,
     pub text: TextForm,
-    pub at: StockholmTime,
+    pub at: Rfc3339Time,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,7 +36,7 @@ pub struct Conflict {
 #[serde(deny_unknown_fields)]
 pub struct ConflictValue {
     pub source: Source,
-    pub at: StockholmTime,
+    pub at: Rfc3339Time,
     pub text: TextForm,
 }
 
@@ -140,7 +140,7 @@ pub fn apply_conflict_action(
 
 impl Checked for OwnerSnapshot {
     fn check(&self) -> Result<(), String> {
-        StockholmTime::new(self.at.as_str())?;
+        Rfc3339Time::new(self.at.as_str())?;
         if self.text.0.is_empty() {
             return Err("text must not be empty".into());
         }
@@ -150,7 +150,7 @@ impl Checked for OwnerSnapshot {
 
 impl Checked for CopySnapshot {
     fn check(&self) -> Result<(), String> {
-        StockholmTime::new(self.at.as_str())?;
+        Rfc3339Time::new(self.at.as_str())?;
         if self.text.0.is_empty() {
             return Err("text must not be empty".into());
         }
@@ -170,8 +170,8 @@ mod tests {
     use super::*;
     use crate::Checked;
 
-    fn t(s: &str) -> StockholmTime {
-        StockholmTime::new(s).unwrap()
+    fn t(s: &str) -> Rfc3339Time {
+        Rfc3339Time::new(s).unwrap()
     }
 
     fn owner_submitted() -> OwnerSnapshot {

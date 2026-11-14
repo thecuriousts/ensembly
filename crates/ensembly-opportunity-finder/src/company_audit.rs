@@ -399,8 +399,8 @@ pub fn write_exports(rows: &[Audit], dir: &Path) -> anyhow::Result<()> {
 mod tests {
     use super::*;
 
-    const SAMPLE: &str = include_str!("../../../fixtures/company-audits-sample.jsonl");
-    const SCHEMA: &str = include_str!("../../../schemas/company-audit-row.schema.json");
+    const SAMPLE: &str = include_str!("../fixtures/company-audits-sample.jsonl");
+    const SCHEMA: &str = include_str!("../schemas/company-audit-row.schema.json");
 
     fn sample() -> Vec<Audit> {
         parse_audits(SAMPLE).expect("sample valid")
@@ -618,8 +618,11 @@ mod tests {
             "domain must be stored canonical"
         );
         let mut b = first();
-        b.audited_at = "2026-10-20T09:00:00Z".into();
+        b.audited_at = "2026-10-20T09:00".into();
         assert!(validate_audit(&b).is_err());
+        let mut c = first();
+        c.audited_at = "2026-10-20T09:00:00Z".into();
+        assert!(validate_audit(&c).is_ok());
         let line = SAMPLE
             .lines()
             .next()

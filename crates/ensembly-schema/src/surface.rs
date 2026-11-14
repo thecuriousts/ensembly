@@ -5,7 +5,6 @@ use crate::record::{EventEnvelope, Version};
 use crate::replay::{parse_event_log, ReplayError};
 use crate::view::{Feed, RecordView, Snapshot, ViewContract};
 use crate::{Checked, UnitOfWork};
-use chrono::Datelike;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs::{File, OpenOptions};
@@ -105,30 +104,14 @@ fn text_has_private_path(text: &str) -> bool {
         || lower.contains("~/")
 }
 
+/// Current time on this machine as RFC 3339 with a numeric local offset.
+pub fn record_now_local() -> String {
+    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+/// Alias kept for callers migrating off the old name.
 pub fn stockholm_record_now() -> String {
-    let utc = chrono::Utc::now();
-    let hours = if europe_is_cest(utc) { 2 } else { 1 };
-    let local = utc + chrono::Duration::hours(hours);
-    format!("{}+0{hours}:00", local.format("%Y-%m-%dT%H:%M:%S"))
-}
-
-fn europe_is_cest(utc: chrono::DateTime<chrono::Utc>) -> bool {
-    let year = utc.year();
-    let start = last_sunday_utc(year, 3);
-    let end = last_sunday_utc(year, 10);
-    utc >= start && utc < end
-}
-
-fn last_sunday_utc(year: i32, month: u32) -> chrono::DateTime<chrono::Utc> {
-    let next = if month == 12 {
-        chrono::NaiveDate::from_ymd_opt(year + 1, 1, 1)
-    } else {
-        chrono::NaiveDate::from_ymd_opt(year, month + 1, 1)
-    }
-    .expect("calendar month");
-    let last = next.pred_opt().expect("previous day");
-    let sunday = last - chrono::Duration::days(i64::from(last.weekday().num_days_from_sunday()));
-    sunday.and_hms_opt(1, 0, 0).expect("hour").and_utc()
+    record_now_local()
 }
 
 #[derive(Debug)]

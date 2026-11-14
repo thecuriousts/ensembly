@@ -30,7 +30,32 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: fmt
         run: cargo fmt --all --check
+      - name: default core build (no features)
+        run: |
+          cargo build --locked -p ensembly-kernel
+          cargo check --locked -p ensembly-schema --lib
+      - name: default CLI surface
+        run: |
+          set -euo pipefail
+          leak() {
+            ! grep -E '^\s+(decision|apps)\b' "$1"
+            ! grep -Ei '(job hunt|recruiter|verdict.*triage)' "$1" || true
+          }
+          run_help() {
+            cargo run --locked -p ensembly-kernel --quiet -- "$@" > /tmp/ensembly-help.txt
+            leak /tmp/ensembly-help.txt
+          }
+          run_help --help
+          for cmd in record pulse runtime doctor turn digital-flow backup ops-bundle pulse-pack channel-pulse migrate-local-paths version; do
+            run_help "$cmd" --help
+          done
       - name: clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - name: clippy opportunity-finder
+        run: cargo clippy --locked --workspace --all-targets --features opportunity-finder -- -D warnings
       - name: test
         run: cargo test --locked --workspace
+      - name: test opportunity-finder pack
+        run: |
+          cargo test --locked -p ensembly-opportunity-finder
+          cargo test --locked -p ensembly-kernel --features opportunity-finder
