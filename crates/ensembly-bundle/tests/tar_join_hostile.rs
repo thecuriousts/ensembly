@@ -318,7 +318,7 @@ fn join_rollback_after_duplicate_tar_path() {
     let parts_dir = dir.path().join("parts");
     fs::create_dir_all(&parts_dir).unwrap();
     let part_name = "evil.tar.part001";
-    fs::copy(&tar, parts_dir.join(&part_name)).unwrap();
+    fs::copy(&tar, parts_dir.join(part_name)).unwrap();
     let parts_json = parts_dir.join("evil.parts.json");
     let hashed = hash_file(&tar).unwrap();
     let manifest = serde_json::json!({
