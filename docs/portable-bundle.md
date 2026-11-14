@@ -71,6 +71,8 @@ ensembly bundle pack /tmp/bundle-fixture --out /tmp/chunks --split-mb 16
 
 That directory gets `bundle-fixture.parts.json` and `bundle-fixture.tar.part001`, `part002`, … Each part’s size and SHA-256 are listed; the manifest also carries the **total** tar SHA-256. Transfer every part file **and** the JSON manifest. The `parts` array order does not matter — join sorts by each entry’s `index` field.
 
+**Tar format:** `bundle pack` writes **GNU** tar with `././@LongLink` extension records when a manifest-relative path exceeds the ustar 100-byte name limit. Common **GNU tar** and **bsdtar** read these archives for split/join; ustar-only tools may not.
+
 ### `*.parts.json` fields
 
 | Field | Meaning |

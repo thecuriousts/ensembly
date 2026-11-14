@@ -21,8 +21,7 @@ mod views;
 pub use config::{load_backup_sources, BackupSource, BackupSourceKind, ConfigSourcesError};
 pub use export::{export_bundle, EnsemblyStorePaths, ExportOpts, ExportReport};
 pub use file_merge::{merge_json_objects, merge_jsonl_records, restore_file_with_merge};
-pub use hash::hash_bytes;
-pub use hash::HashResult;
+pub use hash::{hash_bytes, hash_file, HashResult};
 pub use import::{import_bundle, restore_bundle, ImportOpts, RestoreOpts, RestorePlan};
 pub use manifest::{BundleManifest, FileEntry, BUNDLE_FORMAT};
 pub use merge::{
