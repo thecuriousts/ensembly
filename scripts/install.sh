@@ -162,63 +162,15 @@ release_repo_canonical() {
   printf '%s' "$1" | sed 's#/*$##'
 }
 
-release_repo_path() {
-  root=$1
-  after_host=${root#*://}
-  case $after_host in
-    */*)
-      repo_path="/${after_host#*/}"
-      repo_path=${repo_path%/}
-      printf '%s' "$repo_path"
-      ;;
-    *)
-      printf ''
-      ;;
-  esac
-}
-
-valid_cli_release_tag() {
-  printf '%s' "$1" | grep -Eq '^ensembly-cli--v[0-9]+\.[0-9]+\.[0-9]+$'
-}
-
 resolve_latest_release_tag() {
   root=$(release_repo_canonical "$1")
-  repo_path=$(release_repo_path "$root")
   loc=""
   loc=$(curl -sS -D - -o /dev/null "${root}/releases/latest" 2>/dev/null | awk '/^[Ll]ocation:/ {sub(/\r$/,"",$2); print $2; exit}') || loc=
   if [ -z "$loc" ]; then
     return 1
   fi
   tag=""
-  case $loc in
-    http://*|https://*)
-      prefix="${root}/releases/tag/"
-      case $loc in
-        "${prefix}"*) tag="${loc#"$prefix"}" ;;
-        *) return 1 ;;
-      esac
-      ;;
-    /*)
-      if [ -n "$repo_path" ]; then
-        prefix="${repo_path}/releases/tag/"
-        case $loc in
-          "${prefix}"*) tag="${loc#"$prefix"}" ;;
-          *) return 1 ;;
-        esac
-      else
-        case $loc in
-          /releases/tag/*) tag="${loc#/releases/tag/}" ;;
-          *) return 1 ;;
-        esac
-      fi
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-  if [ -z "$tag" ] || ! valid_cli_release_tag "$tag"; then
-    return 1
-  fi
+  tag=$(sh "$(dirname "$0")/resolve_release_location.sh" "$root" "$loc") || return 1
   printf '%s' "$tag"
 }
 

@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Resolve ensembly-cli release tag for release.yml (tag shape, version-check, Cargo.toml)."""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import tomllib
+
+TAG_RE = re.compile(r"^ensembly-cli--v[0-9]+\.[0-9]+\.[0-9]+$")
+KERNEL_TOML = os.path.join("crates", "ensembly-kernel", "Cargo.toml")
+
+
+def kernel_version(repo: str) -> str:
+    path = os.path.join(repo, KERNEL_TOML)
+    with open(path, "rb") as f:
+        return tomllib.load(f)["package"]["version"]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("tag", help="release tag, e.g. ensembly-cli--v0.5.1")
+    parser.add_argument("--repo", default=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    parser.add_argument(
+        "--github-output",
+        action="store_true",
+        help="append tag= and version= lines to GITHUB_OUTPUT",
+    )
+    args = parser.parse_args()
+    tag = args.tag.strip()
+    if not tag:
+        print("tag required", file=sys.stderr)
+        return 2
+    if not TAG_RE.match(tag):
+        print(
+            f"tag must match ^ensembly-cli--v[0-9]+\\.[0-9]+\\.[0-9]+$ (got {tag})",
+            file=sys.stderr,
+        )
+        return 2
+    tag_ver = tag.rpartition("--v")[2]
+    try:
+        cargo_ver = kernel_version(args.repo)
+    except (OSError, KeyError, tomllib.TOMLDecodeError) as exc:
+        print(f"unreadable {KERNEL_TOML}: {exc}", file=sys.stderr)
+        return 2
+    if tag_ver != cargo_ver:
+        print(
+            f"tag version {tag_ver} != {KERNEL_TOML} version {cargo_ver}",
+            file=sys.stderr,
+        )
+        return 1
+    vc = subprocess.run(
+        [
+            sys.executable,
+            os.path.join(args.repo, "scripts", "version-check"),
+            "--product",
+            "ensembly-cli",
+            "--tag",
+            tag,
+        ],
+        cwd=args.repo,
+        capture_output=True,
+        text=True,
+    )
+    if vc.returncode != 0:
+        sys.stderr.write(vc.stdout)
+        sys.stderr.write(vc.stderr)
+        return vc.returncode if vc.returncode in (1, 2) else 1
+    payload = f"tag={tag}\nversion={cargo_ver}\n"
+    if args.github_output:
+        out_path = os.environ.get("GITHUB_OUTPUT")
+        if not out_path:
+            print("GITHUB_OUTPUT not set", file=sys.stderr)
+            return 2
+        with open(out_path, "a", encoding="utf-8") as handle:
+            handle.write(payload)
+    else:
+        sys.stdout.write(payload)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
