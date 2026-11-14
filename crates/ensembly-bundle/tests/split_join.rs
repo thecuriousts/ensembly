@@ -7,8 +7,38 @@ use ensembly_bundle::{
     export_bundle, verify_bundle, BackupSource, BackupSourceKind, EnsemblyStorePaths, ExportOpts,
     PartsManifest, DEFAULT_MAX_FILE_MB,
 };
+use std::collections::BTreeSet;
 use std::fs;
+use std::path::Path;
 use tempfile::tempdir;
+use walkdir::WalkDir;
+
+fn collect_tree(root: &Path) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for entry in WalkDir::new(root).into_iter().flatten() {
+        if entry.file_type().is_file() {
+            let rel = entry
+                .path()
+                .strip_prefix(root)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.insert(rel);
+        }
+    }
+    out
+}
+
+fn assert_trees_equal(a: &Path, b: &Path) {
+    let paths_a = collect_tree(a);
+    let paths_b = collect_tree(b);
+    assert_eq!(paths_a, paths_b, "file set mismatch");
+    for rel in &paths_a {
+        let bytes_a = fs::read(a.join(rel)).unwrap();
+        let bytes_b = fs::read(b.join(rel)).unwrap();
+        assert_eq!(bytes_a, bytes_b, "content mismatch at {rel}");
+    }
+}
 
 fn synthetic_ops_bytes() -> Vec<u8> {
     let life = serde_json::json!({"graph": {"nodes": {}, "edges": []}});
@@ -51,6 +81,7 @@ fn export_min_bundle(
             kind: BackupSourceKind::Dir,
             include: vec!["**/*".into()],
             exclude: vec![],
+            force_include: vec![],
             line: 1,
         }],
     })
@@ -76,9 +107,7 @@ fn pack_join_roundtrip() {
     })
     .unwrap();
     assert!(verify_bundle(&joined).ok);
-    let a = fs::read(bundle.join("MANIFEST.json")).unwrap();
-    let b = fs::read(joined.join("MANIFEST.json")).unwrap();
-    assert_eq!(a, b);
+    assert_trees_equal(&bundle, &joined);
 }
 
 #[test]
@@ -195,6 +224,27 @@ fn join_refuses_swapped_part_bytes() {
     })
     .unwrap_err();
     assert!(err.contains("mismatch"), "{err}");
+}
+
+#[test]
+fn join_refuses_out_that_is_a_file() {
+    let dir = tempdir().unwrap();
+    let bundle = export_min_bundle(dir.path(), "bundle-fixture", |_| {});
+    let parts_dir = dir.path().join("parts");
+    pack_bundle(PackOpts {
+        bundle_dir: bundle,
+        out: parts_dir.clone(),
+        split_mb: 16,
+    })
+    .unwrap();
+    let target = dir.path().join("not-a-dir");
+    fs::write(&target, b"x").unwrap();
+    let err = join_bundle(JoinOpts {
+        parts_json: parts_dir.join("bundle-fixture.parts.json"),
+        out: target,
+    })
+    .unwrap_err();
+    assert!(err.contains("must be a directory"), "{err}");
 }
 
 #[test]

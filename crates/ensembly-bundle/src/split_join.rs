@@ -2,14 +2,14 @@
 
 use crate::hash::{hash_file, HashResult};
 use crate::path_safety::{refuse_symlink_in_target, validate_manifest_relpath};
-use crate::safe_io::write_nofollow;
+use crate::safe_io::copy_reader_nofollow;
 use crate::section::validate_safe_segment;
 use crate::verify::verify_bundle;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs::{self, File};
-use std::io::{copy, BufReader, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use tar::{Builder, EntryType, Header};
 use walkdir::WalkDir;
@@ -90,6 +90,12 @@ pub struct JoinReport {
 fn refuse_non_empty_dir(dir: &Path, label: &str) -> Result<(), String> {
     if !dir.exists() {
         return Ok(());
+    }
+    if dir.is_file() {
+        return Err(format!(
+            "--out must be a directory, not an existing file: {}",
+            dir.display()
+        ));
     }
     let mut entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
     if entries.next().is_some() {
@@ -434,9 +440,7 @@ pub fn unpack_tar_to_bundle(tar_path: &Path, out: &Path) -> Result<(), String> {
                 fs::create_dir_all(parent).map_err(|e| e.to_string())?;
                 refuse_symlink_in_target(&root, dest.as_path())?;
             }
-            let mut data = Vec::new();
-            copy(&mut entry, &mut data).map_err(|e| e.to_string())?;
-            write_nofollow(&dest, &data, false)?;
+            copy_reader_nofollow(&dest, &mut entry, false)?;
         } else if entry_type.is_symlink() || entry_type == EntryType::Link {
             return Err(format!("refusing tar symlink/hardlink entry: {rel}"));
         } else {

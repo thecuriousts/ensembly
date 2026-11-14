@@ -9,15 +9,19 @@ use crate::verify::verify_bundle;
 pub struct ImportOpts {
     pub merge: bool,
     pub dry_run: bool,
+    /// When true, skip `verify_bundle` (caller already verified).
+    pub assume_verified: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RestoreOpts {
     pub into_ops: Option<PathBuf>,
     pub into_memory: Option<PathBuf>,
     pub sources_to: Option<PathBuf>,
     pub merge: bool,
     pub dry_run: bool,
+    /// When true, skip `verify_bundle` in planning (caller already verified).
+    pub assume_verified: bool,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -27,9 +31,11 @@ pub struct RestorePlan {
 }
 
 pub fn import_bundle(bundle_root: &Path, opts: &ImportOpts) -> Result<(), String> {
-    let report = verify_bundle(bundle_root);
-    if !report.ok {
-        return Err(report.errors.join("; "));
+    if !opts.assume_verified {
+        let report = verify_bundle(bundle_root);
+        if !report.ok {
+            return Err(report.errors.join("; "));
+        }
     }
     if opts.dry_run {
         return Ok(());
@@ -39,9 +45,11 @@ pub fn import_bundle(bundle_root: &Path, opts: &ImportOpts) -> Result<(), String
 }
 
 pub fn plan_restore(bundle_root: &Path, opts: &RestoreOpts) -> Result<RestorePlan, String> {
-    let report = verify_bundle(bundle_root);
-    if !report.ok {
-        return Err(report.errors.join("; "));
+    if !opts.assume_verified {
+        let report = verify_bundle(bundle_root);
+        if !report.ok {
+            return Err(report.errors.join("; "));
+        }
     }
     let manifest = BundleManifest::read(bundle_root)?;
     let base = opts

@@ -102,6 +102,7 @@ fn restore_refuses_symlink_escape() {
             sources_to: Some(target),
             merge: false,
             dry_run: false,
+            assume_verified: false,
         },
     )
     .unwrap_err();

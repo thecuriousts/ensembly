@@ -23,5 +23,6 @@ ensembly-paths = { path = "../ensembly-paths" }
 
 [dev-dependencies]
 tempfile = "3"
+walkdir = "2"
 serial_test = "3"
 hex = "0.4"

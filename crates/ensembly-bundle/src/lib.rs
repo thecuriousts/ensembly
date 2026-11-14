@@ -15,6 +15,7 @@ mod scan;
 mod section;
 mod split_join;
 mod verify;
+mod verify_ics;
 mod views;
 
 pub use config::{load_backup_sources, BackupSource, BackupSourceKind, ConfigSourcesError};
@@ -29,6 +30,7 @@ pub use merge::{
 pub use path_safety::{
     bundle_file_path, refuse_symlink_in_target, restore_dest_path, validate_manifest_paths,
 };
+pub use safe_io::copy_nofollow;
 pub use section::{
     normalize_section, validate_safe_segment, validate_source_name, RESERVED_SECTION_ENSEMBLY,
     SECTION_RE,
@@ -38,6 +40,7 @@ pub use split_join::{
     JoinReport, PackOpts, PackReport, PartEntry, PartsManifest, PARTS_FORMAT,
 };
 pub use verify::{verify_bundle, VerifyReport};
+pub use verify_ics::{verify_ics_content, verify_ics_file};
 pub use views::{derive_views_from_ops_bundle, DerivedViews};
 
 pub const DEFAULT_MAX_FILE_MB: u64 = 200;

@@ -45,6 +45,7 @@ exclude = ["*.pem"]
 - `section` must match `[A-Za-z0-9_-]+` (no `/` or `.`).
 - Source `name` must be unique within a section; duplicates are a config error (exit 2, file + line).
 - Large files are streamed for SHA-256; files over **`--max-file-mb`** (default 200) are skipped with a warning and a MANIFEST `excluded` row.
+- **`force_include`** on a source lists paths (globs) that bypass default name excludes such as `*token*` or `*.pem`; secret-pattern scanning still applies.
 
 ## Commands
 
@@ -68,7 +69,18 @@ When a channel limits individual files (e.g. **16 MiB**), pack the bundle direct
 ensembly bundle pack /tmp/bundle-fixture --out /tmp/chunks --split-mb 16
 ```
 
-That directory gets `bundle-fixture.parts.json` and `bundle-fixture.tar.part001`, `part002`, … Each part’s size and SHA-256 are listed; the manifest also carries the **total** tar SHA-256. Transfer every part file **and** the JSON manifest.
+That directory gets `bundle-fixture.parts.json` and `bundle-fixture.tar.part001`, `part002`, … Each part’s size and SHA-256 are listed; the manifest also carries the **total** tar SHA-256. Transfer every part file **and** the JSON manifest. The `parts` array order does not matter — join sorts by each entry’s `index` field.
+
+### `*.parts.json` fields
+
+| Field | Meaning |
+|-------|---------|
+| `parts_format` | Always `ensembly-portable-bundle-parts-v1` |
+| `bundle_name` | Base name used for `*.tar.partNNN` files |
+| `split_mb` | Max part size in MiB used when packing |
+| `part_count` | Number of parts (must match `parts.len()`) |
+| `total_sha256` | SHA-256 of the concatenated tar |
+| `parts[]` | One object per part: `index` (1-based), `file`, `sha256`, `bytes` |
 
 Reassemble on the receiver (empty target directory):
 

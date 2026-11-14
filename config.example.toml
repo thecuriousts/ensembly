@@ -19,3 +19,4 @@ schema = 1
 # kind = "dir"
 # include = ["**/*"]
 # exclude = ["*.pem"]
+# force_include = ["notes/allowed-token.txt"]  # bypass default name filters only

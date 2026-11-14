@@ -1,5 +1,7 @@
 # flowingstack
 
+**ensembly installs:** the ensembly Cursor plugin (via repo `scripts/install.sh`, source at `marketplaces/grokbot/ensembly`) records `.ensembly-installed-from` in the copy so updates from the same checkout can replace safely; see [docs/START-HERE.md](../../../docs/START-HERE.md).
+
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"primaryColor": "#fff3bf", "primaryBorderColor": "#f08c00", "primaryTextColor": "#4a3000", "secondaryColor": "#d0ebff", "tertiaryColor": "#d3f9d8", "lineColor": "#1971c2", "fontFamily": "Inter"}}}%%
 flowchart LR

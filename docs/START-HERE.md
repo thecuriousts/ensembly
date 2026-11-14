@@ -105,13 +105,21 @@ What the installer does, and nothing more:
 
 It never uses `sudo` and never installs other software. If a folder or link with the same name is already there and it did not make it, it leaves it alone and tells you.
 
+For **Cursor**, it copies the plugin into `~/.cursor/plugins/local/ensembly` and writes a marker file `.ensembly-installed-from` containing the checkout path it copied from. Later runs replace that copy only when the marker matches **this** checkout (an interrupted copy still has the marker, so the next run retries). Any other existing folder is left alone.
+
 ## 6. Create your settings
 
 ```sh
 ensembly init
 ```
 
-**Success looks like:** one line with the path of your new settings file, for example `/home/user/.config/ensembly/config.toml` (on a Mac it starts with your user folder instead). Your ensembly data will live in `~/.local/share/ensembly`.
+**Success looks like:** one line with the path of your new settings file — typically:
+
+```text
+${XDG_CONFIG_HOME:-$HOME/.config}/ensembly/config.toml
+```
+
+(for example `/home/user/.config/ensembly/config.toml` on Linux, or `~/Library/Application Support` paths only if you set `XDG_CONFIG_HOME` that way on macOS). Your ensembly data will live in `${XDG_DATA_HOME:-$HOME/.local/share}/ensembly`.
 
 Running it a second time prints `refused without --force` and changes nothing. That is on purpose: it never overwrites your settings.
 

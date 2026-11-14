@@ -251,7 +251,8 @@ fn export_user_source(
                     .map_err(|_| "strip_prefix")?
                     .to_string_lossy()
                     .replace('\\', "/");
-                if default_excluded(&rel) {
+                let force = src.force_include.iter().any(|g| file_matches_glob(&rel, g));
+                if !force && default_excluded(&rel) {
                     files.push(FileEntry {
                         path: rel_bundle_path(&src.section, &src.name, &rel),
                         sha256: String::new(),
@@ -426,6 +427,7 @@ mod tests {
                     kind: BackupSourceKind::Dir,
                     include: vec!["**/*".into()],
                     exclude: vec![],
+                    force_include: vec![],
                     line: 1,
                 },
                 BackupSource {
@@ -435,6 +437,7 @@ mod tests {
                     kind: BackupSourceKind::Dir,
                     include: vec!["**/*".into()],
                     exclude: vec![],
+                    force_include: vec![],
                     line: 2,
                 },
             ];
