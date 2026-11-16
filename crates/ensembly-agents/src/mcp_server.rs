@@ -725,7 +725,7 @@ mod tests {
     }
 
     #[test]
-    fn scenario_a_mcp_commit_snapshot_equals_replay_and_rejects_same_key() {
+    fn scenario_a_mcp_commit_snapshot_equals_replay_and_dedupes_same_key() {
         let dir = tempfile::tempdir().unwrap();
         let log = dir.path().join("events.jsonl");
         let raw = std::fs::read_to_string(
@@ -776,14 +776,11 @@ mod tests {
             &memory,
             "peram-swarm",
         )
-        .unwrap_err();
-        assert!(
-            again["message"]
-                .as_str()
-                .unwrap_or("")
-                .contains("idempotency"),
-            "{again}"
-        );
+        .expect("retry is a duplicate, not an error");
+        // The server stamps a fresh record_time on the retry; it still dedupes.
+        let again_body = tool_body(&again);
+        assert_eq!(again_body["phase"], "done");
+        assert_eq!(again_body["duplicate"], true);
         assert_eq!(
             std::fs::read_to_string(&log)
                 .unwrap()

@@ -4,7 +4,7 @@
 schema = 1
 
 [paths]
-# Kernel data: ops SQLite and episodic memory.
+# Kernel data: ops SQLite, episodic memory, and the record log (record/events.jsonl).
 # `init` writes the absolute path of ${XDG_DATA_HOME:-$HOME/.local/share}/ensembly here.
 # data_dir = "/path/to/xdg-data/ensembly"
 
