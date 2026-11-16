@@ -757,3 +757,39 @@ fn check_warns_on_half_finished_supersession() {
     assert!(finding(&r, "db.supersession").is_none(), "{:?}", r.findings);
     assert_eq!(r.exit_code, 0, "{:?}", r.findings);
 }
+
+#[test]
+fn missions_default_from_data_dir() {
+    let dir = TempDir::new().unwrap();
+    let data = dir.path().join("data");
+    let dirs = pc::pulse_dirs(None, None, &dir.path().join("no-harness"), &data);
+    assert_eq!(dirs.missions, data.join("pulse/missions"));
+    assert_eq!(dirs.notes, data.join("pulse"));
+}
+
+#[test]
+fn harness_dir_used_when_present() {
+    let dir = TempDir::new().unwrap();
+    let harness = dir.path().join("harness");
+    fs::create_dir_all(&harness).unwrap();
+    let dirs = pc::pulse_dirs(None, None, &harness, &dir.path().join("data"));
+    assert_eq!(dirs.missions, harness.join("missions"));
+    assert_eq!(dirs.notes, harness);
+}
+
+#[test]
+fn env_missions_wins() {
+    let dir = TempDir::new().unwrap();
+    let harness = dir.path().join("harness");
+    fs::create_dir_all(&harness).unwrap();
+    let from_env = dir.path().join("env-missions");
+    let notes = dir.path().join("env-notes");
+    let dirs = pc::pulse_dirs(
+        Some(from_env.clone()),
+        Some(notes.clone()),
+        &harness,
+        &dir.path().join("data"),
+    );
+    assert_eq!(dirs.missions, from_env);
+    assert_eq!(dirs.notes, notes);
+}

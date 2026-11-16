@@ -77,6 +77,18 @@ pub fn resolve_data_paths(
     explicit_memory: Option<PathBuf>,
     config_data: Option<&Path>,
 ) -> DataPaths {
+    resolve_data_paths_opts(root, explicit_db, explicit_memory, config_data, true)
+}
+
+/// [`resolve_data_paths`], with `memory_note` false to stay quiet about the memory
+/// path a lone `--db` pairs with (for `--no-memory`, where memory is never opened).
+pub fn resolve_data_paths_opts(
+    root: &Path,
+    explicit_db: Option<PathBuf>,
+    explicit_memory: Option<PathBuf>,
+    config_data: Option<&Path>,
+    memory_note: bool,
+) -> DataPaths {
     let single_flag = explicit_db.is_some() ^ explicit_memory.is_some();
     let effective = if single_flag {
         config_data.filter(|p| p.is_dir())
@@ -90,7 +102,7 @@ pub fn resolve_data_paths(
         },
         (Some(db), None) => DataPaths {
             ops_db: db.clone(),
-            memory: paired_memory_for_explicit_db(root, db),
+            memory: paired_memory_for_explicit_db(root, db, memory_note),
         },
         (None, Some(mem)) => DataPaths {
             ops_db: paired_ops_for_explicit_memory(root, mem),
@@ -153,7 +165,7 @@ fn resolve_implicit(root: &Path, config_data: Option<&Path>) -> DataPaths {
 }
 
 /// Single `--db`: existing peer beside flag, else cwd `data/local`, else fresh beside flag (never config).
-fn paired_memory_for_explicit_db(root: &Path, db: &Path) -> PathBuf {
+fn paired_memory_for_explicit_db(root: &Path, db: &Path, note: bool) -> PathBuf {
     if let Some(peer) = peer_memory_file_in_dir(db.parent()) {
         return peer;
     }
@@ -161,11 +173,13 @@ fn paired_memory_for_explicit_db(root: &Path, db: &Path) -> PathBuf {
         return mem;
     }
     let paired = db.parent().unwrap_or(root).join(CONFIG_MEMORY_NAME);
-    eprintln!(
-        "note: --db {} pairs memory with {} (no existing peer beside flag or in cwd data/local)",
-        db.display(),
-        paired.display()
-    );
+    if note {
+        eprintln!(
+            "note: --db {} pairs memory with {} (no existing peer beside flag or in cwd data/local)",
+            db.display(),
+            paired.display()
+        );
+    }
     paired
 }
 
