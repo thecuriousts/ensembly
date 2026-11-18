@@ -53,8 +53,11 @@ fn main() -> Result<()> {
         let work = args.out.join(format!("work-{size}"));
         let rep = run_size(&work, size, args.seed)?;
         eprintln!(
-            "size={} recall@10={:.3} fresh-first={:.3}",
-            size, rep.quality.recall_at_10, rep.quality.fresh_first_accuracy
+            "size={} unique@10={:.3} nl@10={:.3} fresh-first={:.3}",
+            size,
+            rep.quality.unique.recall_at_10,
+            rep.quality.natural_phrase.recall_at_10,
+            rep.quality.fresh_first_accuracy
         );
         reports.push(rep);
     }

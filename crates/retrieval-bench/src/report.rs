@@ -7,6 +7,7 @@ use chrono::Utc;
 use serde::Serialize;
 
 use crate::harness::SizeReport;
+use crate::score::{QualityScores, TypeRecall};
 
 #[derive(Debug, Serialize)]
 pub struct BenchReport {
@@ -40,10 +41,28 @@ fn markdown_summary(doc: &BenchReport) -> String {
     if let Some(sha) = &doc.git_sha {
         md.push_str(&format!("Commit: `{sha}`\n\n"));
     }
-    md.push_str("| size | op | p50 ms | p95 ms | recall@5 | recall@10 | fresh-first |\n");
-    md.push_str("|---:|---|---:|---:|---:|---:|---:|\n");
+
+    md.push_str("## Quality (recall by query type)\n\n");
+    md.push_str("| size | type | recall@5 | recall@10 | fresh-first |\n");
+    md.push_str("|---:|---|---:|---:|---:|\n");
     for s in &doc.sizes {
         let q = &s.quality;
+        for (name, tr) in type_rows(q) {
+            md.push_str(&format!(
+                "| {} | {} | {:.3} | {:.3} | — |\n",
+                s.size, name, tr.recall_at_5, tr.recall_at_10
+            ));
+        }
+        md.push_str(&format!(
+            "| {} | fresh_first | — | — | {:.3} |\n",
+            s.size, q.fresh_first_accuracy
+        ));
+    }
+
+    md.push_str("\n## Latency (ms)\n\n");
+    md.push_str("| size | op | p50 | p95 |\n");
+    md.push_str("|---:|---|---:|---:|\n");
+    for s in &doc.sizes {
         for (name, lat) in [
             ("prefix_read", &s.latency_ms.prefix_read),
             ("fts_search", &s.latency_ms.fts_search),
@@ -55,16 +74,20 @@ fn markdown_summary(doc: &BenchReport) -> String {
             ("feed_last_10", &s.latency_ms.feed_last_10),
         ] {
             md.push_str(&format!(
-                "| {} | {} | {:.3} | {:.3} | {:.3} | {:.3} | {:.3} |\n",
-                s.size,
-                name,
-                lat.p50,
-                lat.p95,
-                q.recall_at_5,
-                q.recall_at_10,
-                q.fresh_first_accuracy
+                "| {} | {} | {:.3} | {:.3} |\n",
+                s.size, name, lat.p50, lat.p95
             ));
         }
     }
     md
+}
+
+fn type_rows(q: &QualityScores) -> [(&str, &TypeRecall); 5] {
+    [
+        ("unique", &q.unique),
+        ("natural_phrase", &q.natural_phrase),
+        ("paraphrase_extra", &q.paraphrase_extra),
+        ("fts_zero_hit", &q.fts_zero_hit),
+        ("prefix", &q.prefix),
+    ]
 }

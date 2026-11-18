@@ -13,7 +13,7 @@ flowchart LR
 | Piece | Role |
 |-------|------|
 | Generator | Builds `1k` / `10k` / `100k` synthetic pulse rows and record-log events (record writes use `ensembly-schema` commit). |
-| Query set | 50 unique terms, 20 old-vs-new pairs, 20 prefix reads — golden answers by construction. |
+| Query set | 50 unique terms; 20 natural-phrased (filler words); 10 paraphrase+extra terms; 10 FTS all-terms zero-hit; 20 old-vs-new pairs (mixed `last_seen` offsets); 20 prefixes — golden keys by construction. |
 | Harness | Times the same kernel/schema paths the CLI uses; scores recall and fresh-first rank. |
 | CI | Runs `1k` + `10k`, uploads artifacts; **does not fail on numbers yet**. |
 
@@ -40,7 +40,9 @@ Outputs under `--out`: `results.json` (machine-readable, includes `EXPLAIN QUERY
 | `record_log_snapshot` | `snapshot_json` on the generated log. |
 | `single_event_commit` | One-event `commit_json` append. |
 | `feed_last_10` | `feed_json` since `version - 10`. |
-| `recall@5` / `recall@10` | Fraction of unique-term queries where the planted key appears in top *k*. |
+| `recall@5` / `recall@10` per type | `unique`, `natural_phrase`, `paraphrase_extra`, `fts_zero_hit`, `prefix` (all 20 prefixes scored). |
 | `fresh_first_accuracy` | For old-vs-new pairs, search ranks the newer row first. |
+
+On current search paths, `natural_phrase`, `paraphrase_extra`, and `fts_zero_hit` are expected to score **low** (honest baseline).
 
 Synthetic recall catches retrieval regressions on known corpora; it does **not** prove real-world operator quality on live pulse stores.

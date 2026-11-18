@@ -3,7 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use chrono::{Duration, TimeZone, Utc};
+use chrono::{DateTime, Duration, FixedOffset, TimeZone, Utc};
 use ensembly_schema::{commit_json, CommitFault};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -60,8 +60,9 @@ impl GenerateBench {
 
 impl GeneratedBench {
     pub fn generate(work: &Path, size: usize, seed: u64) -> Result<Self> {
-        if size < 120 {
-            anyhow::bail!("size must be at least 120 rows (110 planted + filler)");
+        let planted = QuerySet::planted_row_count();
+        if size < planted {
+            anyhow::bail!("size must be at least {planted} rows ({planted} planted + filler)");
         }
         std::fs::create_dir_all(work)?;
         let pulse_db = work.join("pulse.sqlite");
@@ -87,38 +88,63 @@ fn populate_pulse(path: &Path, size: usize, queries: &QuerySet, rng: &mut StdRng
     let conn = Connection::open(path).context("open pulse db")?;
     conn.execute_batch(PULSE_SCHEMA)?;
     let base = Utc.with_ymd_and_hms(2026, 6, 1, 12, 0, 0).unwrap();
-    let filler_target = size.saturating_sub(110);
+    let filler_target = size.saturating_sub(QuerySet::planted_row_count());
     let tx = conn.unchecked_transaction()?;
     for i in 0..filler_target {
         let key = format!("bench/filler/{i:06}");
         let snippet = format!("filler note {} noise {}", i, rng.gen::<u32>());
         let t = (base + Duration::seconds(i as i64)).to_rfc3339();
-        insert_trace(&tx, &key, &snippet, &t)?;
+        insert_trace(&tx, &key, &snippet, &t, &t)?;
     }
     for q in &queries.unique {
         let snippet = format!("planted unique token {}", q.query);
         let t = (base + Duration::days(10)).to_rfc3339();
-        insert_trace(&tx, &q.expect_key, &snippet, &t)?;
+        insert_trace(&tx, &q.expect_key, &snippet, &t, &t)?;
+    }
+    for q in &queries.natural_phrase {
+        let anchor = q
+            .query
+            .split_whitespace()
+            .find(|w| w.starts_with("anchor-nl-"))
+            .unwrap_or("anchor-nl-00");
+        let snippet = format!("operator note about {anchor} on laptop-1 desk");
+        let t = (base + Duration::days(11)).to_rfc3339();
+        insert_trace(&tx, &q.expect_key, &snippet, &t, &t)?;
+    }
+    for q in &queries.paraphrase_extra {
+        let topic = q.query.split_whitespace().next().unwrap_or("para-topic-00");
+        let snippet = format!("{topic} certref stored for bench");
+        let t = (base + Duration::days(12)).to_rfc3339();
+        insert_trace(&tx, &q.expect_key, &snippet, &t, &t)?;
+    }
+    for q in &queries.fts_zero_hit {
+        let parts: Vec<_> = q.query.split_whitespace().collect();
+        let topic = parts.get(1).copied().unwrap_or("topic-00");
+        let snippet = format!("ftszero {topic} only in corpus");
+        let t = (base + Duration::days(13)).to_rfc3339();
+        insert_trace(&tx, &q.expect_key, &snippet, &t, &t)?;
     }
     for (i, pair) in queries.fresh_pairs.iter().enumerate() {
-        let old_t = (base + Duration::days(20) + Duration::hours(i as i64)).to_rfc3339();
-        let new_t = (base + Duration::days(40) + Duration::hours(i as i64)).to_rfc3339();
+        let old_dt = base + Duration::days(20) + Duration::hours(i as i64);
+        let new_dt = base + Duration::days(40) + Duration::hours(i as i64);
+        let old_ls = format_last_seen(old_dt, &pair.tz_style);
+        let new_ls = format_last_seen(new_dt, &pair.tz_style);
         let snippet_old = format!("shared term {} variant old", pair.query);
         let snippet_new = format!("shared term {} variant new", pair.query);
-        insert_trace(&tx, &pair.old_key, &snippet_old, &old_t)?;
-        insert_trace(&tx, &pair.new_key, &snippet_new, &new_t)?;
+        insert_trace(&tx, &pair.old_key, &snippet_old, &old_ls, &old_ls)?;
+        insert_trace(&tx, &pair.new_key, &snippet_new, &new_ls, &new_ls)?;
     }
     for p in &queries.prefixes {
         let t = (base + Duration::days(5)).to_rfc3339();
         let key = p.expect_keys[0].clone();
         let snippet = format!("prefix leaf for {}", p.prefix);
-        insert_trace(&tx, &key, &snippet, &t)?;
+        insert_trace(&tx, &key, &snippet, &t, &t)?;
     }
-    // One dangling superseded pointer (measure path only; not a gate).
     insert_trace(
         &tx,
         "bench/dangle/old",
         "dangling supersession sample",
+        &base.to_rfc3339(),
         &base.to_rfc3339(),
     )?;
     tx.execute(
@@ -129,11 +155,34 @@ fn populate_pulse(path: &Path, size: usize, queries: &QuerySet, rng: &mut StdRng
     Ok(())
 }
 
-fn insert_trace(conn: &Connection, key: &str, snippet: &str, time: &str) -> Result<()> {
+fn format_last_seen(dt: DateTime<Utc>, style: &str) -> String {
+    match style {
+        "Z" => {
+            let s = dt.to_rfc3339();
+            s.replacen("+00:00", "Z", 1)
+        }
+        "+00:00" => dt.to_rfc3339(),
+        "+02:00" => dt
+            .with_timezone(&FixedOffset::east_opt(2 * 3600).unwrap())
+            .to_rfc3339(),
+        "+05:30" => dt
+            .with_timezone(&FixedOffset::east_opt((5 * 3600) + (30 * 60)).unwrap())
+            .to_rfc3339(),
+        _ => dt.to_rfc3339(),
+    }
+}
+
+fn insert_trace(
+    conn: &Connection,
+    key: &str,
+    snippet: &str,
+    time: &str,
+    last_seen: &str,
+) -> Result<()> {
     conn.execute(
         "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, first_seen, last_seen)
-         VALUES (?1, ?2, 'bench-fixture', ?3, 'user-stated', 'memory', ?3, ?3)",
-        params![key, snippet, time],
+         VALUES (?1, ?2, 'bench-fixture', ?3, 'user-stated', 'memory', ?3, ?4)",
+        params![key, snippet, time, last_seen],
     )?;
     let id = conn.last_insert_rowid();
     conn.execute(
