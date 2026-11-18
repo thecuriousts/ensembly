@@ -79,6 +79,30 @@ fn markdown_summary(doc: &BenchReport) -> String {
             ));
         }
     }
+
+    md.push_str("\n## Pulse index (measured on this machine)\n\n");
+    for s in &doc.sizes {
+        let p = &s.pulse_index;
+        md.push_str(&format!("### size {} — `{}`\n\n", s.size, p.machine));
+        md.push_str("| query | indexes | p50 ms | p95 ms |\n");
+        md.push_str("|---|---|---:|---:|\n");
+        let rows = [
+            ("pulse_list", "no", &p.pulse_list_no_index),
+            ("pulse_list", "yes", &p.pulse_list_with_index),
+            ("dangling NOT EXISTS", "no", &p.dangling_legacy_no_index),
+            ("dangling JOIN", "no", &p.dangling_new_no_index),
+            ("dangling NOT EXISTS", "yes", &p.dangling_legacy_with_index),
+            ("dangling JOIN", "yes", &p.dangling_new_with_index),
+        ];
+        for (query, indexes, lat) in rows {
+            md.push_str(&format!(
+                "| {query} | {indexes} | {:.3} | {:.3} |\n",
+                lat.p50, lat.p95
+            ));
+        }
+        md.push('\n');
+    }
+
     md
 }
 
