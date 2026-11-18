@@ -100,7 +100,24 @@ fn markdown_summary(doc: &BenchReport) -> String {
                 lat.p50, lat.p95
             ));
         }
-        md.push('\n');
+        md.push_str(&format!(
+            "live_memory_fraction: {:.4}\n\n",
+            p.live_memory_fraction
+        ));
+        md.push_str("pulse_list EXPLAIN (no index):\n\n");
+        for line in &p.explain_pulse_list_no_index {
+            md.push_str(&format!("- {line}\n"));
+        }
+        md.push_str("\npulse_list EXPLAIN (with index):\n\n");
+        for line in &p.explain_pulse_list_with_index {
+            md.push_str(&format!("- {line}\n"));
+        }
+        md.push_str(&format!(
+            "\nsparse live_fraction {:.4}: pulse_list no_index p50 {:.3} ms, with_index p50 {:.3} ms\n\n",
+            p.sparse_live_fraction,
+            p.sparse_pulse_list_no_index.p50,
+            p.sparse_pulse_list_with_index.p50
+        ));
     }
 
     md

@@ -2,6 +2,8 @@
 
 pub mod generate;
 pub mod harness;
+
+pub use harness::machine_label;
 pub mod queries;
 pub mod report;
 pub mod schema;

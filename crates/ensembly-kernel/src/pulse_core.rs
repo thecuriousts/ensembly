@@ -487,7 +487,28 @@ fn fts_quote_tokens(tokens: &[String]) -> String {
         .join(" ")
 }
 
+/// Integration tests include this token in the query to force an invalid FTS AND `MATCH`
+/// (unbalanced paren). Omitted in release builds; otherwise treated as a normal term.
+#[cfg(debug_assertions)]
+pub const FTS_AND_ERR_PROBE: &str = "ftsanderrprobe";
+
+#[cfg(debug_assertions)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[cfg(debug_assertions)]
+static SEARCH_AND_FTS_ERR_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// Reset/read how many times multi-token FTS AND returned `Err` (debug test hook).
+#[cfg(debug_assertions)]
+pub fn take_search_and_fts_err_count() -> usize {
+    SEARCH_AND_FTS_ERR_COUNT.swap(0, Ordering::SeqCst)
+}
+
 fn fts_and_query(tokens: &[String]) -> String {
+    #[cfg(debug_assertions)]
+    if tokens.iter().any(|t| t == FTS_AND_ERR_PROBE) {
+        return format!("\"{FTS_AND_ERR_PROBE}\" (");
+    }
     fts_quote_tokens(tokens)
 }
 
@@ -608,14 +629,32 @@ fn supersession_cmp(a: &TraceRow, b: &TraceRow) -> Option<std::cmp::Ordering> {
     }
 }
 
+fn bm25_pool_has_mixed_sign(hits: &[SearchHit]) -> bool {
+    let mut positive = false;
+    let mut negative = false;
+    for h in hits {
+        if let Some(b) = h.bm25 {
+            if b > 0.0 {
+                positive = true;
+            } else if b < 0.0 {
+                negative = true;
+            }
+        }
+    }
+    positive && negative
+}
+
 /// Scale-free FTS relevance in `(0, 1]`. FTS5 lower `bm25` is better.
 ///
-/// When scores are positive: `bm25_best / bm25`. When negative (common on FTS5), use the
-/// same ratio on negated match strength `-bm25` so a tiny candidate pool is not min–max
-/// stretched to `0.0` vs `1.0`. The best hit is always `1.0`.
-pub fn fts_relevance_ratio(bm25: f64, best_bm25: f64) -> f64 {
+/// Homogeneous pool: positive `bm25_best / bm25`, else negated strength ratio on `-bm25`.
+/// Mixed-sign pool: `1 / (1 + max(0, bm25 - bm25_best))` so one scale covers unlike signs.
+pub fn fts_relevance_ratio(bm25: f64, best_bm25: f64, mixed_sign_pool: bool) -> f64 {
     if !bm25.is_finite() || !best_bm25.is_finite() || (bm25 - best_bm25).abs() < 1e-12 {
         return 1.0;
+    }
+    if mixed_sign_pool {
+        let delta = (bm25 - best_bm25).max(0.0);
+        return (1.0 / (1.0 + delta)).min(1.0);
     }
     if best_bm25 > 0.0 && bm25 > 0.0 {
         return (best_bm25 / bm25).min(1.0);
@@ -649,6 +688,7 @@ fn rank_search_hits(mut hits: Vec<SearchHit>, limit: usize, recency_weight: f64)
         .iter()
         .filter_map(|h| h.bm25)
         .fold(f64::INFINITY, f64::min);
+    let mixed_sign_pool = bm25_pool_has_mixed_sign(&hits);
 
     hits.sort_by(|a, b| {
         a.tier.cmp(&b.tier).then_with(|| {
@@ -661,12 +701,12 @@ fn rank_search_hits(mut hits: Vec<SearchHit>, limit: usize, recency_weight: f64)
                     .partial_cmp(&a.instant)
                     .unwrap_or(std::cmp::Ordering::Equal);
             }
-            let rel_a = a
-                .bm25
-                .map_or(LIKE_RELEVANCE_SCORE, |b| fts_relevance_ratio(b, best_bm25));
-            let rel_b = b
-                .bm25
-                .map_or(LIKE_RELEVANCE_SCORE, |b| fts_relevance_ratio(b, best_bm25));
+            let rel_a = a.bm25.map_or(LIKE_RELEVANCE_SCORE, |b| {
+                fts_relevance_ratio(b, best_bm25, mixed_sign_pool)
+            });
+            let rel_b = b.bm25.map_or(LIKE_RELEVANCE_SCORE, |b| {
+                fts_relevance_ratio(b, best_bm25, mixed_sign_pool)
+            });
             if (rel_a - rel_b).abs() < PULSE_SEARCH_RELEVANCE_TIE_EPSILON {
                 b.instant
                     .partial_cmp(&a.instant)
@@ -747,6 +787,8 @@ fn collect_search_pool(
         Ok(hits) => absorb_fts_hits(&mut pool, hits, SearchTier::AllTerms),
         Err(_) if tokens.len() == 1 => {}
         Err(_) => {
+            #[cfg(debug_assertions)]
+            SEARCH_AND_FTS_ERR_COUNT.fetch_add(1, Ordering::SeqCst);
             let or_q = fts_or_query(tokens);
             if let Ok(hits) = read_search_fts_candidates(conn, &or_q, fetch) {
                 absorb_fts_hits(&mut pool, hits, SearchTier::OrWiden);
