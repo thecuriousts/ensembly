@@ -587,13 +587,24 @@ fn supersession_cmp(a: &TraceRow, b: &TraceRow) -> Option<std::cmp::Ordering> {
     }
 }
 
-/// Scale-free FTS relevance in `(0, 1]`: `bm25_best / bm25` (FTS5 lower bm25 is better).
-/// Avoids min–max stretching two-hit pools to `0.0` vs `1.0`. Top hit is always `1.0`.
+/// Scale-free FTS relevance in `(0, 1]`. FTS5 lower `bm25` is better.
+///
+/// When scores are positive: `bm25_best / bm25`. When negative (common on FTS5), use the
+/// same ratio on negated match strength `-bm25` so a tiny candidate pool is not min–max
+/// stretched to `0.0` vs `1.0`. The best hit is always `1.0`.
 pub fn fts_relevance_ratio(bm25: f64, best_bm25: f64) -> f64 {
-    if !bm25.is_finite() || !best_bm25.is_finite() || bm25 <= 0.0 {
+    if !bm25.is_finite() || !best_bm25.is_finite() || (bm25 - best_bm25).abs() < 1e-12 {
         return 1.0;
     }
-    (best_bm25 / bm25).min(1.0)
+    if best_bm25 > 0.0 && bm25 > 0.0 {
+        return (best_bm25 / bm25).min(1.0);
+    }
+    let strength_best = -best_bm25;
+    let strength = -bm25;
+    if strength_best <= 0.0 {
+        return 1.0;
+    }
+    (strength / strength_best).min(1.0)
 }
 
 fn recency_score(instant: f64, newest_instant: f64, half_life_secs: f64) -> f64 {

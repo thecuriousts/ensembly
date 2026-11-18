@@ -40,17 +40,18 @@ Fixed English stopword list (`FTS_STOPWORDS` in `pulse_core.rs`). Tokens are low
 
 Constants: `PULSE_SEARCH_RECENCY_WEIGHT` (**0.35**), `PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS` (**7**), `PULSE_SEARCH_RELEVANCE_TIE_EPSILON` (**0.2**).
 
-**Tokenize** query text on non-alphanumerics (same boundary idea as FTS5 **unicode61**), lowercase; then drop [`FTS_STOPWORDS`](../../crates/ensembly-kernel/src/pulse_core.rs) when any content token remains.
+**Tokenize** query text on non-alphanumerics, lowercase; then drop [`FTS_STOPWORDS`](../../crates/ensembly-kernel/src/pulse_core.rs) when any content token remains. Query token boundaries follow Rust `is_alphanumeric` (underscores stay inside a token); FTS5 **unicode61** on indexed text is the same except `_` may split differently.
 
 **Tiers** (strict order): FTS **AND** → FTS **OR** widen → **LIKE** last.
 
 Within one tier:
 
 ```text
-rel = min-max normalize (-bm25) over FTS hits in pool → [0, 1]  (ties → 1.0)
-same revision family (`…/old` vs `…/new`) → newer `unixepoch(last_seen)` wins
-else if |rel_a - rel_b| < epsilon → rank newer first
-else score = w * 0.5^((t_newest - t)/7d) + (1-w) * rel
+if superseded_by links a → b → rank b above a
+else if same nat_key → newer unixepoch(last_seen)
+else rel_i = min(1, bm25_best/bm25_i) when positive, else min(1, (-bm25_i)/(-bm25_best))
+     if |rel_a - rel_b| < epsilon → rank newer first
+     else score = w * 0.5^((t_newest - t)/7d) + (1-w) * rel
 ```
 
 - **LIKE** rows: fixed low relevance (0.15); tier 3 always below FTS.

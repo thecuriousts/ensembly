@@ -612,9 +612,14 @@ fn search_or_fallback_fills_when_and_is_sparse() {
 }
 
 #[test]
-fn fts_relevance_ratio_top_hit() {
-    assert_eq!(pc::fts_relevance_ratio(-4.0, -4.0), 1.0);
-    assert_eq!(pc::fts_relevance_ratio(-2.0, -2.0), 1.0);
+fn fts_relevance_ratio_top_hit_is_one_in_one_or_two_hit_pools() {
+    assert!((pc::fts_relevance_ratio(2.5, 2.5) - 1.0).abs() < 1e-9);
+    assert!((pc::fts_relevance_ratio(-4.0, -4.0) - 1.0).abs() < 1e-9);
+    let top = pc::fts_relevance_ratio(-4.0, -4.0);
+    let runner = pc::fts_relevance_ratio(-2.5, -4.0);
+    assert!((top - 1.0).abs() < 1e-9);
+    assert!(runner < 1.0 && runner > 0.0);
+    assert!((pc::fts_relevance_ratio(1.0, 1.4) - pc::fts_relevance_ratio(1.0, 1.0)).abs() < 1e-9);
 }
 
 #[test]
