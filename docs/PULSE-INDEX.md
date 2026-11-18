@@ -27,10 +27,12 @@ Why:
 | Planner | With indexes present, SQLite often plans `MULTI-INDEX OR` on `superseded_by` plus **`USE TEMP B-TREE FOR ORDER BY`**, and **does not** use `ensembly_memory_traces_live_list` when ~all rows are live. |
 | Corpus | Slice‑7 microbenchmarks that showed large list speedups used a **sparse** live set (most rows archived). The generator behind retrieval-bench does not. |
 | Dangling | JOIN rewrite is correct; at bench scale the check is already cheap; `superseded_by` index yields only small deltas. |
+| Sparse probe | retrieval-bench archives ~95% of rows on a copy (`live_fraction` ≈ 0.05) and calls `pulse index apply` **without** `--analyze` (same as the default CLI). **List p50 still drops** (e.g. 13.2 → 6.9 ms at 100k; 1.15 → 0.66 ms at 10k; 0.11 → 0.07 ms at 1k), but EXPLAIN still shows **`MULTI-INDEX OR` on `ensembly_memory_traces_superseded_by`** plus **`USE TEMP B-TREE FOR ORDER BY`** — **not** `ensembly_memory_traces_live_list`. That sparse win is **not** evidence that the partial list index is doing the work. |
+| After `ANALYZE` | `pulse index apply --analyze` (or `ANALYZE memory_traces` after apply) is what makes SQLite plan **`SCAN … USING INDEX ensembly_memory_traces_live_list`** for the list query. Without fresh stats, do not read sparse timings as proof the partial list index will be chosen. |
 
-The sparse-live probe embedded in retrieval-bench (`sparse live_fraction` ≈ 0.05) is the honest place to see whether partial-index list wins on **your** machine. If that probe does not improve p50, do not apply on production.
+Do **not** treat the embedded sparse probe as “partial list index wins on your machine.” Use it only to separate **sparse archive** from **dense live** corpora. If your production store is dense like retrieval-bench (`live_memory_fraction` ≈ 1.0), do not apply. If it is sparse, run apply with **`--analyze`** on a copy, confirm EXPLAIN uses `live_list`, then measure before you apply on the real file.
 
-Until a production pulse store is measured with a **sparse** archive (or planner starts using the partial index on your file), treat this command as **experimental** — kept for operators who own the DB and have evidence.
+Until that sequence is satisfied on **your** pulse DB, treat this command as **experimental** — kept for operators who own the DB and have evidence.
 
 ## Commands
 
