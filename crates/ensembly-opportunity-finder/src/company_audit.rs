@@ -2,6 +2,8 @@
 //! checked before a pack is prepared or an application is sent.
 //! Last row per canonical domain wins. The verdict is derived from the checks
 //! and validated, never trusted.
+//! A stored row may omit `audited_by` (written before the field existed).
+//! That absence stays `None`; nothing invents a label, and the line is not rewritten.
 use std::path::Path;
 
 pub use ensembly_schema::{
@@ -16,6 +18,8 @@ pub const STALE_AFTER_DAYS: i64 = 30;
 /// An `audited_at` more than this many minutes after `now` reads as stale:
 /// a future stamp would otherwise stay fresh for ever.
 pub const FUTURE_SKEW_MINUTES: i64 = 5;
+/// Warning text for a stored row that omits `audited_by`.
+pub const LEGACY_AUDITED_BY: &str = "legacy: audited_by missing";
 
 fn email_re() -> regex::Regex {
     regex::Regex::new(r"[^\s@]+@[^\s@]+\.[A-Za-z]{2,}").unwrap()
@@ -55,17 +59,22 @@ fn validate_optional_fields(a: &Audit) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Strict check for new rows: the stated verdict must equal the derived one.
+/// Strict check for new rows: the stated verdict must equal the derived one,
+/// and `audited_by` must be present and non-blank.
 pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
     validate_audit_body(a)?;
+    require_audited_by(a)?;
     check_stated_verdict(a, derive_verdict(&a.checks))
 }
 
 /// Check for rows already in the store: as strict, except a stated `pass`
 /// that was right under the earlier rule still reads (as flag, see
-/// `effective_verdict`), so an append-only store never turns unreadable.
+/// `effective_verdict`), and a missing `audited_by` still reads (`None`).
+/// A blank `audited_by` is still an error. An append-only store never
+/// turns unreadable and is never rewritten to fill the field in.
 pub fn validate_stored_audit(a: &Audit) -> anyhow::Result<()> {
     validate_audit_body(a)?;
+    reject_blank_audited_by(a)?;
     let derived = derive_verdict(&a.checks);
     let legacy_pass = a.verdict == Verdict::Pass
         && ensembly_schema::derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
@@ -86,11 +95,24 @@ fn check_stated_verdict(a: &Audit, derived: Verdict) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn require_audited_by(a: &Audit) -> anyhow::Result<()> {
+    match a.audited_by.as_deref() {
+        Some(v) if !v.trim().is_empty() => Ok(()),
+        Some(_) => anyhow::bail!("audited_by must not be blank"),
+        None => anyhow::bail!("audited_by is required"),
+    }
+}
+
+fn reject_blank_audited_by(a: &Audit) -> anyhow::Result<()> {
+    if matches!(a.audited_by.as_deref(), Some(v) if v.trim().is_empty()) {
+        anyhow::bail!("audited_by must not be blank");
+    }
+    Ok(())
+}
+
 fn validate_audit_body(a: &Audit) -> anyhow::Result<()> {
-    for (name, v) in [("company", &a.company), ("audited_by", &a.audited_by)] {
-        if v.trim().is_empty() {
-            anyhow::bail!("{name} must not be blank");
-        }
+    if a.company.trim().is_empty() {
+        anyhow::bail!("company must not be blank");
     }
     let dom = canonical_domain(&a.domain);
     let dom_re = regex::Regex::new(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$").unwrap();
@@ -140,18 +162,52 @@ fn validate_audit_body(a: &Audit) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// One read of an append-only audit file.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AuditStore {
+    pub rows: Vec<Audit>,
+    /// 1-based file line numbers of rows that omit `audited_by`.
+    pub legacy_audited_by: Vec<usize>,
+}
+
+/// `warning: line N: legacy: audited_by missing`
+pub fn legacy_audited_by_warning(line: usize) -> String {
+    format!("warning: line {line}: {LEGACY_AUDITED_BY}")
+}
+
+/// Error text when `--strict` refuses legacy rows. `None` when there are none.
+pub fn legacy_audited_by_failure(lines: &[usize]) -> Option<String> {
+    if lines.is_empty() {
+        return None;
+    }
+    let listed = lines
+        .iter()
+        .map(usize::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!("{LEGACY_AUDITED_BY} on line(s) {listed}"))
+}
+
 /// Parse a stored JSONL store (blank lines ignored). Errors name the 1-based line.
-pub fn parse_audits(text: &str) -> anyhow::Result<Vec<Audit>> {
+/// Rows that omit `audited_by` are kept, with their line numbers in
+/// [`AuditStore::legacy_audited_by`].
+pub fn parse_audit_store(text: &str) -> anyhow::Result<AuditStore> {
     parse_with(text, validate_stored_audit)
 }
 
-/// Parse new input rows with the strict rule.
-pub fn parse_new_audits(text: &str) -> anyhow::Result<Vec<Audit>> {
-    parse_with(text, validate_audit)
+/// Parse a stored JSONL store (blank lines ignored). Errors name the 1-based line.
+pub fn parse_audits(text: &str) -> anyhow::Result<Vec<Audit>> {
+    Ok(parse_audit_store(text)?.rows)
 }
 
-fn parse_with(text: &str, check: fn(&Audit) -> anyhow::Result<()>) -> anyhow::Result<Vec<Audit>> {
-    let mut out = Vec::new();
+/// Parse new input rows with the strict rule. A row that omits `audited_by` is an error.
+pub fn parse_new_audits(text: &str) -> anyhow::Result<Vec<Audit>> {
+    Ok(parse_with(text, validate_audit)?.rows)
+}
+
+fn parse_with(text: &str, check: fn(&Audit) -> anyhow::Result<()>) -> anyhow::Result<AuditStore> {
+    let mut rows = Vec::new();
+    let mut legacy_audited_by = Vec::new();
     for (i, line) in text.lines().enumerate() {
         if line.trim().is_empty() {
             continue;
@@ -160,9 +216,15 @@ fn parse_with(text: &str, check: fn(&Audit) -> anyhow::Result<()>) -> anyhow::Re
             .map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?
             .value;
         check(&a).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
-        out.push(a);
+        if a.audited_by.is_none() {
+            legacy_audited_by.push(i + 1);
+        }
+        rows.push(a);
     }
-    Ok(out)
+    Ok(AuditStore {
+        rows,
+        legacy_audited_by,
+    })
 }
 
 /// Last row per canonical domain, sorted by domain.
@@ -246,7 +308,7 @@ pub fn export_csv(rows: &[Audit]) -> String {
             a.company.as_str(),
             a.effective_verdict().as_str(),
             a.audited_at.as_str(),
-            a.audited_by.as_str(),
+            a.audited_by.as_deref().unwrap_or(""),
             a.apply_url.as_deref().unwrap_or(""),
         ]
         .iter()
@@ -280,7 +342,7 @@ pub fn export_markdown(rows: &[Audit]) -> String {
             md_cell(&a.company),
             a.effective_verdict().as_str(),
             md_cell(&a.audited_at),
-            md_cell(&a.audited_by)
+            md_cell(a.audited_by.as_deref().unwrap_or(""))
         ));
         for id in CheckId::ALL {
             out.push_str(&format!(" {} |", result_of(&a, id)));
@@ -415,11 +477,144 @@ mod tests {
         chrono::DateTime::parse_from_rfc3339(s).unwrap()
     }
 
+    fn without_audited_by(line: &str) -> String {
+        let mut v: serde_json::Value = serde_json::from_str(line).unwrap();
+        let obj = v.as_object_mut().unwrap();
+        assert!(
+            obj.remove("audited_by").is_some(),
+            "fixture row must have audited_by so the test actually removes it"
+        );
+        serde_json::to_string(&v).unwrap()
+    }
+
+    fn with_audited_by(line: &str, value: &str) -> String {
+        let mut v: serde_json::Value = serde_json::from_str(line).unwrap();
+        v.as_object_mut()
+            .unwrap()
+            .insert("audited_by".into(), serde_json::Value::String(value.into()));
+        serde_json::to_string(&v).unwrap()
+    }
+
     #[test]
     fn sample_parses_to_three_audits() {
         let rows = sample();
         assert_eq!(rows.len(), 3, "empty parse must fail");
         assert_eq!(rows[2].verdict, Verdict::Block);
+    }
+
+    #[test]
+    fn stored_row_without_audited_by_stays_readable_and_is_not_invented() {
+        let legacy = without_audited_by(SAMPLE.lines().next().unwrap());
+        let store = parse_audit_store(&legacy).expect("legacy row must stay readable");
+        assert_eq!(store.rows.len(), 1);
+        assert!(
+            store.rows[0].audited_by.is_none(),
+            "missing audited_by is absent, not a filled-in label"
+        );
+        assert_eq!(store.legacy_audited_by, vec![1]);
+        let again = serde_json::to_string(&store.rows[0]).unwrap();
+        assert!(
+            !again.contains("audited_by"),
+            "reserialize must not invent audited_by: {again}"
+        );
+        let csv = export_csv(&store.rows);
+        assert!(
+            csv.contains("pass,2026-10-20T09:00:00+02:00,,https://"),
+            "export leaves the auditor cell empty: {csv}"
+        );
+        assert!(!csv.contains("sample-auditor"), "{csv}");
+        let mut null_row: serde_json::Value = serde_json::from_str(&legacy).unwrap();
+        null_row["audited_by"] = serde_json::Value::Null;
+        let null_line = serde_json::to_string(&null_row).unwrap();
+        let nulls = parse_audit_store(&null_line).unwrap();
+        assert!(nulls.rows[0].audited_by.is_none());
+        assert_eq!(nulls.legacy_audited_by, vec![1]);
+        assert!(parse_new_audits(&null_line).is_err());
+    }
+
+    #[test]
+    fn mixed_store_reports_only_legacy_line_numbers() {
+        let first = without_audited_by(SAMPLE.lines().next().unwrap());
+        let second = SAMPLE.lines().nth(1).unwrap();
+        let third = without_audited_by(SAMPLE.lines().nth(2).unwrap());
+        let text = format!("{first}\n\n{second}\n{third}\n");
+        let store = parse_audit_store(&text).unwrap();
+        assert_eq!(store.rows.len(), 3);
+        assert!(store.rows[0].audited_by.is_none());
+        assert!(store.rows[1].audited_by.is_some());
+        assert!(store.rows[2].audited_by.is_none());
+        assert_eq!(store.legacy_audited_by, vec![1, 4]);
+        assert_eq!(
+            legacy_audited_by_warning(1),
+            "warning: line 1: legacy: audited_by missing"
+        );
+        let failure = legacy_audited_by_failure(&[1, 4]).unwrap();
+        assert!(failure.contains("legacy: audited_by missing"), "{failure}");
+        assert!(failure.contains('1') && failure.contains('4'), "{failure}");
+        assert!(legacy_audited_by_failure(&[]).is_none());
+    }
+
+    #[test]
+    fn blank_audited_by_is_an_error_not_a_legacy_row() {
+        for blank in ["", "   "] {
+            let line = with_audited_by(SAMPLE.lines().next().unwrap(), blank);
+            let err = parse_audits(&line).unwrap_err();
+            assert!(err.to_string().contains("audited_by"), "{blank}: {err}");
+            assert!(
+                !err.to_string().contains("legacy"),
+                "a blank value is invalid, not a missing-field legacy row: {err}"
+            );
+            assert!(parse_new_audits(&line).is_err());
+        }
+    }
+
+    #[test]
+    fn new_append_without_audited_by_is_rejected() {
+        let legacy = without_audited_by(SAMPLE.lines().next().unwrap());
+        let err = parse_new_audits(&legacy).unwrap_err();
+        assert!(err.to_string().contains("audited_by is required"), "{err}");
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        assert!(append_audits(&p, &legacy).is_err());
+        let row: Audit = serde_json::from_str(&legacy).unwrap();
+        assert!(row.audited_by.is_none());
+        assert!(append_audit(&p, &row).is_err());
+        assert!(!p.exists(), "a rejected append writes nothing");
+    }
+
+    #[test]
+    fn append_onto_legacy_store_keeps_the_old_line_byte_for_byte() {
+        let legacy = without_audited_by(SAMPLE.lines().next().unwrap());
+        let fresh = SAMPLE.lines().nth(1).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        let body = format!("{legacy}\n");
+        std::fs::write(&p, &body).unwrap();
+        assert_eq!(append_audits(&p, fresh).unwrap(), (1, 0));
+        let after = std::fs::read_to_string(&p).unwrap();
+        assert!(after.starts_with(&body), "old row was rewritten:\n{after}");
+        assert!(!after.lines().next().unwrap().contains("audited_by"));
+        assert!(after.lines().nth(1).unwrap().contains("audited_by"));
+    }
+
+    #[test]
+    fn later_row_names_audited_by_without_editing_the_legacy_line() {
+        let legacy_line = without_audited_by(SAMPLE.lines().next().unwrap());
+        let mut later: Audit = serde_json::from_str(&legacy_line).unwrap();
+        later.audited_by = Some("sample-auditor".into());
+        later.audited_at = "2026-10-21T09:00:00+02:00".into();
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        let body = format!("{legacy_line}\n");
+        std::fs::write(&p, &body).unwrap();
+        append_audit(&p, &later).unwrap();
+        let after = std::fs::read_to_string(&p).unwrap();
+        assert!(after.starts_with(&body), "old row was rewritten:\n{after}");
+        let store = parse_audit_store(&after).unwrap();
+        assert_eq!(store.legacy_audited_by, vec![1]);
+        let cur = current_audits(&store.rows);
+        assert_eq!(cur.len(), 1);
+        assert_eq!(cur[0].audited_by.as_deref(), Some("sample-auditor"));
     }
 
     #[test]
