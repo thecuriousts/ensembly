@@ -135,27 +135,63 @@ mod tests {
         assert!(s.fresh_first_accuracy >= 0.99);
     }
 
+    /// Master (pre-1b) baselines on the same synthetic set — not-below for strong types;
+    /// NL / paraphrase / fts_zero must clear obvious zero-hit plateaus after slice 1b.
     #[test]
-    fn natural_phrase_and_fts_zero_baseline_low() {
+    fn slice_1b_recall_gates_on_synthetic_1k() {
+        const MASTER_UNIQUE_AT_10: f64 = 1.0;
+        const MASTER_PREFIX_AT_10: f64 = 1.0;
+        const MASTER_FRESH_FIRST: f64 = 1.0;
+        const MASTER_NL_AT_10: f64 = 0.0;
+        const MASTER_PARA_AT_10: f64 = 0.0;
+        const MASTER_FTS_ZERO_AT_10: f64 = 0.0;
+        const SLICE_1B_NL_MIN: f64 = 0.8;
+
         let tmp = tempfile::tempdir().unwrap();
-        let g = GeneratedBench::generate(tmp.path(), 1_000, DEFAULT_SEED).unwrap();
+        let g = GeneratedBench::generate(tmp.path(), 1_000, crate::DEFAULT_SEED).unwrap();
         let conn = rusqlite::Connection::open(&g.pulse_db).unwrap();
         let qs = QuerySet::build();
         let s = score_quality(&conn, &qs).unwrap();
+
         assert!(
-            s.natural_phrase.recall_at_10 <= 0.25,
-            "nl={}",
+            s.unique.recall_at_10 >= MASTER_UNIQUE_AT_10,
+            "unique@10 {} < {}",
+            s.unique.recall_at_10,
+            MASTER_UNIQUE_AT_10
+        );
+        assert!(
+            s.prefix.recall_at_10 >= MASTER_PREFIX_AT_10,
+            "prefix@10 {} < {}",
+            s.prefix.recall_at_10,
+            MASTER_PREFIX_AT_10
+        );
+        assert!(
+            s.fresh_first_accuracy >= MASTER_FRESH_FIRST,
+            "fresh {} < {}",
+            s.fresh_first_accuracy,
+            MASTER_FRESH_FIRST
+        );
+        assert!(
+            s.natural_phrase.recall_at_10 > MASTER_NL_AT_10,
+            "natural_phrase@10 should lift above master {}; got {}",
+            MASTER_NL_AT_10,
             s.natural_phrase.recall_at_10
         );
         assert!(
-            s.fts_zero_hit.recall_at_10 <= 0.25,
-            "fts0={}",
-            s.fts_zero_hit.recall_at_10
+            s.natural_phrase.recall_at_10 >= SLICE_1B_NL_MIN,
+            "natural_phrase@10 {} < slice 1b floor {}",
+            s.natural_phrase.recall_at_10,
+            SLICE_1B_NL_MIN
         );
         assert!(
-            s.paraphrase_extra.recall_at_10 <= 0.25,
-            "para={}",
+            s.paraphrase_extra.recall_at_10 > MASTER_PARA_AT_10,
+            "paraphrase@10 {}",
             s.paraphrase_extra.recall_at_10
+        );
+        assert!(
+            s.fts_zero_hit.recall_at_10 > MASTER_FTS_ZERO_AT_10,
+            "fts_zero@10 {}",
+            s.fts_zero_hit.recall_at_10
         );
     }
 }

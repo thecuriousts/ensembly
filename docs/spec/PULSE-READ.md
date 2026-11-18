@@ -38,20 +38,22 @@ Fixed English stopword list (`FTS_STOPWORDS` in `pulse_core.rs`). Tokens are low
 
 ## Search score
 
-Constants: `PULSE_SEARCH_RECENCY_WEIGHT` (**0.35**), `PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS` (**30**).
+Constants: `PULSE_SEARCH_RECENCY_WEIGHT` (**0.35**), `PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS` (**7**), `PULSE_SEARCH_RELEVANCE_TIE_EPSILON` (**0.2**).
 
-Within each query’s candidate pool (FTS fetch capped at 256 rows; LIKE when needed):
+**Tokenize** query text on non-alphanumerics (same boundary idea as FTS5 **unicode61**), lowercase; then drop [`FTS_STOPWORDS`](../../crates/ensembly-kernel/src/pulse_core.rs) when any content token remains.
+
+**Tiers** (strict order): FTS **AND** → FTS **OR** widen → **LIKE** last.
+
+Within one tier:
 
 ```text
-rel = min-max normalize (-bm25) over FTS hits → [0, 1]  (ties → 1.0)
-recency = 0.5 ** ((t_newest - t_row) / half_life_seconds)   # half_life = 30 days
-score = w * recency + (1 - w) * rel
+rel = min-max normalize (-bm25) over FTS hits in pool → [0, 1]  (ties → 1.0)
+if |rel_a - rel_b| < epsilon → rank newer `unixepoch(last_seen)` first
+else score = w * 0.5^((t_newest - t)/7d) + (1-w) * rel
 ```
 
-- **bm25**: FTS5 on `memory_fts`; smaller bm25 ⇒ better match; normalized within the pool so it cannot be swamped by epoch-scale instants.
-- **last_seen**: `unixepoch(..., 'subsec')` on mixed `Z` / offset stamps; decay vs **newest candidate**, not wall clock.
-- **LIKE** rows: fixed `LIKE_RELEVANCE_SCORE` (0.15) instead of bm25.
-- **AND → OR → LIKE**: OR/LIKE only when AND yields fewer than `limit` rows (or AND errors on multi-token syntax).
+- **LIKE** rows: fixed low relevance (0.15); tier 3 always below FTS.
+- **AND → OR → LIKE**: only when AND yields fewer than `limit` rows (or AND syntax error on multi-token input).
 
 ## CI gates (kernel tests)
 

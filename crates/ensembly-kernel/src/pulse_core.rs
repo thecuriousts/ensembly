@@ -367,7 +367,10 @@ fn trace_row(r: &rusqlite::Row) -> rusqlite::Result<TraceRow> {
 pub const PULSE_SEARCH_RECENCY_WEIGHT: f64 = 0.35;
 
 /// Half-life for exponential recency decay in [`read_search`] (days).
-pub const PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS: f64 = 30.0;
+pub const PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS: f64 = 7.0;
+
+/// Within one match tier, if normalised relevance differs by less than this, rank newer first.
+pub const PULSE_SEARCH_RELEVANCE_TIE_EPSILON: f64 = 0.2;
 
 /// Fixed relevance for LIKE fallback rows (below FTS matches on the normalized scale).
 const LIKE_RELEVANCE_SCORE: f64 = 0.15;
@@ -431,18 +434,11 @@ pub const FTS_STOPWORDS: &[&str] = &[
     "you", "your",
 ];
 
-fn normalize_search_token(word: &str) -> String {
-    word.chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect::<String>()
-        .to_lowercase()
-}
-
-/// Tokens used for FTS/LIKE: drop [`FTS_STOPWORDS`] when at least one content token remains.
+/// Split on non-alphanumerics (FTS5 default **unicode61** token boundaries), lowercase.
 pub fn search_content_tokens(text: &str) -> Vec<String> {
     let raw: Vec<String> = text
-        .split_whitespace()
-        .map(normalize_search_token)
+        .split(|c: char| !c.is_alphanumeric())
+        .map(str::to_lowercase)
         .filter(|w| !w.is_empty())
         .collect();
     let content: Vec<String> = raw
@@ -477,11 +473,22 @@ fn fts_or_query(tokens: &[String]) -> String {
         .join(" OR ")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum SearchTier {
+    /// FTS AND (every content token).
+    AllTerms = 0,
+    /// FTS OR widen only.
+    OrWiden = 1,
+    /// Literal LIKE fallback.
+    Like = 2,
+}
+
 struct SearchHit {
     row: TraceRow,
     /// FTS5 bm25 (smaller is a better match). `None` for LIKE-sourced rows.
     bm25: Option<f64>,
     instant: f64,
+    tier: SearchTier,
 }
 
 fn trace_row_scored(r: &rusqlite::Row) -> rusqlite::Result<SearchHit> {
@@ -489,6 +496,7 @@ fn trace_row_scored(r: &rusqlite::Row) -> rusqlite::Result<SearchHit> {
         row: trace_row(r)?,
         bm25: Some(r.get::<_, f64>("_bm25")?),
         instant: r.get::<_, f64>("_inst")?,
+        tier: SearchTier::AllTerms,
     })
 }
 
@@ -497,6 +505,7 @@ fn trace_row_instant(r: &rusqlite::Row) -> rusqlite::Result<SearchHit> {
         row: trace_row(r)?,
         bm25: None,
         instant: r.get::<_, f64>("_inst")?,
+        tier: SearchTier::Like,
     })
 }
 
@@ -518,7 +527,7 @@ fn read_search_fts_candidates(
         "SELECT {cols}, bm25(memory_fts) AS _bm25, \
          COALESCE(unixepoch(t.last_seen, 'subsec'), 0) AS _inst \
          FROM memory_traces t JOIN memory_fts f ON f.rowid = t.id \
-         WHERE memory_fts MATCH ?1 LIMIT ?2"
+         WHERE memory_fts MATCH ?1 ORDER BY bm25(memory_fts) LIMIT ?2"
     );
     let mut st = conn.prepare(&sql)?;
     let rows = st
@@ -527,13 +536,23 @@ fn read_search_fts_candidates(
     Ok(rows)
 }
 
-fn absorb_fts_hits(pool: &mut BTreeMap<String, SearchHit>, hits: Vec<SearchHit>) {
-    for hit in hits {
+fn absorb_fts_hits(pool: &mut BTreeMap<String, SearchHit>, hits: Vec<SearchHit>, tier: SearchTier) {
+    for mut hit in hits {
+        hit.tier = tier;
         let key = hit.row.nat_key.clone();
         match pool.get_mut(&key) {
             Some(existing) => {
-                if hit.bm25.unwrap_or(f64::INFINITY) < existing.bm25.unwrap_or(f64::INFINITY) {
-                    *existing = hit;
+                use std::cmp::Ordering;
+                match tier.cmp(&existing.tier) {
+                    Ordering::Less => *existing = hit,
+                    Ordering::Equal => {
+                        if hit.bm25.unwrap_or(f64::INFINITY)
+                            < existing.bm25.unwrap_or(f64::INFINITY)
+                        {
+                            *existing = hit;
+                        }
+                    }
+                    Ordering::Greater => {}
                 }
             }
             None => {
@@ -580,15 +599,23 @@ fn rank_search_hits(mut hits: Vec<SearchHit>, limit: usize, recency_weight: f64)
     };
 
     hits.sort_by(|a, b| {
-        let rel_a = a.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
-        let rel_b = b.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
-        let score_a = recency_weight * recency_score(a.instant, newest, half_life_secs)
-            + (1.0 - recency_weight) * rel_a;
-        let score_b = recency_weight * recency_score(b.instant, newest, half_life_secs)
-            + (1.0 - recency_weight) * rel_b;
-        score_b
-            .partial_cmp(&score_a)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        a.tier.cmp(&b.tier).then_with(|| {
+            let rel_a = a.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
+            let rel_b = b.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
+            if (rel_a - rel_b).abs() < PULSE_SEARCH_RELEVANCE_TIE_EPSILON {
+                b.instant
+                    .partial_cmp(&a.instant)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            } else {
+                let score_a = recency_weight * recency_score(a.instant, newest, half_life_secs)
+                    + (1.0 - recency_weight) * rel_a;
+                let score_b = recency_weight * recency_score(b.instant, newest, half_life_secs)
+                    + (1.0 - recency_weight) * rel_b;
+                score_b
+                    .partial_cmp(&score_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }
+        })
     });
     hits.into_iter().take(limit).map(|h| h.row).collect()
 }
@@ -631,8 +658,15 @@ fn read_search_like_candidates(
 }
 
 fn absorb_like_hits(pool: &mut BTreeMap<String, SearchHit>, hits: Vec<SearchHit>) {
-    for hit in hits {
-        pool.entry(hit.row.nat_key.clone()).or_insert(hit);
+    for mut hit in hits {
+        hit.tier = SearchTier::Like;
+        let key = hit.row.nat_key.clone();
+        match pool.get(&key) {
+            Some(existing) if existing.tier < SearchTier::Like => {}
+            _ => {
+                pool.insert(key, hit);
+            }
+        }
     }
 }
 
@@ -645,12 +679,12 @@ fn collect_search_pool(
     let mut pool: BTreeMap<String, SearchHit> = BTreeMap::new();
     let and_q = fts_and_query(tokens);
     match read_search_fts_candidates(conn, &and_q, fetch) {
-        Ok(hits) => absorb_fts_hits(&mut pool, hits),
+        Ok(hits) => absorb_fts_hits(&mut pool, hits, SearchTier::AllTerms),
         Err(_) if tokens.len() == 1 => {}
         Err(_) => {
             let or_q = fts_or_query(tokens);
             if let Ok(hits) = read_search_fts_candidates(conn, &or_q, fetch) {
-                absorb_fts_hits(&mut pool, hits);
+                absorb_fts_hits(&mut pool, hits, SearchTier::OrWiden);
             }
             if pool.is_empty() {
                 absorb_like_hits(&mut pool, read_search_like_candidates(conn, tokens, fetch)?);
@@ -661,7 +695,7 @@ fn collect_search_pool(
     if pool.len() < min_hits && tokens.len() > 1 {
         let or_q = fts_or_query(tokens);
         if let Ok(hits) = read_search_fts_candidates(conn, &or_q, fetch) {
-            absorb_fts_hits(&mut pool, hits);
+            absorb_fts_hits(&mut pool, hits, SearchTier::OrWiden);
         }
     }
     if pool.len() < min_hits {

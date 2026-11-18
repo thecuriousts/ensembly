@@ -303,6 +303,120 @@ fn search_relevance_beats_one_hour_recency_gap() {
 }
 
 #[test]
+fn search_splits_punctuation_like_fts_tokenizer() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    insert_trace(
+        &c,
+        "tok/hyphen",
+        "marker x-y-z boundary",
+        "2026-10-01T00:00:00Z",
+    );
+    insert_trace(
+        &c,
+        "tok/colon",
+        "host: laptop-1 alias path",
+        "2026-10-02T00:00:00Z",
+    );
+    insert_trace(
+        &c,
+        "tok/dot",
+        "release v1.2.3 shipped",
+        "2026-10-03T00:00:00Z",
+    );
+    insert_trace(
+        &c,
+        "tok/at",
+        "mail recall@k operator inbox",
+        "2026-10-04T00:00:00Z",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    for (q, key) in [
+        ("x-y-z", "tok/hyphen"),
+        ("laptop-1", "tok/colon"),
+        ("v1.2.3", "tok/dot"),
+        ("recall@k", "tok/at"),
+    ] {
+        let rows = pc::read_search(&conn, q, 5).unwrap();
+        assert!(
+            rows.iter().any(|r| r.nat_key == key),
+            "query {q:?} should hit {key}, got {:?}",
+            rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn search_tie_epsilon_prefers_newer_single_term() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    let snippet = "flux anchor twin token";
+    insert_trace(&c, "tie/old", snippet, "2026-08-01T00:00:00Z");
+    insert_trace(&c, "tie/new", snippet, "2026-08-01T02:24:00Z");
+    let conn = pc::open_ro(&path).unwrap();
+    let rows = pc::read_search(&conn, "flux", 5).unwrap();
+    assert_eq!(
+        rows.first().map(|r| r.nat_key.as_str()),
+        Some("tie/new"),
+        "0.1d newer with tied relevance should win, got {:?}",
+        rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn search_all_terms_tier_above_or_widen() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    insert_trace(
+        &c,
+        "tier/and",
+        "alpha beta gamma delta packed",
+        "2026-05-01T00:00:00Z",
+    );
+    insert_trace(
+        &c,
+        "tier/or",
+        "alpha beta other unrelated",
+        "2026-11-01T00:00:00Z",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    let rows = pc::read_search(&conn, "alpha beta gamma delta", 5).unwrap();
+    let pos_and = rows.iter().position(|r| r.nat_key == "tier/and");
+    let pos_or = rows.iter().position(|r| r.nat_key == "tier/or");
+    let tier_ok = match (pos_and, pos_or) {
+        (Some(a), Some(o)) => a < o,
+        (Some(_), None) => true,
+        _ => false,
+    };
+    assert!(
+        tier_ok,
+        "all-terms hit must outrank OR-only, got {:?}",
+        rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn search_four_term_twin_newer_wins_within_all_terms() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    let snippet = "alpha beta gamma delta twin fact";
+    insert_trace(&c, "quad/old", snippet, "2026-08-01T00:00:00Z");
+    insert_trace(&c, "quad/new", snippet, "2026-08-05T00:00:00Z");
+    let conn = pc::open_ro(&path).unwrap();
+    let rows = pc::read_search(&conn, "alpha beta gamma delta", 5).unwrap();
+    assert_eq!(
+        rows.first().map(|r| r.nat_key.as_str()),
+        Some("quad/new"),
+        "4-day newer twin should win on epsilon tie, got {:?}",
+        rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn search_same_terms_newer_beats_older() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("pulse.sqlite");
