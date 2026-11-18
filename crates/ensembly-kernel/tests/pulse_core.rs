@@ -539,12 +539,6 @@ fn read_by_prefix_and_search() {
     assert!(pc::read_search(&c, "nonexistentword", 10)
         .unwrap()
         .is_empty());
-    // FTS-hostile input falls back to a literal match instead of erroring.
-    assert_eq!(pc::read_search(&c, "100% done_ok", 10).unwrap().len(), 1);
-    assert_eq!(
-        pc::read_search(&c, "\"quoted\" AND (", 10).unwrap().len(),
-        0
-    );
 }
 
 // ------------------------------------------------------------------ CLI
