@@ -87,10 +87,14 @@ pub enum AppsCmd {
 
 #[derive(Subcommand)]
 pub enum AuditCmd {
-    /// Validate every line (or a FILE instead of the store); print counts
+    /// Validate every line (or a FILE instead of the store); print counts.
+    /// A row that omits audited_by warns and still exits 0.
     Validate {
         /// Validate this JSONL file instead of the store
         file: Option<PathBuf>,
+        /// Exit 1 when any row omits audited_by
+        #[arg(long)]
+        strict: bool,
     },
     /// Append audits from a JSONL FILE ('-' = stdin): all lines validated first; rows already stored are skipped
     Append { file: PathBuf },
@@ -100,12 +104,16 @@ pub enum AuditCmd {
         #[arg(long)]
         out_dir: Option<PathBuf>,
     },
-    /// Print JSON status for a company name or domain; exit 0 pass, 3 = flag (not approvable), 4 block, 5 unaudited or stale
+    /// Print JSON status for a company name or domain; exit 0 pass, 3 = flag (not approvable), 4 block, 5 unaudited or stale.
+    /// A stored row that omits audited_by warns on stderr and does not change that exit code.
     Status {
         query: String,
         /// Evaluate staleness at this RFC 3339 time instead of now (tests/replays)
         #[arg(long)]
         now: Option<String>,
+        /// Exit 1 when any stored row omits audited_by (no status JSON)
+        #[arg(long)]
+        strict: bool,
     },
 }
 fn read_side(p: Option<&std::path::Path>) -> Result<ensembly_kernel::tracker::Side> {
@@ -222,13 +230,26 @@ pub fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
     }
 }
 
-fn read_audit_store(store: &PathBuf) -> Result<Vec<ensembly_kernel::company_audit::Audit>> {
+fn read_audit_store(store: &PathBuf) -> Result<ensembly_kernel::company_audit::AuditStore> {
     use ensembly_kernel::company_audit as ca;
     match std::fs::read_to_string(store) {
-        Ok(t) => ca::parse_audits(&t),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Ok(t) => ca::parse_audit_store(&t),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ca::AuditStore::default()),
         Err(e) => Err(anyhow::anyhow!("read {}: {e}", store.display())),
     }
+}
+
+fn report_legacy(lines: &[usize], strict: bool) -> Result<()> {
+    use ensembly_kernel::company_audit as ca;
+    for &line in lines {
+        eprintln!("{}", ca::legacy_audited_by_warning(line));
+    }
+    if strict {
+        if let Some(msg) = ca::legacy_audited_by_failure(lines) {
+            anyhow::bail!("{msg}");
+        }
+    }
+    Ok(())
 }
 
 fn cmd_audit(store: Option<PathBuf>, sub: AuditCmd) -> Result<()> {
@@ -236,7 +257,7 @@ fn cmd_audit(store: Option<PathBuf>, sub: AuditCmd) -> Result<()> {
     use ensembly_kernel::company_audit as ca;
     let store = store.unwrap_or_else(|| PathBuf::from(ca::DEFAULT_AUDIT_PATH));
     match sub {
-        AuditCmd::Validate { file } => audit_validate(&store, file),
+        AuditCmd::Validate { file, strict } => audit_validate(&store, file, strict),
         AuditCmd::Append { file } => {
             let text = if file.as_os_str() == "-" {
                 let mut t = String::new();
@@ -250,40 +271,43 @@ fn cmd_audit(store: Option<PathBuf>, sub: AuditCmd) -> Result<()> {
             Ok(())
         }
         AuditCmd::Export { out_dir } => {
-            let rows = read_audit_store(&store)?;
+            let parsed = read_audit_store(&store)?;
             let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
-            ca::write_exports(&rows, &dir)?;
+            ca::write_exports(&parsed.rows, &dir)?;
             println!(
                 "exported {} companies to {}",
-                ca::current_audits(&rows).len(),
+                ca::current_audits(&parsed.rows).len(),
                 dir.display()
             );
             Ok(())
         }
-        AuditCmd::Status { query, now } => audit_status(&store, &query, now),
+        AuditCmd::Status { query, now, strict } => audit_status(&store, &query, now, strict),
     }
 }
 
-fn audit_validate(store: &PathBuf, file: Option<PathBuf>) -> Result<()> {
+fn audit_validate(store: &PathBuf, file: Option<PathBuf>, strict: bool) -> Result<()> {
     use ensembly_kernel::company_audit as ca;
-    let rows = match file {
-        Some(f) => ca::parse_audits(&read_file(&f)?)?,
+    let parsed = match file {
+        Some(f) => ca::parse_audit_store(&read_file(&f)?)?,
         None => read_audit_store(store)?,
     };
+    report_legacy(&parsed.legacy_audited_by, strict)?;
     println!(
         "ok: {} audits, {} companies",
-        rows.len(),
-        ca::current_audits(&rows).len()
+        parsed.rows.len(),
+        ca::current_audits(&parsed.rows).len()
     );
-    for i in ca::dangling_reuse(&rows) {
-        eprintln!("warning: audit {} ({}) has a reused_from that names no earlier stored audit of that domain", i + 1, rows[i].domain);
+    for i in ca::dangling_reuse(&parsed.rows) {
+        eprintln!("warning: audit {} ({}) has a reused_from that names no earlier stored audit of that domain", i + 1, parsed.rows[i].domain);
     }
     Ok(())
 }
 
-fn audit_status(store: &PathBuf, query: &str, now: Option<String>) -> Result<()> {
+fn audit_status(store: &PathBuf, query: &str, now: Option<String>, strict: bool) -> Result<()> {
     use ensembly_kernel::company_audit as ca;
-    let rows = read_audit_store(store)?;
+    let parsed = read_audit_store(store)?;
+    report_legacy(&parsed.legacy_audited_by, strict)?;
+    let rows = parsed.rows;
     let now = match now {
         Some(t) => {
             chrono::DateTime::parse_from_rfc3339(&t).map_err(|e| anyhow::anyhow!("--now: {e}"))?

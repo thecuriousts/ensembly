@@ -194,3 +194,139 @@ fn versioned_lines_and_old_refusals() {
     );
     audit_file(dir, &adup, false, "duplicate key");
 }
+
+fn stderr_of(out: &Output) -> String {
+    String::from_utf8_lossy(&out.stderr).into_owned()
+}
+
+fn stdout_of(out: &Output) -> String {
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+#[test]
+fn legacy_audited_by_warns_strict_fails_and_append_rejects() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let mixed = fix("audit-legacy-audited-by.jsonl");
+    let mixed_s = mixed.to_str().unwrap();
+    let warn = "warning: line 1: legacy: audited_by missing";
+
+    let ok = call(dir, &["apps", "audit", "validate", mixed_s]);
+    assert!(ok.status.success(), "{}", stderr_of(&ok));
+    assert!(
+        stdout_of(&ok).contains("ok: 2 audits"),
+        "{}",
+        stdout_of(&ok)
+    );
+    assert!(stderr_of(&ok).contains(warn), "{}", stderr_of(&ok));
+    assert!(
+        !stderr_of(&ok).contains("line 3"),
+        "the row that has audited_by is not legacy: {}",
+        stderr_of(&ok)
+    );
+
+    let via_store = call(dir, &["apps", "audit", "--store", mixed_s, "validate"]);
+    assert!(via_store.status.success(), "{}", stderr_of(&via_store));
+    assert!(
+        stderr_of(&via_store).contains(warn),
+        "{}",
+        stderr_of(&via_store)
+    );
+
+    let strict = call(dir, &["apps", "audit", "validate", "--strict", mixed_s]);
+    assert_eq!(strict.status.code(), Some(1), "{}", stderr_of(&strict));
+    assert!(
+        stderr_of(&strict).contains("legacy: audited_by missing"),
+        "{}",
+        stderr_of(&strict)
+    );
+    assert!(
+        !stdout_of(&strict).contains("ok:"),
+        "strict must not report success: {}",
+        stdout_of(&strict)
+    );
+
+    let now = "2026-10-27T12:00:00+01:00";
+    let status = run(cmd(dir)
+        .args(["apps", "audit", "--store"])
+        .arg(&mixed)
+        .args(["status", "northwind.example.test", "--now", now]));
+    assert_eq!(status.status.code(), Some(0), "{}", stderr_of(&status));
+    assert!(
+        stdout_of(&status).contains("\"status\":\"pass\""),
+        "{}",
+        stdout_of(&status)
+    );
+    assert!(stderr_of(&status).contains(warn), "{}", stderr_of(&status));
+
+    let other = run(cmd(dir)
+        .args(["apps", "audit", "--store"])
+        .arg(&mixed)
+        .args(["status", "contoso.example.test", "--now", now]));
+    assert_eq!(other.status.code(), Some(3), "{}", stderr_of(&other));
+    assert!(
+        stderr_of(&other).contains(warn),
+        "status reports every legacy row, not only the queried one: {}",
+        stderr_of(&other)
+    );
+
+    let status_strict = run(cmd(dir)
+        .args(["apps", "audit", "--store"])
+        .arg(&mixed)
+        .args(["status", "--strict", "northwind.example.test", "--now", now]));
+    assert_eq!(
+        status_strict.status.code(),
+        Some(1),
+        "{}",
+        stderr_of(&status_strict)
+    );
+    assert!(
+        stderr_of(&status_strict).contains("legacy: audited_by missing"),
+        "{}",
+        stderr_of(&status_strict)
+    );
+    assert!(
+        stdout_of(&status_strict).is_empty(),
+        "strict status prints no JSON: {}",
+        stdout_of(&status_strict)
+    );
+
+    let text = fs::read_to_string(&mixed).unwrap();
+    let mut file_lines = text.lines();
+    let legacy_line = file_lines.next().unwrap().to_string();
+    let fresh_line = file_lines.nth(1).unwrap().to_string();
+    let legacy_file = put(dir, "legacy-only.jsonl", &legacy_line);
+    let fresh_file = put(dir, "fresh-only.jsonl", &fresh_line);
+    let empty = dir.join("empty-store.jsonl");
+    let empty_s = empty.to_str().unwrap();
+    append_to(dir, empty_s, &legacy_file, false, "audited_by");
+    assert!(!empty.exists(), "rejected append writes nothing");
+
+    let kept = dir.join("kept.jsonl");
+    let body = format!("{legacy_line}\n");
+    fs::write(&kept, &body).unwrap();
+    let kept_s = kept.to_str().unwrap();
+    append_to(dir, kept_s, &fresh_file, true, "appended 1");
+    let after = fs::read_to_string(&kept).unwrap();
+    assert!(after.starts_with(&body), "old row was rewritten:\n{after}");
+    assert!(!after.lines().next().unwrap().contains("audited_by"));
+
+    let clean = dir.join("clean.jsonl");
+    fs::write(&clean, format!("{fresh_line}\n")).unwrap();
+    let clean_status = run(cmd(dir)
+        .args(["apps", "audit", "--store"])
+        .arg(&clean)
+        .args(["status", "--strict", "contoso.example.test", "--now", now]));
+    assert_eq!(
+        clean_status.status.code(),
+        Some(3),
+        "{}",
+        stderr_of(&clean_status)
+    );
+    assert!(
+        !stderr_of(&clean_status).contains("legacy:"),
+        "{}",
+        stderr_of(&clean_status)
+    );
+    assert!(stdout_of(&clean_status).contains("\"status\":\"flag\""));
+}
