@@ -10,6 +10,7 @@ members = [
     "crates/ensembly-schema",
     "crates/evalbench-core",
     "crates/evalbench-cli",
+    "crates/retrieval-bench",
 ]
 resolver = "2"
 
