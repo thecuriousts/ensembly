@@ -174,6 +174,43 @@ enum PulseCoreCmd {
         #[command(subcommand)]
         sub: ConflictCmd,
     },
+    /// Opt-in speed indexes on the pulse-memory SQLite file (reversible).
+    Index {
+        #[command(subcommand)]
+        sub: PulseIndexCmd,
+    },
+}
+
+#[derive(Subcommand)]
+enum PulseIndexCmd {
+    /// Create ensembly-managed indexes (`CREATE INDEX IF NOT EXISTS`).
+    Apply {
+        #[arg(long)]
+        dry_run: bool,
+        /// Update sqlite_stat* via ANALYZE (planner data; not removed by revert).
+        #[arg(long)]
+        analyze: bool,
+        #[arg(long)]
+        json: bool,
+        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
+        #[arg(long)]
+        writer: String,
+    },
+    /// Show which ensembly-managed indexes exist.
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Drop only ensembly-managed indexes this command created.
+    Revert {
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        json: bool,
+        /// Writer identity; must match the configured ENSEMBLY_WRITER value.
+        #[arg(long)]
+        writer: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -989,7 +1026,88 @@ fn run_pulse(
             },
             json,
         ),
+        PulseCoreCmd::Index { sub } => pulse_index_cmd(&cfg, sub),
     }
+}
+
+fn pulse_index_cmd(cfg: &pc::PulseCfg, sub: PulseIndexCmd) -> Result<()> {
+    use ensembly_kernel::pulse_index as pi;
+    match sub {
+        PulseIndexCmd::Apply {
+            dry_run,
+            analyze,
+            json,
+            writer,
+        } => {
+            ensembly_schema::require_configured_writer(&writer)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let report = pi::apply(&cfg.db, &writer, pi::ApplyOptions { dry_run, analyze })?;
+            emit_index_apply(&report, json)
+        }
+        PulseIndexCmd::Status { json } => {
+            let conn = pc::open_ro(&cfg.db)?;
+            let rows = pi::status(&conn)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&rows)?);
+            } else {
+                for row in rows {
+                    println!(
+                        "{} {}",
+                        row.name,
+                        if row.present { "present" } else { "absent" }
+                    );
+                }
+            }
+            Ok(())
+        }
+        PulseIndexCmd::Revert {
+            dry_run,
+            json,
+            writer,
+        } => {
+            ensembly_schema::require_configured_writer(&writer)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let report = pi::revert(&cfg.db, &writer, dry_run)?;
+            emit_index_revert(&report, json)
+        }
+    }
+}
+
+fn emit_index_apply(
+    report: &ensembly_kernel::pulse_index::IndexApplyReport,
+    json: bool,
+) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+    } else if report.dry_run {
+        println!("dry-run: would apply {}", report.applied.len());
+    } else {
+        println!(
+            "applied {} ({} already present){}",
+            report.applied.len(),
+            report.already_present.len(),
+            if report.analyzed { "; analyzed" } else { "" }
+        );
+    }
+    Ok(())
+}
+
+fn emit_index_revert(
+    report: &ensembly_kernel::pulse_index::IndexRevertReport,
+    json: bool,
+) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(report)?);
+    } else if report.dry_run {
+        println!("dry-run: would drop {}", report.dropped.len());
+    } else {
+        println!(
+            "dropped {} ({} absent)",
+            report.dropped.len(),
+            report.absent.len()
+        );
+    }
+    Ok(())
 }
 
 fn refuse_writer<T>(result: Result<T, ensembly_kernel::WriterError>) -> Result<T> {

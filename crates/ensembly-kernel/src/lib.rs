@@ -24,6 +24,7 @@ pub mod msg_bus;
 pub mod paths;
 pub mod privacy;
 pub mod pulse_core;
+pub mod pulse_index;
 pub mod pulse_pack;
 pub mod pulse_supersede;
 pub mod realm;
