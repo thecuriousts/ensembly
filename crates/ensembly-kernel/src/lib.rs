@@ -56,8 +56,8 @@ pub use channel_pulse::{
 pub use clock::{
     clock_status, parse_chronyc_tracking_csv, parse_sntp_output, peer_offset_and_err,
     sample_latest, validate_ntp_hostname, validate_peer_alias, ClockSample, ClockStatusReport,
-    PeerClockTransport, PeerExchange, PeerTransportError, SampleOpts, UnwiredPeerTransport,
-    CLOCK_UNKNOWN_ERR_US, DEFAULT_CLOCK_CACHE_NAME, DEFAULT_CLOCK_MAX_AGE_S,
+    ParsedClockOffset, PeerClockTransport, PeerExchange, PeerTransportError, SampleOpts,
+    UnwiredPeerTransport, CLOCK_UNKNOWN_ERR_US, DEFAULT_CLOCK_CACHE_NAME, DEFAULT_CLOCK_MAX_AGE_S,
     DEFAULT_CLOCK_SAMPLE_TIMEOUT, DEFAULT_SNTP_SERVER,
 };
 pub use critical_path::{compute_critical_path, explain_node, CriticalPathReport};

@@ -20,6 +20,10 @@ flowchart LR
   class stop bad
 ```
 
+## Rust MSRV
+
+Workspace crates declare `rust-version = "1.90"` in the root `Cargo.toml` and in `ensembly-kernel`. CI pins a newer toolchain via `rust-toolchain.toml` (currently 1.99.1); kernel code must not require language or `std` features above **1.90** so dogfood on older operator machines (e.g. macOS toolchains on 1.90) stays valid.
+
 ## Version scheme
 
 One tag per product, `NAME--vX.Y.Z`, the format `claude plugin tag` writes. The tag equals the version in every manifest of that product. Older `vX.Y.Z` tags are history and are not checked.

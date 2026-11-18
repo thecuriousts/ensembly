@@ -49,6 +49,7 @@ use ensembly_schema::{commit_json, feed_json, recover_json, snapshot_json, Commi
 #[cfg(feature = "opportunity-finder")]
 use opportunity_cli::{AppsCmd, RecordAppsCmd};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Parser)]
 #[command(name = env!("CARGO_BIN_NAME"), about = "ensembly operator kernel (Rust)")]
@@ -1340,10 +1341,9 @@ fn cmd_clock(sub: ClockCmd) -> Result<()> {
             if !ensembly_kernel::validate_ntp_hostname(&sntp_server) {
                 bail!("invalid sntp server hostname");
             }
-            let unwired = ensembly_kernel::UnwiredPeerTransport;
-            let transport: Option<&dyn ensembly_kernel::PeerClockTransport> = peer
-                .as_ref()
-                .map(|_| &unwired as &dyn ensembly_kernel::PeerClockTransport);
+            let unwired: Arc<dyn ensembly_kernel::PeerClockTransport> =
+                Arc::new(ensembly_kernel::UnwiredPeerTransport);
+            let transport = peer.as_ref().map(|_| Arc::clone(&unwired));
             let opts = ensembly_kernel::SampleOpts {
                 root,
                 config_data_dir: config_ref,

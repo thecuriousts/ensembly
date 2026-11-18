@@ -6,9 +6,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Upper bound when the offset is unknown (`src: "none"`). Not “zero error”.
@@ -20,6 +21,14 @@ pub const DEFAULT_CLOCK_CACHE_NAME: &str = "clock/sample.json";
 pub const DEFAULT_CLOCK_SAMPLE_TIMEOUT: Duration = Duration::from_secs(2);
 
 const PEER_ALIASES: [&str; 4] = ["laptop-1", "laptop-2", "mac-mini", "box"];
+
+/// Parsed offset from chrony or sntp before attaching provenance `src`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedClockOffset {
+    pub off_us: i64,
+    pub err_us: u64,
+    pub synchronized: bool,
+}
 
 /// Payload shape future events may attach.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,7 +66,7 @@ pub struct SampleOpts<'a> {
     pub timeout: Duration,
     pub peer: Option<&'a str>,
     pub sntp_server: &'a str,
-    pub transport: Option<&'a dyn PeerClockTransport>,
+    pub transport: Option<Arc<dyn PeerClockTransport>>,
     pub force_refresh: bool,
     /// When false, skip chronyc/sntp subprocesses (unit tests).
     pub platform_probe: bool,
@@ -195,40 +204,106 @@ pub fn peer_offset_and_err(ex: &PeerExchange) -> (i64, u64) {
 
 pub fn chrony_err_us(offset_s: f64, root_delay_s: f64, root_dispersion_s: f64) -> u64 {
     let bound_s = offset_s.abs() + root_dispersion_s + root_delay_s / 2.0;
+    if !bound_s.is_finite() {
+        return CLOCK_UNKNOWN_ERR_US;
+    }
+    let micros = bound_s * 1_000_000.0;
+    if !micros.is_finite() || micros >= CLOCK_UNKNOWN_ERR_US as f64 {
+        return CLOCK_UNKNOWN_ERR_US;
+    }
     secs_to_us_ceil(bound_s)
 }
 
-pub fn parse_chronyc_tracking_csv(line: &str) -> Option<(i64, u64)> {
-    let fields = parse_csv_line(line.trim());
+pub fn parse_chronyc_tracking_csv(line: &str) -> Option<ParsedClockOffset> {
+    let line = line.trim();
+    if line.is_empty() {
+        return None;
+    }
+    let fields = parse_csv_line(line);
     if fields.len() < 11 {
         return None;
     }
     let offset_s: f64 = fields[4].parse().ok()?;
     let root_delay_s: f64 = fields[9].parse().ok()?;
     let root_dispersion_s: f64 = fields[10].parse().ok()?;
+    let stratum: u32 = fields[1].parse().unwrap_or(0);
+    let synchronized = chrony_synchronized(stratum, fields.get(12).map(|s| s.as_str()));
     let off_us = secs_to_us_round(offset_s);
-    let err_us = chrony_err_us(offset_s, root_delay_s, root_dispersion_s);
-    Some((off_us, err_us))
+    let err_us = if synchronized {
+        chrony_err_us(offset_s, root_delay_s, root_dispersion_s)
+    } else {
+        CLOCK_UNKNOWN_ERR_US
+    };
+    Some(ParsedClockOffset {
+        off_us,
+        err_us,
+        synchronized,
+    })
+}
+
+fn chrony_synchronized(stratum: u32, leap_field: Option<&str>) -> bool {
+    if stratum == 0 || stratum >= 16 {
+        return false;
+    }
+    leap_field.is_none_or(|f| !chrony_leap_unsynced(f))
+}
+
+fn chrony_leap_unsynced(field: &str) -> bool {
+    let t = field.trim();
+    t == "3" || t.eq_ignore_ascii_case("Not synchronised")
 }
 
 /// Parse macOS / BSD `sntp` client text. **Fixtures only until verified on real macOS hardware.**
-pub fn parse_sntp_output(text: &str) -> Option<(i64, u64)> {
-    let normalized = text.replace(',', ".");
-    if let Some((off, err)) = parse_sntp_plusminus(&normalized) {
-        return Some((off, err));
+pub fn parse_sntp_output(text: &str) -> Option<ParsedClockOffset> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
     }
-    parse_sntp_offset_line(&normalized)
+    if sntp_text_unsynchronized(text) {
+        let off_us = parse_sntp_offset_only(text).unwrap_or(0);
+        return Some(ParsedClockOffset {
+            off_us,
+            err_us: CLOCK_UNKNOWN_ERR_US,
+            synchronized: false,
+        });
+    }
+    let normalized = text.replace(',', ".");
+    let parsed =
+        parse_sntp_plusminus(&normalized).or_else(|| parse_sntp_offset_line(&normalized))?;
+    Some(ParsedClockOffset {
+        synchronized: true,
+        ..parsed
+    })
 }
 
-fn parse_sntp_plusminus(text: &str) -> Option<(i64, u64)> {
+fn parse_sntp_offset_only(text: &str) -> Option<i64> {
+    let off_re = regex::Regex::new(r"(?i)offset\s+([+-]?\d+(?:\.\d+)?)").ok()?;
+    let off_s: f64 = off_re.captures(text)?.get(1)?.as_str().parse().ok()?;
+    Some(secs_to_us_round(off_s))
+}
+
+fn sntp_text_unsynchronized(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("not synchron")
+        || lower.contains("unsynchron")
+        || lower.contains("no server suitable")
+        || lower.contains("timed out")
+        || lower.contains("no reply")
+}
+
+fn parse_sntp_plusminus(text: &str) -> Option<ParsedClockOffset> {
     let re = regex::Regex::new(r"(?i)([+-]?\d+(?:\.\d+)?)\s*/?\s*\+/-\s*(\d+(?:\.\d+)?)").ok()?;
     let caps = re.captures(text)?;
     let off_s: f64 = caps.get(1)?.as_str().parse().ok()?;
     let err_s: f64 = caps.get(2)?.as_str().parse().ok()?;
-    Some((secs_to_us_round(off_s), secs_to_us_ceil(err_s)))
+    Some(ParsedClockOffset {
+        off_us: secs_to_us_round(off_s),
+        err_us: secs_to_us_ceil(err_s),
+        synchronized: true,
+    })
 }
 
-fn parse_sntp_offset_line(text: &str) -> Option<(i64, u64)> {
+fn parse_sntp_offset_line(text: &str) -> Option<ParsedClockOffset> {
     let off_re = regex::Regex::new(r"(?i)offset\s+([+-]?\d+(?:\.\d+)?)").ok()?;
     let off_s: f64 = off_re.captures(text)?.get(1)?.as_str().parse().ok()?;
     let err_s = regex::Regex::new(r"(?i)delay\s+(\d+(?:\.\d+)?)")
@@ -237,14 +312,22 @@ fn parse_sntp_offset_line(text: &str) -> Option<(i64, u64)> {
         .and_then(|c| c.get(1)?.as_str().parse::<f64>().ok())
         .map(|d| d / 2.0)
         .unwrap_or(0.0);
-    Some((secs_to_us_round(off_s), secs_to_us_ceil(err_s)))
+    Some(ParsedClockOffset {
+        off_us: secs_to_us_round(off_s),
+        err_us: secs_to_us_ceil(err_s),
+        synchronized: true,
+    })
 }
 
 pub fn secs_to_us_ceil(secs: f64) -> u64 {
     if !secs.is_finite() || secs <= 0.0 {
         return 0;
     }
-    (secs * 1_000_000.0).ceil() as u64
+    let micros = secs * 1_000_000.0;
+    if !micros.is_finite() || micros >= CLOCK_UNKNOWN_ERR_US as f64 {
+        return CLOCK_UNKNOWN_ERR_US;
+    }
+    micros.ceil() as u64
 }
 
 pub fn secs_to_us_round(secs: f64) -> i64 {
@@ -293,39 +376,77 @@ fn read_cache(path: &Path) -> io::Result<Option<ClockCacheRecord>> {
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
+/// Temp file in the cache directory, fsync, rename, then fsync the parent directory (Unix).
 fn write_cache(path: &Path, record: &ClockCacheRecord) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "cache path has no parent"))?;
+    fs::create_dir_all(parent)?;
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("sample.json");
+    let tmp = parent.join(format!(".{name}.tmp"));
     let json = serde_json::to_string_pretty(record)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    fs::write(path, json)
+    {
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(json.as_bytes())?;
+        file.sync_all()?;
+    }
+    fs::rename(&tmp, path)?;
+    sync_parent_dir(parent)
+}
+
+#[cfg(unix)]
+fn sync_parent_dir(parent: &Path) -> io::Result<()> {
+    let dir = fs::File::open(parent)?;
+    dir.sync_all()
+}
+
+#[cfg(not(unix))]
+fn sync_parent_dir(_parent: &Path) -> io::Result<()> {
+    Ok(())
+}
+
+struct OwnedSampleJob {
+    root: PathBuf,
+    config: Option<PathBuf>,
+    sntp_server: String,
+    peer: Option<String>,
+    platform_probe: bool,
+    transport: Option<Arc<dyn PeerClockTransport>>,
+}
+
+impl OwnedSampleJob {
+    fn sample_opts(&self) -> SampleOpts<'_> {
+        SampleOpts {
+            root: &self.root,
+            config_data_dir: self.config.as_deref(),
+            max_age_s: 0,
+            timeout: DEFAULT_CLOCK_SAMPLE_TIMEOUT,
+            peer: self.peer.as_deref(),
+            sntp_server: &self.sntp_server,
+            transport: self.transport.clone(),
+            force_refresh: true,
+            platform_probe: self.platform_probe,
+        }
+    }
 }
 
 fn sample_within_timeout(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'static str> {
-    if opts.peer.is_some() {
-        return sample_now(opts);
-    }
-    let root = opts.root.to_path_buf();
-    let config = opts.config_data_dir.map(|p| p.to_path_buf());
-    let sntp_server = opts.sntp_server.to_string();
-    let max_age_s = opts.max_age_s;
-    let force_refresh = opts.force_refresh;
-    let platform_probe = opts.platform_probe;
+    let job = OwnedSampleJob {
+        root: opts.root.to_path_buf(),
+        config: opts.config_data_dir.map(|p| p.to_path_buf()),
+        sntp_server: opts.sntp_server.to_string(),
+        peer: opts.peer.map(str::to_string),
+        platform_probe: opts.platform_probe,
+        transport: opts.transport.clone(),
+    };
     let timeout = opts.timeout;
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     std::thread::spawn(move || {
-        let inner = SampleOpts {
-            root: &root,
-            config_data_dir: config.as_deref(),
-            max_age_s,
-            timeout,
-            peer: None,
-            sntp_server: &sntp_server,
-            transport: None,
-            force_refresh,
-            platform_probe,
-        };
+        let inner = job.sample_opts();
         let _ = tx.send(sample_now(&inner));
     });
     match rx.recv_timeout(timeout) {
@@ -341,7 +462,7 @@ fn sample_now(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'static str> {
         if !validate_peer_alias(alias) {
             return Err("invalid peer alias");
         }
-        let transport = opts.transport.ok_or("peer transport missing")?;
+        let transport = opts.transport.clone().ok_or("peer transport missing")?;
         let ex = transport
             .round_trip()
             .map_err(|_| "peer transport failed")?;
@@ -349,13 +470,13 @@ fn sample_now(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'static str> {
         return Ok(new_record(off_us, err_us, format!("peer:{alias}")));
     }
     if opts.platform_probe {
-        if let Some((off_us, err_us)) = sample_chrony() {
-            return Ok(new_record(off_us, err_us, "chrony".into()));
+        if let Some(parsed) = sample_chrony() {
+            return Ok(new_record(parsed.off_us, parsed.err_us, "chrony".into()));
         }
     }
     if opts.platform_probe && cfg!(target_os = "macos") && validate_ntp_hostname(opts.sntp_server) {
-        if let Some((off_us, err_us)) = sample_sntp(opts.sntp_server) {
-            return Ok(new_record(off_us, err_us, "sntp".into()));
+        if let Some(parsed) = sample_sntp(opts.sntp_server) {
+            return Ok(new_record(parsed.off_us, parsed.err_us, "sntp".into()));
         }
     }
     Err("no source")
@@ -370,7 +491,7 @@ fn new_record(off_us: i64, err_us: u64, src: String) -> ClockCacheRecord {
     }
 }
 
-fn sample_chrony() -> Option<(i64, u64)> {
+fn sample_chrony() -> Option<ParsedClockOffset> {
     let bin = chronyc_bin()?;
     let mut cmd = Command::new(&bin);
     cmd.args(["-c", "tracking"]);
@@ -379,7 +500,7 @@ fn sample_chrony() -> Option<(i64, u64)> {
     parse_chronyc_tracking_csv(line)
 }
 
-fn sample_sntp(server: &str) -> Option<(i64, u64)> {
+fn sample_sntp(server: &str) -> Option<ParsedClockOffset> {
     let bin = sntp_bin()?;
     let mut cmd = Command::new(&bin);
     cmd.args(["-t", "2", server]);
@@ -457,32 +578,81 @@ mod tests {
 
     #[test]
     fn chrony_fixture_parses_offset_and_err() {
-        let line = "CB00710F,3,203.190.158.190,12.345678,0.000250,-0.000125,1.2,0.1,0.05,0.020000,0.001500,64,0";
-        let (off_us, err_us) = parse_chronyc_tracking_csv(line).expect("parse");
-        assert_eq!(off_us, 250);
-        // |0.00025| + 0.0015 + 0.01 = 0.01175 s -> 11750 us ceil
-        assert_eq!(err_us, 11_750);
+        let line =
+            "CB00710F,3,192.0.2.1,12.345678,0.000250,-0.000125,1.2,0.1,0.05,0.020000,0.001500,64,0";
+        let parsed = parse_chronyc_tracking_csv(line).expect("parse");
+        assert!(parsed.synchronized);
+        assert_eq!(parsed.off_us, 250);
+        assert_eq!(parsed.err_us, 11_750);
     }
 
     #[test]
-    fn chrony_err_arithmetic_ceil() {
+    fn chrony_unsynchronised_leap_sets_unknown_err() {
+        let line =
+            "CB00710F,3,192.0.2.1,12.345678,0.000250,-0.000125,1.2,0.1,0.05,0.020000,0.001500,64,Not synchronised";
+        let parsed = parse_chronyc_tracking_csv(line).unwrap();
+        assert!(!parsed.synchronized);
+        assert_eq!(parsed.err_us, CLOCK_UNKNOWN_ERR_US);
+    }
+
+    #[test]
+    fn chrony_stratum_zero_is_unsynced() {
+        let line =
+            "CB00710F,0,192.0.2.1,12.345678,0.000250,-0.000125,1.2,0.1,0.05,0.020000,0.001500,64,0";
+        let parsed = parse_chronyc_tracking_csv(line).unwrap();
+        assert!(!parsed.synchronized);
+        assert_eq!(parsed.err_us, CLOCK_UNKNOWN_ERR_US);
+    }
+
+    #[test]
+    fn chrony_malformed_and_empty_lines() {
+        assert!(parse_chronyc_tracking_csv("").is_none());
+        assert!(parse_chronyc_tracking_csv("only,three,fields").is_none());
+    }
+
+    #[test]
+    fn chrony_negative_offset_rounds() {
+        let line =
+            "CB00710F,3,192.0.2.1,12.345678,-0.001000,-0.000125,1.2,0.1,0.05,0.020000,0.001500,64,0";
+        let parsed = parse_chronyc_tracking_csv(line).unwrap();
+        assert_eq!(parsed.off_us, -1000);
+    }
+
+    #[test]
+    fn chrony_err_arithmetic_ceil_and_saturates() {
         assert_eq!(chrony_err_us(-0.00025, 0.02, 0.0015), 11_750);
+        assert_eq!(chrony_err_us(0.0, f64::MAX, 0.0), CLOCK_UNKNOWN_ERR_US);
     }
 
     #[test]
     fn sntp_plusminus_fixture() {
         let text = "+0.001234 +/- 0.005678 seconds";
-        let (off, err) = parse_sntp_output(text).unwrap();
-        assert_eq!(off, 1234);
-        assert_eq!(err, 5678);
+        let parsed = parse_sntp_output(text).unwrap();
+        assert!(parsed.synchronized);
+        assert_eq!(parsed.off_us, 1234);
+        assert_eq!(parsed.err_us, 5678);
     }
 
     #[test]
     fn sntp_offset_delay_fixture() {
         let text = "offset +0.002000 sec, delay 0.012000";
-        let (off, err) = parse_sntp_output(text).unwrap();
-        assert_eq!(off, 2000);
-        assert_eq!(err, 6000);
+        let parsed = parse_sntp_output(text).unwrap();
+        assert_eq!(parsed.off_us, 2000);
+        assert_eq!(parsed.err_us, 6000);
+    }
+
+    #[test]
+    fn sntp_unsynchronised_fixture() {
+        let text = "unsynchronised: no server suitable for synchronization";
+        let parsed = parse_sntp_output(text).unwrap();
+        assert!(!parsed.synchronized);
+        assert_eq!(parsed.err_us, CLOCK_UNKNOWN_ERR_US);
+    }
+
+    #[test]
+    fn sntp_empty_and_garbage() {
+        assert!(parse_sntp_output("").is_none());
+        assert!(parse_sntp_output("ntp_adjtime() returned -1").is_none());
     }
 
     #[test]
@@ -497,8 +667,40 @@ mod tests {
         };
         let (off, err) = peer_offset_and_err(&ex);
         assert_eq!(off, 0);
-        // delay = (5-1) - (3-2) = 3 ms; half = 2000 + 100
         assert_eq!(err, 2100);
+    }
+
+    #[test]
+    fn peer_err_saturates_at_max() {
+        let ex = PeerExchange {
+            t1_us: 0,
+            t2_us: 0,
+            t3_us: 0,
+            t4_us: u64::MAX as i64 / 4,
+            peer_off_us: 0,
+            peer_err_us: CLOCK_UNKNOWN_ERR_US,
+        };
+        let (_, err) = peer_offset_and_err(&ex);
+        assert_eq!(err, CLOCK_UNKNOWN_ERR_US);
+    }
+
+    #[test]
+    fn cache_reader_never_sees_partial_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = resolve_clock_cache_path(dir.path(), None);
+        let good = ClockCacheRecord {
+            sampled_at: "2020-01-01T00:00:00Z".into(),
+            off_us: 99,
+            err_us: 100,
+            src: "chrony".into(),
+        };
+        write_cache(&path, &good).unwrap();
+        let parent = path.parent().unwrap();
+        let tmp = parent.join(".sample.json.tmp");
+        fs::write(&tmp, "{\"sampled_at\":").unwrap();
+        let still = read_cache(&path).unwrap().expect("prior complete record");
+        assert_eq!(still.off_us, 99);
+        assert!(!tmp.exists() || fs::read_to_string(&tmp).unwrap().starts_with('{'));
     }
 
     #[test]
@@ -518,7 +720,7 @@ mod tests {
             max_age_s: 60,
             timeout: Duration::from_millis(50),
             peer: None,
-            sntp_server: DEFAULT_SNTP_SERVER,
+            sntp_server: "example.invalid",
             transport: None,
             force_refresh: false,
             platform_probe: false,
@@ -539,10 +741,26 @@ mod tests {
         }
     }
 
+    struct SlowTransport;
+
+    impl PeerClockTransport for SlowTransport {
+        fn round_trip(&self) -> Result<PeerExchange, PeerTransportError> {
+            std::thread::sleep(Duration::from_secs(3));
+            Ok(PeerExchange {
+                t1_us: 0,
+                t2_us: 1,
+                t3_us: 2,
+                t4_us: 3,
+                peer_off_us: 0,
+                peer_err_us: 1,
+            })
+        }
+    }
+
     #[test]
     fn peer_sample_via_fake_transport() {
         let dir = tempfile::tempdir().unwrap();
-        let transport = FakeTransport {
+        let transport = Arc::new(FakeTransport {
             ex: PeerExchange {
                 t1_us: 0,
                 t2_us: 50,
@@ -551,21 +769,41 @@ mod tests {
                 peer_off_us: 0,
                 peer_err_us: 5,
             },
-        };
+        });
         let opts = SampleOpts {
             root: dir.path(),
             config_data_dir: None,
             max_age_s: 0,
             timeout: Duration::from_secs(1),
             peer: Some("laptop-1"),
-            sntp_server: DEFAULT_SNTP_SERVER,
-            transport: Some(&transport),
+            sntp_server: "example.invalid",
+            transport: Some(transport),
             force_refresh: true,
             platform_probe: true,
         };
         let sample = sample_latest(&opts).unwrap();
         assert_eq!(sample.src, "peer:laptop-1");
         assert!(sample.err_us >= 5);
+    }
+
+    #[test]
+    fn peer_sample_hits_outer_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let transport = Arc::new(SlowTransport);
+        let opts = SampleOpts {
+            root: dir.path(),
+            config_data_dir: None,
+            max_age_s: 0,
+            timeout: Duration::from_millis(80),
+            peer: Some("laptop-2"),
+            sntp_server: "example.invalid",
+            transport: Some(transport),
+            force_refresh: true,
+            platform_probe: false,
+        };
+        let sample = sample_latest(&opts).unwrap();
+        assert_eq!(sample.src, "none");
+        assert_eq!(sample.err_us, CLOCK_UNKNOWN_ERR_US);
     }
 
     #[test]
@@ -585,7 +823,7 @@ mod tests {
             max_age_s: 0,
             timeout: Duration::from_millis(50),
             peer: None,
-            sntp_server: DEFAULT_SNTP_SERVER,
+            sntp_server: "example.invalid",
             transport: None,
             force_refresh: true,
             platform_probe: false,
