@@ -6,7 +6,7 @@ use crate::replay::{parse_event_log, ReplayError};
 use crate::view::{Feed, RecordView, Snapshot, ViewContract};
 use crate::{Checked, UnitOfWork};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{File, OpenOptions};
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
@@ -118,6 +118,15 @@ pub enum RecordSurfaceError {
     MissingLog(String),
 }
 
+/// How a unit's keys relate to what the log already holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyCheck {
+    /// No key is in the log yet.
+    New,
+    /// Every event is already in the log, equal on every field except `record_time`.
+    Duplicate,
+}
+
 impl std::fmt::Display for RecordSurfaceError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -125,7 +134,7 @@ impl std::fmt::Display for RecordSurfaceError {
             RecordSurfaceError::Commit(e) => write!(f, "{e}"),
             RecordSurfaceError::Replay(e) => write!(f, "{e}"),
             RecordSurfaceError::Idempotency { key } => {
-                write!(f, "idempotency key rejected: {key}")
+                write!(f, "idempotency conflict on key {key}: already logged with different content, or the unit is only partly logged")
             }
             RecordSurfaceError::MissingLog(m) => write!(f, "missing log: {m}"),
         }
@@ -141,7 +150,10 @@ pub fn commit_json(
 ) -> Result<CommitResult, RecordSurfaceError> {
     let _lock = ExclusiveLogLock::acquire(log)?;
     let unit = parse_unit(unit_json)?;
-    reject_known_keys(log, &unit)?;
+    if check_known_keys(log, &unit)? == KeyCheck::Duplicate {
+        // A retry of a unit that already landed: the same fact, not a new one.
+        return Ok(CommitResult::duplicate());
+    }
     #[cfg(test)]
     test_hold();
     Commit::new(log)
@@ -284,23 +296,58 @@ fn test_hold() {
     std::thread::sleep(std::time::Duration::from_millis(ms));
 }
 
-fn reject_known_keys(log: &Path, unit: &UnitOfWork<JsonPayload>) -> Result<(), RecordSurfaceError> {
+/// Sort a unit against the log by (aggregate, key).
+///
+/// - no key logged: [`KeyCheck::New`]
+/// - every event logged and equal except `record_time`: [`KeyCheck::Duplicate`]
+///   (the MCP server stamps a fresh `record_time` on each call, so a retry differs there)
+/// - anything else, including a key repeated inside the unit: an idempotency conflict
+fn check_known_keys(
+    log: &Path,
+    unit: &UnitOfWork<JsonPayload>,
+) -> Result<KeyCheck, RecordSurfaceError> {
     let existing = if log.is_file() {
         load_events(log)?
     } else {
         Vec::new()
     };
-    let mut seen: BTreeSet<(String, String)> = existing
+    let logged: BTreeMap<(String, String), EventEnvelope<JsonPayload>> = existing
         .into_iter()
-        .map(|event| (event.aggregate.0, event.key.0))
+        .map(|event| ((event.aggregate.0.clone(), event.key.0.clone()), event))
         .collect();
+    let mut in_unit: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut known = 0usize;
     for event in &unit.events {
-        let key = event.key.0.clone();
-        if !seen.insert((event.aggregate.0.clone(), key.clone())) {
-            return Err(RecordSurfaceError::Idempotency { key });
+        let id = (event.aggregate.0.clone(), event.key.0.clone());
+        if !in_unit.insert(id.clone()) {
+            return Err(RecordSurfaceError::Idempotency { key: id.1 });
+        }
+        if let Some(prior) = logged.get(&id) {
+            if !same_except_record_time(prior, event) {
+                return Err(RecordSurfaceError::Idempotency { key: id.1 });
+            }
+            known += 1;
         }
     }
-    Ok(())
+    match known {
+        0 => Ok(KeyCheck::New),
+        n if n == unit.events.len() => Ok(KeyCheck::Duplicate),
+        _ => {
+            let key = unit
+                .events
+                .iter()
+                .find(|e| logged.contains_key(&(e.aggregate.0.clone(), e.key.0.clone())))
+                .map(|e| e.key.0.clone())
+                .unwrap_or_default();
+            Err(RecordSurfaceError::Idempotency { key })
+        }
+    }
+}
+
+fn same_except_record_time(a: &EventEnvelope<JsonPayload>, b: &EventEnvelope<JsonPayload>) -> bool {
+    let mut b = b.clone();
+    b.record_time = a.record_time.clone();
+    *a == b
 }
 
 #[cfg(test)]
@@ -365,7 +412,7 @@ mod tests {
     }
 
     #[test]
-    fn scenario_a_commit_snapshot_equals_replay_and_rejects_same_key() {
+    fn scenario_a_commit_snapshot_equals_replay_and_dedupes_same_key() {
         let (dir, log) = temp_log();
         commit_json(&log, SCENARIO_A, &CommitFault::default()).unwrap();
         let snap = snapshot_json(&log, None).unwrap();
@@ -381,9 +428,68 @@ mod tests {
             assert_eq!(fact.stable_id, row.aggregate);
             assert_eq!(fact.version, row.version);
         }
-        let err = commit_json(&log, SCENARIO_A, &CommitFault::default()).unwrap_err();
-        assert!(err.to_string().contains("idempotency"), "{err}");
+        let again = commit_json(&log, SCENARIO_A, &CommitFault::default()).unwrap();
+        assert_eq!(again, CommitResult::duplicate());
         assert_eq!(nonempty_lines(&log), 3);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn same_key_different_payload_conflicts() {
+        let (dir, log) = temp_log();
+        let first = one_event(
+            "k-1",
+            "01JCV1Q8Z00000000000000000",
+            r#"{"writer":"laptop-1","note":"a"}"#,
+        );
+        let edited = one_event(
+            "k-1",
+            "01JCV1Q8Z00000000000000000",
+            r#"{"writer":"laptop-1","note":"b"}"#,
+        );
+        commit_json(&log, &first, &CommitFault::default()).unwrap();
+        let err = commit_json(&log, &edited, &CommitFault::default()).unwrap_err();
+        assert!(err.to_string().contains("idempotency conflict"), "{err}");
+        assert_eq!(nonempty_lines(&log), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn partial_duplicate_unit_conflicts() {
+        let (dir, log) = temp_log();
+        let first = one_event(
+            "k-1",
+            "01JCV1Q8Z00000000000000000",
+            r#"{"writer":"laptop-1"}"#,
+        );
+        commit_json(&log, &first, &CommitFault::default()).unwrap();
+        let mut events: Vec<serde_json::Value> = serde_json::from_str(&first).unwrap();
+        let mut second: serde_json::Value = events[0].clone();
+        second["id"] = "01JCV1Q8Z10000000000000000".into();
+        second["key"] = "k-2".into();
+        second["version"] = 2.into();
+        events.push(second);
+        let unit = serde_json::to_string(&events).unwrap();
+        let err = commit_json(&log, &unit, &CommitFault::default()).unwrap_err();
+        assert!(err.to_string().contains("idempotency conflict"), "{err}");
+        assert_eq!(nonempty_lines(&log), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn duplicate_ignores_record_time() {
+        let (dir, log) = temp_log();
+        let first = one_event(
+            "k-1",
+            "01JCV1Q8Z00000000000000000",
+            r#"{"writer":"laptop-1"}"#,
+        );
+        commit_json(&log, &first, &CommitFault::default()).unwrap();
+        let retry = first.replace("2026-10-26T19:00:00+01:00", "2026-10-27T08:00:00+01:00");
+        assert_ne!(first, retry);
+        let res = commit_json(&log, &retry, &CommitFault::default()).unwrap();
+        assert!(res.duplicate);
+        assert_eq!(nonempty_lines(&log), 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 

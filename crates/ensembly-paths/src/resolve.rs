@@ -8,6 +8,11 @@ pub const LEGACY_OPS_PRIVATE_PATH: &str = "private/state/peram-ops.sqlite";
 pub const DEFAULT_MEMORY_PATH: &str = "data/local/ensembly-memory.json";
 pub const LEGACY_MEMORY_PATH: &str = "data/local/peram-memory.json";
 
+/// Record event log when no flag, env, or config names one.
+pub const DEFAULT_RECORD_LOG_PATH: &str = "data/local/record/events.jsonl";
+/// Record log location under a configured `paths.data_dir`.
+const CONFIG_RECORD_LOG_NAME: &str = "record/events.jsonl";
+
 pub const DEFAULT_AGENT_ID: &str = "ensembly-swarm";
 pub const LEGACY_AGENT_ID: &str = "peram-swarm";
 
@@ -27,6 +32,33 @@ pub fn env_alias(primary: &str, legacy: &str) -> Option<String> {
         .ok()
         .filter(|s| !s.is_empty())
         .or_else(|| std::env::var(legacy).ok().filter(|s| !s.is_empty()))
+}
+
+/// Resolve the record event log.
+///
+/// Order: `--log`, then `ENSEMBLY_RECORD_LOG` (passed in as `env`), then an existing
+/// `<root>/data/local/record/events.jsonl`, then `<data_dir>/record/events.jsonl`
+/// when `data_dir` is a directory, else `<root>/data/local/record/events.jsonl`.
+pub fn resolve_record_log(
+    root: &Path,
+    explicit: Option<PathBuf>,
+    env: Option<String>,
+    config_data: Option<&Path>,
+) -> PathBuf {
+    if let Some(path) = explicit {
+        return path;
+    }
+    if let Some(path) = env.filter(|s| !s.trim().is_empty()) {
+        return PathBuf::from(path);
+    }
+    let local = root.join(DEFAULT_RECORD_LOG_PATH);
+    if local.is_file() {
+        return local;
+    }
+    match config_data.filter(|p| p.is_dir()) {
+        Some(data) => data.join(CONFIG_RECORD_LOG_NAME),
+        None => local,
+    }
 }
 
 pub fn resolve_ops_db(explicit: Option<PathBuf>) -> PathBuf {

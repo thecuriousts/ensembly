@@ -27,7 +27,7 @@ A relative `XDG_*` value is ignored, as the XDG spec requires.
 | Key | Type | Default | Meaning |
 |-----|------|---------|---------|
 | `schema` | int | `1` | Config format version. Bumped only when a key changes meaning. |
-| `paths.data_dir` | string | absolute `${XDG_DATA_HOME:-$HOME/.local/share}/ensembly` | Where kernel data lives: ops SQLite and episodic memory. `init` creates the directory. The runtime uses this when `--db` / `--memory` are omitted and no legacy `data/local/` files exist in the working directory. |
+| `paths.data_dir` | string | absolute `${XDG_DATA_HOME:-$HOME/.local/share}/ensembly` | Where kernel data lives: ops SQLite, episodic memory, and the record log (`record/events.jsonl`). `init` creates the directory. The runtime uses this when `--db` / `--memory` are omitted and no legacy `data/local/` files exist in the working directory. `record` uses it when `--log` and `ENSEMBLY_RECORD_LOG` are unset and no `data/local/record/events.jsonl` exists in the working directory. |
 
 ### `[[backup.sources]]` (portable bundle)
 
@@ -64,4 +64,19 @@ ensembly init --force    # replace an existing file
 
 | Key | Read by |
 |-----|---------|
-| `paths.data_dir` | `init` (write default), runtime path resolution when `--db` / `--memory` are omitted |
+| `paths.data_dir` | `init` (write default), runtime path resolution when `--db` / `--memory` are omitted, `record` log resolution when `--log` / `ENSEMBLY_RECORD_LOG` are unset |
+
+## Record log
+
+```mermaid
+flowchart LR
+  A["--log"]:::cmd -->|unset| B["ENSEMBLY_RECORD_LOG"]:::cmd
+  B -->|unset| C["existing ./data/local/record/events.jsonl"]:::file
+  C -->|absent| D["paths.data_dir/record/events.jsonl"]:::data
+  D -->|no data_dir| E["./data/local/record/events.jsonl"]:::file
+  classDef cmd fill:#1e3a5f,stroke:#60a5fa,color:#ffffff
+  classDef file fill:#4c1d95,stroke:#a78bfa,color:#ffffff
+  classDef data fill:#065f46,stroke:#34d399,color:#ffffff
+```
+
+When the path was not given with `--log`, `record` names it on stderr. The MCP server keeps its own path guard and does not use this order.

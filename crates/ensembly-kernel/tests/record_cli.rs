@@ -72,7 +72,7 @@ fn dir_has_partial_jsonl_line(dir: &Path) -> bool {
 }
 
 #[test]
-fn scenario_a_cli_commit_snapshot_equals_replay_and_rejects_same_key() {
+fn scenario_a_cli_commit_snapshot_equals_replay_and_dedupes_same_key() {
     let dir = tempfile::tempdir().unwrap();
     let log = dir.path().join("events.jsonl");
     let unit = scenario("a-happy-events.json");
@@ -106,9 +106,9 @@ fn scenario_a_cli_commit_snapshot_equals_replay_and_rejects_same_key() {
         .arg(&log)
         .arg("--unit")
         .arg(&unit));
-    assert!(!again.status.success());
-    let err = String::from_utf8_lossy(&again.stderr);
-    assert!(err.contains("idempotency"), "{err}");
+    let dup: serde_json::Value = serde_json::from_str(&stdout_ok(&again)).unwrap();
+    assert_eq!(dup["phase"], "done");
+    assert_eq!(dup["duplicate"], true);
     assert_eq!(nonempty_lines(&log), 3);
 
     let before = fs::read(&log).unwrap();
@@ -178,4 +178,56 @@ fn scenario_d_crash_mid_append_and_cli_recover() {
         Err(ViewError::ReadOnly)
     );
     assert_eq!(fs::read_to_string(&log_v).unwrap(), text);
+}
+
+/// Kernel bin with an isolated HOME and XDG config, and no record-log env from the caller.
+fn isolated_kernel_bin(dir: &Path) -> Command {
+    let mut cmd = kernel_bin(dir);
+    cmd.env("HOME", dir.join("home"))
+        .env("XDG_CONFIG_HOME", dir.join("home/.config"))
+        .env_remove("ENSEMBLY_RECORD_LOG");
+    cmd
+}
+
+#[test]
+fn record_log_defaults_to_config_data_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data-dir");
+    fs::create_dir_all(&data).unwrap();
+    let cfg = dir.path().join("home/.config/ensembly");
+    fs::create_dir_all(&cfg).unwrap();
+    fs::write(
+        cfg.join("config.toml"),
+        format!("schema = 1\n\n[paths]\ndata_dir = \"{}\"\n", data.display()),
+    )
+    .unwrap();
+    let unit = scenario("a-happy-events.json");
+    let out = run(isolated_kernel_bin(dir.path())
+        .args(["record", "commit", "--unit"])
+        .arg(&unit));
+    let body: serde_json::Value = serde_json::from_str(&stdout_ok(&out)).unwrap();
+    assert_eq!(body["phase"], "done");
+    let log = data.join("record/events.jsonl");
+    assert_eq!(nonempty_lines(&log), 3);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("note: record log"), "{stderr}");
+
+    let snap_out = stdout_ok(&run(
+        isolated_kernel_bin(dir.path()).args(["record", "view", "snapshot"])
+    ));
+    let snap: Snapshot = serde_json::from_str(&snap_out).unwrap();
+    assert_eq!(snap.at, Version(2));
+}
+
+#[test]
+fn env_record_log_wins() {
+    let dir = tempfile::tempdir().unwrap();
+    let env_log = dir.path().join("from-env/events.jsonl");
+    let unit = scenario("a-happy-events.json");
+    stdout_ok(&run(isolated_kernel_bin(dir.path())
+        .env("ENSEMBLY_RECORD_LOG", &env_log)
+        .args(["record", "commit", "--unit"])
+        .arg(&unit)));
+    assert_eq!(nonempty_lines(&env_log), 3);
+    assert!(!dir.path().join("data/local/record/events.jsonl").exists());
 }

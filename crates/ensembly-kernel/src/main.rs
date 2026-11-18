@@ -44,7 +44,7 @@ use ensembly_kernel::turn::{
 };
 use ensembly_kernel::{kernel_version, private_path_patterns};
 use ensembly_paths::DEFAULT_OPS_PATH;
-use ensembly_paths::{config_file_path, load_paths_data_dir, ConfigError};
+use ensembly_paths::{config_file_path, load_paths_data_dir, resolve_record_log, ConfigError};
 use ensembly_schema::{commit_json, feed_json, recover_json, snapshot_json, CommitFault};
 #[cfg(feature = "opportunity-finder")]
 use opportunity_cli::{AppsCmd, RecordAppsCmd};
@@ -53,7 +53,7 @@ use std::path::{Path, PathBuf};
 #[derive(Parser)]
 #[command(name = env!("CARGO_BIN_NAME"), about = "ensembly operator kernel (Rust)")]
 struct Cli {
-    /// Ops SQLite path (T1). When omitted: existing `data/local/` or `private/state/` files, else `paths.data_dir` from config, else `data/local/ensembly-ops.sqlite`.
+    /// Ops SQLite path (T1). When omitted: existing `data/local/` or `private/state/` files, else `paths.data_dir` from config, else `data/local/ensembly-ops.sqlite`. Not read by `record` (see --log) or `pulse` (see --pulse-db).
     #[arg(long, global = true)]
     db: Option<PathBuf>,
 
@@ -423,18 +423,23 @@ enum Commands {
 enum RecordCmd {
     /// Append one unit
     Commit {
-        /// Event log path
+        /// Event log path. When omitted: `ENSEMBLY_RECORD_LOG`, else an existing `data/local/record/events.jsonl`, else `paths.data_dir/record/events.jsonl`, else `data/local/record/events.jsonl`.
         #[arg(long)]
-        log: PathBuf,
-        /// Unit JSON: an event array, or an object with an events array
+        log: Option<PathBuf>,
+        /// Unit JSON: an event array, or an object with an `events` array. Each event has
+        /// exactly these fields: `id` (ULID), `aggregate`, `key` (idempotency key), `version`,
+        /// `event_time`, `record_time` (RFC 3339), `source`, `schema_v` (1), optional `prev_hash`,
+        /// and `payload` (an object with a `writer` host alias). Unknown fields are refused.
+        /// Example: crates/ensembly-schema/fixtures/scenarios/a-happy-events.json.
+        /// Re-sending a unit that is already logged returns `"duplicate":true` and writes nothing.
         #[arg(long)]
         unit: String,
     },
     /// Finish a commit that stopped after fsync
     Recover {
-        /// Event log path
+        /// Event log path. When omitted: `ENSEMBLY_RECORD_LOG`, else an existing `data/local/record/events.jsonl`, else `paths.data_dir/record/events.jsonl`, else `data/local/record/events.jsonl`.
         #[arg(long)]
-        log: PathBuf,
+        log: Option<PathBuf>,
     },
     /// Read a snapshot or a change feed
     View {
@@ -453,18 +458,18 @@ enum RecordCmd {
 enum RecordViewCmd {
     /// Facts at one version
     Snapshot {
-        /// Event log path
+        /// Event log path. When omitted: `ENSEMBLY_RECORD_LOG`, else an existing `data/local/record/events.jsonl`, else `paths.data_dir/record/events.jsonl`, else `data/local/record/events.jsonl`.
         #[arg(long)]
-        log: PathBuf,
+        log: Option<PathBuf>,
         /// Version to read. Omit for the newest version in the log.
         #[arg(long)]
         at: Option<u64>,
     },
     /// Events strictly after a version
     Feed {
-        /// Event log path
+        /// Event log path. When omitted: `ENSEMBLY_RECORD_LOG`, else an existing `data/local/record/events.jsonl`, else `paths.data_dir/record/events.jsonl`, else `data/local/record/events.jsonl`.
         #[arg(long)]
-        log: PathBuf,
+        log: Option<PathBuf>,
         #[arg(long)]
         since: u64,
     },
@@ -1250,22 +1255,26 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
 fn cmd_record(cmd: RecordCmd) -> Result<()> {
     match cmd {
         RecordCmd::Commit { log, unit } => {
+            let log = record_log(log);
             let result = commit_json(&log, &unit, &CommitFault::default())?;
             println!("{}", serde_json::to_string(&result)?);
             Ok(())
         }
         RecordCmd::Recover { log } => {
+            let log = record_log(log);
             let result = recover_json(&log, &CommitFault::default())?;
             println!("{}", serde_json::to_string(&result)?);
             Ok(())
         }
         RecordCmd::View { sub } => match sub {
             RecordViewCmd::Snapshot { log, at } => {
+                let log = record_log(log);
                 let snap = snapshot_json(&log, at)?;
                 println!("{}", serde_json::to_string(&snap)?);
                 Ok(())
             }
             RecordViewCmd::Feed { log, since } => {
+                let log = record_log(log);
                 let feed = feed_json(&log, since)?;
                 println!("{}", serde_json::to_string(&feed)?);
                 Ok(())
@@ -1274,6 +1283,24 @@ fn cmd_record(cmd: RecordCmd) -> Result<()> {
         #[cfg(feature = "opportunity-finder")]
         RecordCmd::Apps { sub } => opportunity_cli::cmd_record_apps(sub),
     }
+}
+
+/// The record log for this call. An explicit `--log` is used as is; any other choice is
+/// named on stderr so stdout stays machine-readable. Config is read here, not eagerly,
+/// because a lone `--db` skips the eager load.
+fn record_log(explicit: Option<PathBuf>) -> PathBuf {
+    if let Some(path) = explicit {
+        return path;
+    }
+    let config_data = load_paths_data_dir().ok().flatten();
+    let path = resolve_record_log(
+        Path::new(""),
+        None,
+        std::env::var("ENSEMBLY_RECORD_LOG").ok(),
+        config_data.as_deref(),
+    );
+    eprintln!("note: record log {}", path.display());
+    path
 }
 
 fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {

@@ -14,9 +14,9 @@ import urllib.request
 
 ROOT = os.environ.get("FLOWINGSTACK_ROOT") or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FORMAL = os.path.join(ROOT, "formal")
-JAR = "tla2tools-1.8.0.jar"
-URL = "https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar"
-SHA = "e1f11b75c4b5bc4478ba0ac5cb6ae28e40a01b0016bc33e0aa97da22dfdbcd7f"
+JAR = "tla2tools-1.7.4.jar"
+URL = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+SHA = "936a262061c914694dfd669a543be24573c45d5aa0ff20a8b96b23d01e050e88"
 SKIP = 3
 
 

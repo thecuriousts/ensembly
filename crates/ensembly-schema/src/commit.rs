@@ -34,6 +34,27 @@ pub struct CommitFault {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct CommitResult {
     pub phase: CommitPhase,
+    /// True when the unit was already in the log and nothing was written.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub duplicate: bool,
+}
+
+impl CommitResult {
+    /// A result that stopped at, or finished in, `phase`.
+    pub fn at(phase: CommitPhase) -> Self {
+        Self {
+            phase,
+            duplicate: false,
+        }
+    }
+
+    /// A retry of a unit that already landed. Nothing was appended.
+    pub fn duplicate() -> Self {
+        Self {
+            phase: CommitPhase::Done,
+            duplicate: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,9 +147,7 @@ impl Commit {
         if phase != CommitPhase::Verify {
             self.cleanup_staging()?;
             clear_checkpoint(&self.checkpoint_path())?;
-            return Ok(CommitResult {
-                phase: CommitPhase::Abort,
-            });
+            return Ok(CommitResult::at(CommitPhase::Abort));
         }
         let unit = unit_from_lines::<P>(&ck.unit_lines)?;
         self.run_from(CommitPhase::Verify, unit, fault)
@@ -170,9 +189,7 @@ impl Commit {
                     self.fsync_unit(&lines)?;
                     write_checkpoint(&self.checkpoint_path(), CommitPhase::Verify, &lines)?;
                     if fault.crash_entering == Some(CommitPhase::Verify) {
-                        return Ok(CommitResult {
-                            phase: CommitPhase::Verify,
-                        });
+                        return Ok(CommitResult::at(CommitPhase::Verify));
                     }
                     CommitPhase::Verify
                 }
@@ -180,12 +197,10 @@ impl Commit {
                     let lines = encode_unit(&unit.events)?;
                     verify_log_tail::<P>(self.log_path(), &lines)?;
                     clear_checkpoint(&self.checkpoint_path())?;
-                    return Ok(CommitResult {
-                        phase: CommitPhase::Done,
-                    });
+                    return Ok(CommitResult::at(CommitPhase::Done));
                 }
                 CommitPhase::Done | CommitPhase::Abort => {
-                    return Ok(CommitResult { phase });
+                    return Ok(CommitResult::at(phase));
                 }
             };
         }
@@ -282,9 +297,7 @@ impl Commit {
     fn abort_cleanup(&self, _phase: CommitPhase) -> Result<CommitResult, CommitError> {
         let _ = self.cleanup_staging();
         let _ = clear_checkpoint(&self.checkpoint_path());
-        Ok(CommitResult {
-            phase: CommitPhase::Abort,
-        })
+        Ok(CommitResult::at(CommitPhase::Abort))
     }
 }
 

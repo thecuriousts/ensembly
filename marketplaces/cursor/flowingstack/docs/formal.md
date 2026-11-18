@@ -46,7 +46,7 @@ stateDiagram-v2
 | `scripts/formal-check --bend` | 0 law holds, 1 fails, 3 bend missing (skip) |
 
 Edges live in `formal/machine.tsv`. Tests hold the spec, this chart and the replay of the real scripts to it.
-TLC: set `TLA2TOOLS` to a tla2tools.jar, or the script fetches v1.8.0 by sha256 into the user cache.
+TLC: set `TLA2TOOLS` to a tla2tools.jar, or the script fetches v1.7.4 by sha256 into the user cache. v1.7.4 is the last stable release; v1.8.0 is a pre-release whose jar is rebuilt in place, so its hash cannot be pinned.
 Statechart handoff: read TLC output with the pstack statechart skill.
 Kani: only for hosts with Rust code, for parsers and byte handling; no Python here.
 Bend 2: `formal/bend/ledger.bend` states close is idempotent; unchecked until bend runs.
