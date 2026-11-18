@@ -78,9 +78,7 @@ fn prefix_explain_scans_table(conn: &Connection, prefix: &str) -> bool {
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap();
-    lines
-        .iter()
-        .any(|l| l.contains("SCAN memory_traces"))
+    lines.iter().any(|l| l.contains("SCAN memory_traces"))
 }
 
 fn timed_prefix(conn: &Connection, prefix: &str, limit: usize) -> Duration {
@@ -93,8 +91,14 @@ fn timed_prefix(conn: &Connection, prefix: &str, limit: usize) -> Duration {
 #[test]
 fn nat_key_prefix_upper_bound_cases() {
     assert_eq!(pc::nat_key_prefix_upper_bound(""), None);
-    assert_eq!(pc::nat_key_prefix_upper_bound("demo/"), Some("demo0".into()));
-    assert_eq!(pc::nat_key_prefix_upper_bound("demo/a"), Some("demo/b".into()));
+    assert_eq!(
+        pc::nat_key_prefix_upper_bound("demo/"),
+        Some("demo0".into())
+    );
+    assert_eq!(
+        pc::nat_key_prefix_upper_bound("demo/a"),
+        Some("demo/b".into())
+    );
     assert_eq!(
         pc::nat_key_prefix_upper_bound("demo/\u{ff0e}\u{ff0e}"),
         Some("demo/\u{ff0e}\u{ff0f}".into())
@@ -165,26 +169,38 @@ struct RecallCase {
 fn build_recall_fixture(path: &PathBuf) {
     let c = open_fixture_db(path);
     let rows: &[(&str, &str, &str)] = &[
-        ("rec/k1", "alpha bravo mission one", "2026-08-01T00:00:00+00:00"),
-        ("rec/k2", "alpha bravo mission two", "2026-09-01T00:00:00+00:00"),
-        ("rec/k3", "gamma delta elsewhere", "2026-08-15T00:00:00+00:00"),
+        (
+            "rec/k1",
+            "alpha bravo mission one",
+            "2026-08-01T00:00:00+00:00",
+        ),
+        (
+            "rec/k2",
+            "alpha bravo mission two",
+            "2026-09-01T00:00:00+00:00",
+        ),
+        (
+            "rec/k3",
+            "gamma delta elsewhere",
+            "2026-08-15T00:00:00+00:00",
+        ),
         ("rec/k4", "alpha bravo", "2026-07-01T00:00:00+00:00"),
         ("rec/k5", "mission three alone", "2026-08-20T00:00:00+00:00"),
         ("rec/k6", "alpha elsewhere", "2026-08-10T00:00:00+00:00"),
         ("rec/k7", "bravo elsewhere", "2026-08-11T00:00:00+00:00"),
         ("rec/k8", "noise", "2026-01-01T00:00:00+00:00"),
-        ("rec/k9", "alpha bravo mission fresh", "2026-11-01T00:00:00+00:00"),
-        ("rec/k10", "alpha bravo mission stale", "2026-01-01T00:00:00+00:00"),
         (
-            "rec/s-old",
-            "alpha bravo twin",
-            "2026-01-01T00:00:00+00:00",
-        ),
-        (
-            "rec/s-new",
-            "alpha bravo twin",
+            "rec/k9",
+            "alpha bravo mission fresh",
             "2026-11-01T00:00:00+00:00",
         ),
+        (
+            "rec/k10",
+            "alpha bravo mission stale",
+            "2026-01-01T00:00:00+00:00",
+        ),
+        ("rec/s-old", "alpha bravo twin", "2026-01-01T00:00:00+00:00"),
+        ("rec/s-new", "alpha bravo twin", "2026-11-01T00:00:00+00:00"),
     ];
     for (k, snip, ts) in rows {
         insert_trace(&c, k, snip, ts);
@@ -292,18 +308,8 @@ fn search_same_terms_newer_beats_older() {
     let path = dir.path().join("pulse.sqlite");
     let c = open_fixture_db(&path);
     let snippet = "parity twin terms for ranking";
-    insert_trace(
-        &c,
-        "parity/old",
-        snippet,
-        "2026-05-01T00:00:00Z",
-    );
-    insert_trace(
-        &c,
-        "parity/new",
-        snippet,
-        "2026-10-01T00:00:00Z",
-    );
+    insert_trace(&c, "parity/old", snippet, "2026-05-01T00:00:00Z");
+    insert_trace(&c, "parity/new", snippet, "2026-10-01T00:00:00Z");
     let conn = pc::open_ro(&path).unwrap();
     let rows = pc::read_search(&conn, "parity twin terms ranking", 5).unwrap();
     assert_eq!(
@@ -332,12 +338,7 @@ fn search_natural_language_strips_stopwords() {
         "2026-09-01T12:00:00+00:00",
     );
     let conn = pc::open_ro(&path).unwrap();
-    let rows = pc::read_search(
-        &conn,
-        "when is the box-7 invoice cutoff for Friday",
-        5,
-    )
-    .unwrap();
+    let rows = pc::read_search(&conn, "when is the box-7 invoice cutoff for Friday", 5).unwrap();
     assert!(
         rows.iter().any(|r| r.nat_key == "nl/box7"),
         "stopword-heavy query should still hit content tokens, got {:?}",
@@ -352,25 +353,17 @@ fn search_fresh_first_respects_mixed_offset_timestamps() {
     let c = open_fixture_db(&path);
     let snippet = "offset twin fact for ranking";
     // Text order would favor +05:30; unixepoch makes +00:00Z row newer.
-    insert_trace(
-        &c,
-        "tz/late-text",
-        snippet,
-        "2026-06-01T10:00:00+05:30",
-    );
-    insert_trace(
-        &c,
-        "tz/newer-instant",
-        snippet,
-        "2026-06-01T04:35:00Z",
-    );
+    insert_trace(&c, "tz/late-text", snippet, "2026-06-01T10:00:00+05:30");
+    insert_trace(&c, "tz/newer-instant", snippet, "2026-06-01T04:35:00Z");
     let conn = pc::open_ro(&path).unwrap();
     let rows = pc::read_search(&conn, "offset twin fact ranking", 3).unwrap();
     assert_eq!(
         rows.first().map(|r| r.nat_key.as_str()),
         Some("tz/newer-instant"),
         "mixed-offset last_seen must rank by instant, got {:?}",
-        rows.iter().map(|r| (&r.nat_key, &r.last_seen)).collect::<Vec<_>>()
+        rows.iter()
+            .map(|r| (&r.nat_key, &r.last_seen))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -379,18 +372,8 @@ fn search_or_fallback_fills_when_and_is_sparse() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("pulse.sqlite");
     let c = open_fixture_db(&path);
-    insert_trace(
-        &c,
-        "or/a",
-        "only alpha token",
-        "2026-10-01T00:00:00+00:00",
-    );
-    insert_trace(
-        &c,
-        "or/b",
-        "only bravo token",
-        "2026-10-02T00:00:00+00:00",
-    );
+    insert_trace(&c, "or/a", "only alpha token", "2026-10-01T00:00:00+00:00");
+    insert_trace(&c, "or/b", "only bravo token", "2026-10-02T00:00:00+00:00");
     let conn = pc::open_ro(&path).unwrap();
     let rows = pc::read_search(&conn, "alpha bravo", 5).unwrap();
     let keys: std::collections::BTreeSet<_> = rows.iter().map(|r| r.nat_key.as_str()).collect();

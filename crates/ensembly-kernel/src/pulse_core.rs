@@ -450,7 +450,11 @@ pub fn search_content_tokens(text: &str) -> Vec<String> {
         .filter(|w| !FTS_STOPWORDS.contains(&w.as_str()))
         .cloned()
         .collect();
-    if content.is_empty() { raw } else { content }
+    if content.is_empty() {
+        raw
+    } else {
+        content
+    }
 }
 
 fn fts_quote_tokens(tokens: &[String]) -> String {
@@ -500,7 +504,11 @@ fn fts_fetch_limit(limit: usize) -> usize {
     limit.saturating_mul(8).clamp(limit, FTS_FETCH_CAP)
 }
 
-fn read_search_fts_candidates(conn: &Connection, fts_q: &str, fetch: usize) -> Result<Vec<SearchHit>> {
+fn read_search_fts_candidates(
+    conn: &Connection,
+    fts_q: &str,
+    fetch: usize,
+) -> Result<Vec<SearchHit>> {
     let cols = TRACE_COLS
         .split(", ")
         .map(|c| format!("t.{c}"))
@@ -552,10 +560,7 @@ fn rank_search_hits(mut hits: Vec<SearchHit>, limit: usize, recency_weight: f64)
         .map(|h| h.instant)
         .fold(f64::NEG_INFINITY, f64::max);
     let half_life_secs = PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS * 86_400.0;
-    let fts_raw: Vec<f64> = hits
-        .iter()
-        .filter_map(|h| h.bm25.map(|b| -b))
-        .collect();
+    let fts_raw: Vec<f64> = hits.iter().filter_map(|h| h.bm25.map(|b| -b)).collect();
     let (min_rel, max_rel) = if fts_raw.is_empty() {
         (0.0, 0.0)
     } else {
@@ -575,12 +580,8 @@ fn rank_search_hits(mut hits: Vec<SearchHit>, limit: usize, recency_weight: f64)
     };
 
     hits.sort_by(|a, b| {
-        let rel_a = a
-            .bm25
-            .map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
-        let rel_b = b
-            .bm25
-            .map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
+        let rel_a = a.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
+        let rel_b = b.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
         let score_a = recency_weight * recency_score(a.instant, newest, half_life_secs)
             + (1.0 - recency_weight) * rel_a;
         let score_b = recency_weight * recency_score(b.instant, newest, half_life_secs)
@@ -598,7 +599,11 @@ fn escape_like(term: &str) -> String {
         .replace('_', "\\_")
 }
 
-fn read_search_like_candidates(conn: &Connection, tokens: &[String], fetch: usize) -> Result<Vec<SearchHit>> {
+fn read_search_like_candidates(
+    conn: &Connection,
+    tokens: &[String],
+    fetch: usize,
+) -> Result<Vec<SearchHit>> {
     if tokens.is_empty() {
         return Ok(Vec::new());
     }
