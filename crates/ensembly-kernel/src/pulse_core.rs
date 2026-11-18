@@ -268,16 +268,37 @@ pub fn db_stats(conn: &Connection) -> Result<DbStats> {
         [],
         |r| r.get(0),
     )?;
+    s.dangling_superseded = dangling_superseded_keys(conn)?;
+    s.unpinned_verified = unpinned_verified(conn)?;
+    s.half_supersessions = half_supersessions(conn)?;
+    Ok(s)
+}
+
+/// Rows whose `superseded_by` names a missing `nat_key`. Sorted by key.
+pub fn dangling_superseded_keys(conn: &Connection) -> Result<Vec<String>> {
+    let mut st = conn.prepare(
+        "SELECT t.nat_key FROM memory_traces t \
+         LEFT JOIN memory_traces u ON u.nat_key = t.superseded_by \
+         WHERE t.superseded_by IS NOT NULL AND t.superseded_by <> '' AND u.nat_key IS NULL \
+         ORDER BY t.nat_key",
+    )?;
+    let keys = st
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(keys)
+}
+
+/// Legacy NOT EXISTS form — property tests only; do not use in production paths.
+#[doc(hidden)]
+pub fn dangling_superseded_keys_legacy(conn: &Connection) -> Result<Vec<String>> {
     let mut st = conn.prepare(
         "SELECT nat_key FROM memory_traces t WHERE superseded_by IS NOT NULL AND superseded_by <> '' \
          AND NOT EXISTS (SELECT 1 FROM memory_traces u WHERE u.nat_key = t.superseded_by) ORDER BY nat_key",
     )?;
-    s.dangling_superseded = st
+    let keys = st
         .query_map([], |r| r.get::<_, String>(0))?
-        .collect::<std::result::Result<_, _>>()?;
-    s.unpinned_verified = unpinned_verified(conn)?;
-    s.half_supersessions = half_supersessions(conn)?;
-    Ok(s)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(keys)
 }
 
 /// Keys of `tool-verified` rows with no evidence pin: `verify_hash` is NULL, empty, or
