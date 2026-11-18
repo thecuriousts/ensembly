@@ -37,6 +37,7 @@ Outputs under `--out`: `results.json` (machine-readable, includes `EXPLAIN QUERY
 | `fallback_text_search` | `read_search` with FTS-hostile input → LIKE fallback. |
 | `pulse_list` | `pulse_supersede::list_live`. |
 | `dangling_supersession_check` | `pulse_core::db_stats` (includes dangling supersession query). |
+| **Pulse index** block | After timings above: `pulse list` and dangling (legacy `NOT EXISTS` + production `JOIN`) each without and with `pulse index apply`; machine hostname in the report. |
 | `record_log_snapshot` | `snapshot_json` on the generated log. |
 | `single_event_commit` | One-event `commit_json` append. |
 | `feed_last_10` | `feed_json` since `version - 10`. |

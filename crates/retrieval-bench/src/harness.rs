@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use anyhow::Result;
 use ensembly_kernel::pulse_core as pc;
+use ensembly_kernel::pulse_index::{self, ApplyOptions};
 use ensembly_kernel::pulse_supersede as ps;
 use ensembly_schema::{commit_json, feed_json, snapshot_json, CommitFault};
 use rusqlite::{params, Connection};
@@ -29,9 +30,21 @@ pub struct SizeReport {
     pub size: usize,
     pub seed: u64,
     pub latency_ms: OperationLatencies,
+    pub pulse_index: PulseIndexLatency,
     pub quality: QualityScores,
     pub explain_query_plan: ExplainPlans,
     pub record_versions: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PulseIndexLatency {
+    pub machine: String,
+    pub pulse_list_no_index: LatencyMs,
+    pub pulse_list_with_index: LatencyMs,
+    pub dangling_legacy_no_index: LatencyMs,
+    pub dangling_new_no_index: LatencyMs,
+    pub dangling_legacy_with_index: LatencyMs,
+    pub dangling_new_with_index: LatencyMs,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -61,15 +74,82 @@ pub fn run_size(work: &Path, size: usize, seed: u64) -> Result<SizeReport> {
     let conn = pc::open_ro(&gen.pulse_db)?;
     let quality = score_quality(&conn, &gen.queries)?;
     let latency_ms = measure_latencies(&gen, &conn)?;
+    let pulse_index = measure_pulse_index_latencies(&gen.pulse_db)?;
     let explain_query_plan = collect_explains(&gen.pulse_db)?;
     Ok(SizeReport {
         size,
         seed,
         latency_ms,
+        pulse_index,
         quality,
         explain_query_plan,
         record_versions: gen.record_versions,
     })
+}
+
+fn measure_pulse_index_latencies(db_path: &Path) -> Result<PulseIndexLatency> {
+    let conn = pc::open_ro(db_path)?;
+    let pulse_list_no_index = bench(|| {
+        let _ = ps::list_live(&conn, LIST_LIVE_LIMIT)?;
+        Ok(())
+    });
+    let dangling_legacy_no_index = bench(|| {
+        let _ = pc::dangling_superseded_keys_legacy(&conn)?;
+        Ok(())
+    });
+    let dangling_new_no_index = bench(|| {
+        let _ = pc::dangling_superseded_keys(&conn)?;
+        Ok(())
+    });
+    drop(conn);
+
+    pulse_index::apply(
+        db_path,
+        "laptop-1",
+        ApplyOptions {
+            dry_run: false,
+            analyze: false,
+        },
+    )?;
+
+    let conn = pc::open_ro(db_path)?;
+    let pulse_list_with_index = bench(|| {
+        let _ = ps::list_live(&conn, LIST_LIVE_LIMIT)?;
+        Ok(())
+    });
+    let dangling_legacy_with_index = bench(|| {
+        let _ = pc::dangling_superseded_keys_legacy(&conn)?;
+        Ok(())
+    });
+    let dangling_new_with_index = bench(|| {
+        let _ = pc::dangling_superseded_keys(&conn)?;
+        Ok(())
+    });
+
+    Ok(PulseIndexLatency {
+        machine: machine_label(),
+        pulse_list_no_index,
+        pulse_list_with_index,
+        dangling_legacy_no_index,
+        dangling_new_no_index,
+        dangling_legacy_with_index,
+        dangling_new_with_index,
+    })
+}
+
+fn machine_label() -> String {
+    std::env::var("RETRIEVAL_BENCH_MACHINE")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| {
+            std::process::Command::new("hostname")
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|h| h.trim().to_string())
+                .filter(|h| !h.is_empty())
+                .unwrap_or_else(|| "unknown-host".into())
+        })
 }
 
 fn measure_latencies(gen: &GeneratedBench, conn: &Connection) -> Result<OperationLatencies> {
@@ -177,8 +257,9 @@ fn collect_explains(db_path: &Path) -> Result<ExplainPlans> {
         )?,
         dangling_supersession: explain(
             &conn,
-            "SELECT nat_key FROM memory_traces t WHERE superseded_by IS NOT NULL AND superseded_by <> '' \
-             AND NOT EXISTS (SELECT 1 FROM memory_traces u WHERE u.nat_key = t.superseded_by) ORDER BY nat_key",
+            "SELECT t.nat_key FROM memory_traces t \
+             LEFT JOIN memory_traces u ON u.nat_key = t.superseded_by \
+             WHERE t.superseded_by IS NOT NULL AND t.superseded_by <> '' AND u.nat_key IS NULL ORDER BY t.nat_key",
             [],
         )?,
     })
