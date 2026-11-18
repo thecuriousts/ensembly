@@ -405,6 +405,11 @@ enum Commands {
         #[command(subcommand)]
         sub: decision_cli::DecisionCmd,
     },
+    /// Clock offset sampler — optional future event `clock` metadata (library + on-disk cache)
+    Clock {
+        #[command(subcommand)]
+        sub: ClockCmd,
+    },
     /// One-shot copy-if-missing: peram-* local files → ensembly-* (never overwrite, never delete)
     #[command(name = "migrate-local-paths")]
     MigrateLocalPaths {
@@ -622,6 +627,31 @@ enum DfCmd {
         #[arg(long)]
         json: bool,
     },
+    Status {
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum ClockCmd {
+    /// Latest offset sample. Cache refresh when older than `--max-age-s` (~2 s sampling cap).
+    Sample {
+        #[arg(long, default_value_t = ensembly_kernel::DEFAULT_CLOCK_MAX_AGE_S)]
+        max_age_s: u32,
+        /// Measure against another host via peer transport (SSH wired in a later slice)
+        #[arg(long)]
+        peer: Option<String>,
+        /// macOS sntp server (hostname only; default time.apple.com)
+        #[arg(long, default_value = ensembly_kernel::DEFAULT_SNTP_SERVER)]
+        sntp_server: String,
+        /// Ignore cache age and attempt a fresh sample within the timeout
+        #[arg(long, default_value_t = false)]
+        force: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Cache location, tool presence, and last sample (no refresh)
     Status {
         #[arg(long)]
         json: bool,
@@ -1247,6 +1277,7 @@ fn dispatch(ctx: &Ctx, cmd: Commands) -> Result<()> {
         #[cfg(feature = "opportunity-finder")]
         Commands::Apps { ledger, sub } => opportunity_cli::cmd_apps(ledger, sub),
         Commands::ChannelPulse { sub } => cmd_channel_pulse(&ctx.db_path, sub),
+        Commands::Clock { sub } => cmd_clock(sub),
         Commands::Record { sub } => cmd_record(sub),
         #[cfg(feature = "opportunity-finder")]
         Commands::Decision { sub } => decision_cli::run(sub),
@@ -1289,6 +1320,73 @@ fn cmd_record(cmd: RecordCmd) -> Result<()> {
 /// The record log for this call. An explicit `--log` is used as is; any other choice is
 /// named on stderr so stdout stays machine-readable. Config is read here, not eagerly,
 /// because a lone `--db` skips the eager load.
+fn cmd_clock(sub: ClockCmd) -> Result<()> {
+    let config_data = load_paths_data_dir().ok().flatten();
+    let config_ref = config_data.as_deref();
+    let root = Path::new("");
+    match sub {
+        ClockCmd::Sample {
+            max_age_s,
+            peer,
+            sntp_server,
+            force,
+            json,
+        } => {
+            if let Some(ref alias) = peer {
+                if !ensembly_kernel::validate_peer_alias(alias) {
+                    bail!("invalid peer alias (use laptop-1, laptop-2, mac-mini, or box)");
+                }
+            }
+            if !ensembly_kernel::validate_ntp_hostname(&sntp_server) {
+                bail!("invalid sntp server hostname");
+            }
+            let unwired = ensembly_kernel::UnwiredPeerTransport;
+            let transport: Option<&dyn ensembly_kernel::PeerClockTransport> = peer
+                .as_ref()
+                .map(|_| &unwired as &dyn ensembly_kernel::PeerClockTransport);
+            let opts = ensembly_kernel::SampleOpts {
+                root,
+                config_data_dir: config_ref,
+                max_age_s,
+                timeout: ensembly_kernel::DEFAULT_CLOCK_SAMPLE_TIMEOUT,
+                peer: peer.as_deref(),
+                sntp_server: &sntp_server,
+                transport,
+                force_refresh: force,
+            };
+            let sample = ensembly_kernel::sample_latest(&opts)?;
+            if json {
+                print_json(&sample)?;
+            } else {
+                println!(
+                    "off_us {} err_us {} src {} age_s {}",
+                    sample.off_us, sample.err_us, sample.src, sample.age_s
+                );
+            }
+            Ok(())
+        }
+        ClockCmd::Status { json } => {
+            let report = ensembly_kernel::clock_status(root, config_ref)?;
+            if json {
+                print_json(&report)?;
+            } else {
+                println!("cache {}", report.cache_path);
+                println!("cache_present {}", report.cache_present);
+                println!("chronyc {}", report.chronyc);
+                println!("sntp {}", report.sntp);
+                println!("platform {}", report.platform);
+                if let Some(s) = report.sample {
+                    println!(
+                        "off_us {} err_us {} src {} age_s {}",
+                        s.off_us, s.err_us, s.src, s.age_s
+                    );
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
 fn record_log(explicit: Option<PathBuf>) -> PathBuf {
     if let Some(path) = explicit {
         return path;

@@ -1,0 +1,1 @@
+offset +0.002000 sec, delay 0.012000
