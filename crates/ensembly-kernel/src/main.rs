@@ -187,6 +187,9 @@ enum PulseIndexCmd {
     Apply {
         #[arg(long)]
         dry_run: bool,
+        /// Update sqlite_stat* via ANALYZE (planner data; not removed by revert).
+        #[arg(long)]
+        analyze: bool,
         #[arg(long)]
         json: bool,
         /// Writer identity; must match the configured ENSEMBLY_WRITER value.
@@ -1032,12 +1035,13 @@ fn pulse_index_cmd(cfg: &pc::PulseCfg, sub: PulseIndexCmd) -> Result<()> {
     match sub {
         PulseIndexCmd::Apply {
             dry_run,
+            analyze,
             json,
             writer,
         } => {
             ensembly_schema::require_configured_writer(&writer)
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
-            let report = pi::apply(&cfg.db, &writer, dry_run)?;
+            let report = pi::apply(&cfg.db, &writer, pi::ApplyOptions { dry_run, analyze })?;
             emit_index_apply(&report, json)
         }
         PulseIndexCmd::Status { json } => {
@@ -1079,9 +1083,10 @@ fn emit_index_apply(
         println!("dry-run: would apply {}", report.applied.len());
     } else {
         println!(
-            "applied {} ({} already present)",
+            "applied {} ({} already present){}",
             report.applied.len(),
-            report.already_present.len()
+            report.already_present.len(),
+            if report.analyzed { "; analyzed" } else { "" }
         );
     }
     Ok(())

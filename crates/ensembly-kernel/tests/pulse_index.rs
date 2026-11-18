@@ -5,7 +5,6 @@ use ensembly_kernel::pulse_index as pi;
 use ensembly_kernel::pulse_supersede as ps;
 use rusqlite::Connection;
 use std::sync::{Mutex, MutexGuard};
-use std::time::Instant;
 use tempfile::TempDir;
 
 static WRITER_ENV: Mutex<()> = Mutex::new(());
@@ -30,6 +29,11 @@ CREATE TABLE conflicts (id INTEGER PRIMARY KEY, subject TEXT NOT NULL, left_id I
   right_id INTEGER NOT NULL, resolution TEXT NOT NULL, ts TEXT NOT NULL);
 INSERT INTO schema_migrations VALUES (1, '2026-01-01T00:00:00+00:00');
 ";
+
+const APPLY_OPTS: pi::ApplyOptions = pi::ApplyOptions {
+    dry_run: false,
+    analyze: false,
+};
 
 fn fresh_db() -> (TempDir, std::path::PathBuf) {
     let dir = TempDir::new().unwrap();
@@ -59,10 +63,10 @@ fn apply_is_idempotent_and_audit_appends() {
     let _g = writer_guard();
     let (_dir, path) = fresh_db();
     let w = "laptop-1";
-    let first = pi::apply(&path, w, false).unwrap();
+    let first = pi::apply(&path, w, APPLY_OPTS).unwrap();
     assert_eq!(first.applied.len(), 3);
     assert!(first.already_present.is_empty());
-    let second = pi::apply(&path, w, false).unwrap();
+    let second = pi::apply(&path, w, APPLY_OPTS).unwrap();
     assert!(second.applied.is_empty());
     assert_eq!(second.already_present.len(), 3);
     let conn = Connection::open(&path).unwrap();
@@ -73,11 +77,32 @@ fn apply_is_idempotent_and_audit_appends() {
 }
 
 #[test]
+fn apply_rolls_back_on_mid_batch_failure() {
+    let _g = writer_guard();
+    let (_dir, path) = fresh_db();
+    let w = "laptop-1";
+    let stmts = pi::managed_sql_statements();
+    let bad = [
+        stmts[0],
+        (
+            "ensembly_memory_traces_bad",
+            "CREATE INDEX bad ON no_such_table (x)",
+        ),
+        stmts[2],
+    ];
+    let err = pi::apply_with_statements(&path, w, APPLY_OPTS, &bad).unwrap_err();
+    assert!(err.to_string().contains("no_such_table") || err.to_string().contains("error"));
+    let conn = Connection::open(&path).unwrap();
+    assert!(!pi::status(&conn).unwrap().iter().any(|r| r.present));
+    assert!(!pi::audit_table_exists(&conn).unwrap());
+}
+
+#[test]
 fn revert_drops_only_managed_indexes() {
     let _g = writer_guard();
     let (_dir, path) = fresh_db();
     let w = "laptop-1";
-    pi::apply(&path, w, false).unwrap();
+    pi::apply(&path, w, APPLY_OPTS).unwrap();
     let conn = Connection::open(&path).unwrap();
     conn.execute_batch(
         "CREATE INDEX not_ours ON memory_traces (source);
@@ -104,6 +129,7 @@ fn revert_drops_only_managed_indexes() {
         )
         .unwrap();
     assert_eq!(foreign, 2);
+    assert!(pi::audit_table_exists(&conn).unwrap());
 }
 
 #[test]
@@ -115,7 +141,7 @@ fn status_reflects_indexes() {
         assert!(!row.present);
     }
     drop(conn);
-    pi::apply(&path, "laptop-1", false).unwrap();
+    pi::apply(&path, "laptop-1", APPLY_OPTS).unwrap();
     let conn = pc::open_ro(&path).unwrap();
     assert!(pi::status(&conn).unwrap().iter().all(|r| r.present));
 }
@@ -189,7 +215,7 @@ fn db_stats_and_list_unchanged_with_indexes() {
         let c = pc::open_ro(&path).unwrap();
         ps::list_live(&c, 100).unwrap()
     };
-    pi::apply(&path, "laptop-1", false).unwrap();
+    pi::apply(&path, "laptop-1", APPLY_OPTS).unwrap();
     let after_stats = {
         let c = pc::open_ro(&path).unwrap();
         pc::db_stats(&c).unwrap()
@@ -221,7 +247,7 @@ fn explain_plans_use_indexes_after_apply() {
         .unwrap();
     }
     drop(conn);
-    pi::apply(&path, "laptop-1", false).unwrap();
+    pi::apply(&path, "laptop-1", APPLY_OPTS).unwrap();
     let conn = pc::open_ro(&path).unwrap();
     let list_sql = "SELECT nat_key FROM memory_traces \
         WHERE kind = 'memory' AND (superseded_by IS NULL OR superseded_by = '') \
@@ -234,67 +260,39 @@ fn explain_plans_use_indexes_after_apply() {
 }
 
 #[test]
-#[ignore = "timing harness; run with --ignored --release for benchmark numbers"]
-fn benchmark_100k_rows_release_numbers() {
+fn dry_run_apply_writes_nothing() {
     let _g = writer_guard();
     let (_dir, path) = fresh_db();
-    let conn = Connection::open(&path).unwrap();
-    conn.execute("BEGIN", []).unwrap();
-    let mut stmt = conn
-        .prepare(
-            "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, first_seen, last_seen, superseded_by)
-             VALUES (?1, ?1, 'fixture', ?2, 'unknown', 'memory', ?2, ?2, NULL)",
-        )
-        .unwrap();
-    for i in 0..100_000 {
-        stmt.execute(rusqlite::params![
-            format!("bench/{i}"),
-            "2026-01-01T00:00:00Z"
-        ])
-        .unwrap();
-        if i % 17 == 0 {
-            conn.execute(
-                "UPDATE memory_traces SET superseded_by = ?1 WHERE rowid = last_insert_rowid()",
-                rusqlite::params![format!("bench/missing/{}", i % 50)],
-            )
-            .unwrap();
-        }
-    }
-    conn.execute("COMMIT", []).unwrap();
-    drop(stmt);
-    drop(conn);
-
-    let conn = pc::open_ro(&path).unwrap();
-    let t0 = Instant::now();
-    let _ = ps::list_live(&conn, 8).unwrap();
-    let list_before_ms = t0.elapsed().as_secs_f64() * 1000.0;
-    let t1 = Instant::now();
-    let _ = pc::dangling_superseded_keys(&conn).unwrap();
-    let dangling_before_ms = t1.elapsed().as_secs_f64() * 1000.0;
-    drop(conn);
-
-    pi::apply(&path, "laptop-1", false).unwrap();
-
-    let conn = pc::open_ro(&path).unwrap();
-    let t2 = Instant::now();
-    let _ = ps::list_live(&conn, 8).unwrap();
-    let list_after_ms = t2.elapsed().as_secs_f64() * 1000.0;
-    let t3 = Instant::now();
-    let _ = pc::dangling_superseded_keys(&conn).unwrap();
-    let dangling_after_ms = t3.elapsed().as_secs_f64() * 1000.0;
-
-    eprintln!(
-        "benchmark 100k: list {:.2} ms -> {:.2} ms; dangling {:.2} ms -> {:.2} ms",
-        list_before_ms, list_after_ms, dangling_before_ms, dangling_after_ms
-    );
-}
-
-#[test]
-fn dry_run_prints_sql_without_writes() {
-    let _g = writer_guard();
-    let (_dir, path) = fresh_db();
-    let report = pi::apply(&path, "laptop-1", true).unwrap();
+    let report = pi::apply(
+        &path,
+        "laptop-1",
+        pi::ApplyOptions {
+            dry_run: true,
+            analyze: false,
+        },
+    )
+    .unwrap();
     assert_eq!(report.applied.len(), 3);
     let conn = Connection::open(&path).unwrap();
     assert!(pi::status(&conn).unwrap().iter().all(|r| !r.present));
+    assert!(!pi::audit_table_exists(&conn).unwrap());
+}
+
+#[test]
+fn dry_run_revert_writes_nothing() {
+    let _g = writer_guard();
+    let (_dir, path) = fresh_db();
+    let before_audit: i64 = {
+        pi::apply(&path, "laptop-1", APPLY_OPTS).unwrap();
+        let conn = Connection::open(&path).unwrap();
+        conn.query_row("SELECT COUNT(*) FROM ensembly_audit", [], |r| r.get(0))
+            .unwrap()
+    };
+    let _ = pi::revert(&path, "laptop-1", true).unwrap();
+    let conn = Connection::open(&path).unwrap();
+    assert!(pi::status(&conn).unwrap().iter().all(|r| r.present));
+    let after_audit: i64 = conn
+        .query_row("SELECT COUNT(*) FROM ensembly_audit", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(before_audit, after_audit);
 }

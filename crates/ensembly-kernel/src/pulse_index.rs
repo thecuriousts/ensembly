@@ -3,7 +3,7 @@
 //! Nothing here runs implicitly: only `ensembly pulse index apply|revert|status`.
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, Transaction, TransactionBehavior};
 use serde::Serialize;
 use std::path::Path;
 use std::time::Duration;
@@ -33,6 +33,13 @@ const ENSURE_AUDIT: &str = "CREATE TABLE IF NOT EXISTS ensembly_audit (
     outcome TEXT NOT NULL
 )";
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ApplyOptions {
+    pub dry_run: bool,
+    /// Run `ANALYZE memory_traces` after indexes (writes `sqlite_stat*`; not undone by revert).
+    pub analyze: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct IndexStatusRow {
     pub name: String,
@@ -44,6 +51,7 @@ pub struct IndexApplyReport {
     pub applied: Vec<String>,
     pub already_present: Vec<String>,
     pub dry_run: bool,
+    pub analyzed: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -77,14 +85,26 @@ pub fn status(conn: &Connection) -> Result<Vec<IndexStatusRow>> {
     Ok(out)
 }
 
-pub fn apply(path: &Path, writer: &str, dry_run: bool) -> Result<IndexApplyReport> {
+pub fn apply(path: &Path, writer: &str, opts: ApplyOptions) -> Result<IndexApplyReport> {
+    apply_with_statements(path, writer, opts, &managed_sql_statements())
+}
+
+/// Test hook: run apply DDL with a custom statement list (same transaction rules).
+#[doc(hidden)]
+pub fn apply_with_statements(
+    path: &Path,
+    writer: &str,
+    opts: ApplyOptions,
+    statements: &[(&str, &str)],
+) -> Result<IndexApplyReport> {
     let mut report = IndexApplyReport {
         applied: Vec::new(),
         already_present: Vec::new(),
-        dry_run,
+        dry_run: opts.dry_run,
+        analyzed: false,
     };
-    if dry_run {
-        for (name, sql) in managed_sql_statements() {
+    if opts.dry_run {
+        for (name, sql) in statements {
             if index_exists_at_path(path, name)? {
                 report.already_present.push(name.to_string());
             } else {
@@ -92,27 +112,41 @@ pub fn apply(path: &Path, writer: &str, dry_run: bool) -> Result<IndexApplyRepor
             }
             println!("{sql};");
         }
+        if opts.analyze {
+            println!("ANALYZE memory_traces;");
+        }
         return Ok(report);
     }
-    let conn = open_rw(path)?;
-    ensure_audit_table(&conn)?;
-    for (name, sql) in managed_sql_statements() {
-        let existed = index_exists(&conn, name)?;
-        let outcome = match conn.execute_batch(sql) {
-            Ok(()) => "ok".to_string(),
-            Err(e) => format!("error: {e}"),
-        };
-        writeln_audit(&conn, writer, "index.apply", sql, &outcome)?;
-        if outcome != "ok" {
-            anyhow::bail!("{outcome}");
-        }
+
+    let mut conn = open_rw(path)?;
+    let presence: Vec<(String, bool)> = statements
+        .iter()
+        .map(|(name, _)| {
+            let existed = index_exists(&conn, name)?;
+            Ok(((*name).to_string(), existed))
+        })
+        .collect::<Result<_>>()?;
+
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .context("begin apply transaction")?;
+    ensure_audit_table(&tx)?;
+    apply_statements_in_tx(&tx, writer, statements)?;
+    if opts.analyze {
+        tx.execute_batch("ANALYZE memory_traces")
+            .context("ANALYZE memory_traces")?;
+        writeln_audit(&tx, writer, "index.analyze", "ANALYZE memory_traces", "ok")?;
+        report.analyzed = true;
+    }
+    tx.commit().context("commit apply transaction")?;
+
+    for (name, existed) in presence {
         if existed {
-            report.already_present.push(name.to_string());
+            report.already_present.push(name);
         } else {
-            report.applied.push(name.to_string());
+            report.applied.push(name);
         }
     }
-    let _ = conn.execute_batch("ANALYZE memory_traces");
     Ok(report)
 }
 
@@ -134,26 +168,49 @@ pub fn revert(path: &Path, writer: &str, dry_run: bool) -> Result<IndexRevertRep
         }
         return Ok(report);
     }
-    let conn = open_rw(path)?;
-    ensure_audit_table(&conn)?;
+
+    let mut conn = open_rw(path)?;
+    let presence: Vec<(String, bool)> = MANAGED_INDEXES
+        .iter()
+        .map(|name| {
+            let existed = index_exists(&conn, name)?;
+            Ok(((*name).to_string(), existed))
+        })
+        .collect::<Result<_>>()?;
+
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .context("begin revert transaction")?;
+    ensure_audit_table(&tx)?;
     for name in MANAGED_INDEXES {
         let drop_sql = format!("DROP INDEX IF EXISTS {name}");
-        let existed = index_exists(&conn, name)?;
-        let outcome = match conn.execute(&drop_sql, []) {
-            Ok(_) => "ok".to_string(),
-            Err(e) => format!("error: {e}"),
-        };
-        writeln_audit(&conn, writer, "index.revert", &drop_sql, &outcome)?;
-        if outcome != "ok" {
-            anyhow::bail!("{outcome}");
-        }
+        tx.execute(&drop_sql, [])
+            .with_context(|| format!("execute {drop_sql}"))?;
+        writeln_audit(&tx, writer, "index.revert", &drop_sql, "ok")?;
+    }
+    tx.commit().context("commit revert transaction")?;
+
+    for (name, existed) in presence {
         if existed {
-            report.dropped.push(name.to_string());
+            report.dropped.push(name);
         } else {
-            report.absent.push(name.to_string());
+            report.absent.push(name);
         }
     }
     Ok(report)
+}
+
+fn apply_statements_in_tx(
+    tx: &Transaction<'_>,
+    writer: &str,
+    statements: &[(&str, &str)],
+) -> Result<()> {
+    for (_, sql) in statements {
+        tx.execute_batch(sql)
+            .with_context(|| format!("execute {sql}"))?;
+        writeln_audit(tx, writer, "index.apply", sql, "ok")?;
+    }
+    Ok(())
 }
 
 fn index_exists_at_path(path: &Path, name: &str) -> Result<bool> {
@@ -165,6 +222,15 @@ fn index_exists(conn: &Connection, name: &str) -> Result<bool> {
     let n: i64 = conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?1",
         [name],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
+}
+
+pub fn audit_table_exists(conn: &Connection) -> Result<bool> {
+    let n: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+        [AUDIT_TABLE],
         |r| r.get(0),
     )?;
     Ok(n > 0)
