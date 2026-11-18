@@ -613,13 +613,27 @@ fn search_or_fallback_fills_when_and_is_sparse() {
 
 #[test]
 fn fts_relevance_ratio_top_hit_is_one_in_one_or_two_hit_pools() {
-    assert!((pc::fts_relevance_ratio(2.5, 2.5) - 1.0).abs() < 1e-9);
-    assert!((pc::fts_relevance_ratio(-4.0, -4.0) - 1.0).abs() < 1e-9);
-    let top = pc::fts_relevance_ratio(-4.0, -4.0);
-    let runner = pc::fts_relevance_ratio(-2.5, -4.0);
+    assert!((pc::fts_relevance_ratio(2.5, 2.5, false) - 1.0).abs() < 1e-9);
+    assert!((pc::fts_relevance_ratio(-4.0, -4.0, false) - 1.0).abs() < 1e-9);
+    let top = pc::fts_relevance_ratio(-4.0, -4.0, false);
+    let runner = pc::fts_relevance_ratio(-2.5, -4.0, false);
     assert!((top - 1.0).abs() < 1e-9);
     assert!(runner < 1.0 && runner > 0.0);
-    assert!((pc::fts_relevance_ratio(1.0, 1.4) - pc::fts_relevance_ratio(1.0, 1.0)).abs() < 1e-9);
+    assert!(
+        (pc::fts_relevance_ratio(1.0, 1.4, false) - pc::fts_relevance_ratio(1.0, 1.0, false)).abs()
+            < 1e-9
+    );
+}
+
+#[test]
+fn fts_relevance_ratio_mixed_sign_pool_uses_gap_from_best() {
+    let best = -4.0;
+    let weaker = 1.4;
+    assert!((pc::fts_relevance_ratio(best, best, true) - 1.0).abs() < 1e-9);
+    let rel = pc::fts_relevance_ratio(weaker, best, true);
+    assert!(rel < 1.0 && rel > 0.0);
+    let expected = 1.0 / (1.0 + (weaker - best));
+    assert!((rel - expected).abs() < 1e-9);
 }
 
 #[test]
@@ -647,6 +661,49 @@ fn search_two_hit_pool_tf_gap_uses_epsilon_for_two_hour_newer() {
         Some("tf/sparse-new"),
         "two-hour newer should win within epsilon on tf gap, got {:?}",
         rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn search_like_fills_after_real_fts_and_syntax_error() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    let rare = "orsynfill99";
+    insert_trace(
+        &c,
+        "err2/or-a",
+        &format!("{rare} token alpha partial"),
+        "2026-10-01T00:00:00+00:00",
+    );
+    insert_trace(
+        &c,
+        "err2/or-b",
+        &format!("{rare} token bravo partial"),
+        "2026-10-02T00:00:00+00:00",
+    );
+    insert_trace(
+        &c,
+        "err2/like-both",
+        &format!("{rare} alpha bravo both tokens literal filler"),
+        "2026-10-03T00:00:00+00:00",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    let tokens = pc::search_content_tokens(&format!("NEAR {rare} alpha bravo"));
+    assert!(
+        tokens.len() > 1,
+        "need multi-token query for AND error path"
+    );
+    // User query keeps NEAR as a token; implicit AND MATCH is invalid FTS syntax → Err branch.
+    let rows = pc::read_search(&conn, &format!("NEAR {rare} alpha bravo"), 5).unwrap();
+    let keys: std::collections::BTreeSet<_> = rows.iter().map(|r| r.nat_key.as_str()).collect();
+    assert!(
+        keys.contains("err2/or-a") && keys.contains("err2/or-b"),
+        "OR widen should return partial hits on AND error, got {keys:?}"
+    );
+    assert!(
+        keys.contains("err2/like-both"),
+        "LIKE must fill when AND errors and OR pool is short of limit, got {keys:?}"
     );
 }
 
