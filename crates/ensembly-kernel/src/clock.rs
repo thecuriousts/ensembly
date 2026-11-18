@@ -59,6 +59,8 @@ pub struct SampleOpts<'a> {
     pub sntp_server: &'a str,
     pub transport: Option<&'a dyn PeerClockTransport>,
     pub force_refresh: bool,
+    /// When false, skip chronyc/sntp subprocesses (unit tests).
+    pub platform_probe: bool,
 }
 
 impl Default for SampleOpts<'_> {
@@ -72,6 +74,7 @@ impl Default for SampleOpts<'_> {
             sntp_server: DEFAULT_SNTP_SERVER,
             transport: None,
             force_refresh: false,
+            platform_probe: true,
         }
     }
 }
@@ -308,6 +311,7 @@ fn sample_within_timeout(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'st
     let sntp_server = opts.sntp_server.to_string();
     let max_age_s = opts.max_age_s;
     let force_refresh = opts.force_refresh;
+    let platform_probe = opts.platform_probe;
     let timeout = opts.timeout;
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     std::thread::spawn(move || {
@@ -320,6 +324,7 @@ fn sample_within_timeout(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'st
             sntp_server: &sntp_server,
             transport: None,
             force_refresh,
+            platform_probe,
         };
         let _ = tx.send(sample_now(&inner));
     });
@@ -343,10 +348,12 @@ fn sample_now(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'static str> {
         let (off_us, err_us) = peer_offset_and_err(&ex);
         return Ok(new_record(off_us, err_us, format!("peer:{alias}")));
     }
-    if let Some((off_us, err_us)) = sample_chrony() {
-        return Ok(new_record(off_us, err_us, "chrony".into()));
+    if opts.platform_probe {
+        if let Some((off_us, err_us)) = sample_chrony() {
+            return Ok(new_record(off_us, err_us, "chrony".into()));
+        }
     }
-    if cfg!(target_os = "macos") && validate_ntp_hostname(opts.sntp_server) {
+    if opts.platform_probe && cfg!(target_os = "macos") && validate_ntp_hostname(opts.sntp_server) {
         if let Some((off_us, err_us)) = sample_sntp(opts.sntp_server) {
             return Ok(new_record(off_us, err_us, "sntp".into()));
         }
@@ -514,6 +521,7 @@ mod tests {
             sntp_server: DEFAULT_SNTP_SERVER,
             transport: None,
             force_refresh: false,
+            platform_probe: false,
         };
         let sample = sample_latest(&opts).unwrap();
         assert_eq!(sample.off_us, 7);
@@ -553,6 +561,7 @@ mod tests {
             sntp_server: DEFAULT_SNTP_SERVER,
             transport: Some(&transport),
             force_refresh: true,
+            platform_probe: true,
         };
         let sample = sample_latest(&opts).unwrap();
         assert_eq!(sample.src, "peer:laptop-1");
@@ -579,6 +588,7 @@ mod tests {
             sntp_server: DEFAULT_SNTP_SERVER,
             transport: None,
             force_refresh: true,
+            platform_probe: false,
         };
         let sample = sample_latest(&opts).unwrap();
         assert_eq!(sample.off_us, 42);
