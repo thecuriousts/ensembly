@@ -362,10 +362,17 @@ fn trace_row(r: &rusqlite::Row) -> rusqlite::Result<TraceRow> {
     })
 }
 
-/// Weight of [`parse_ts`]-parseable `last_seen` in [`read_search`] ranking (0..=1).
-/// Score = `RECENCY_WEIGHT * unixepoch(last_seen, 'subsec') + (1 - RECENCY_WEIGHT) * (-bm25(memory_fts))`;
-/// higher is better. Spec: `docs/spec/PULSE-READ.md`.
+/// Blend weight for recency vs relevance in [`read_search`] (both normalized to `[0, 1]`).
+/// Spec: `docs/spec/PULSE-READ.md`.
 pub const PULSE_SEARCH_RECENCY_WEIGHT: f64 = 0.35;
+
+/// Half-life for exponential recency decay in [`read_search`] (days).
+pub const PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS: f64 = 30.0;
+
+/// Fixed relevance for LIKE fallback rows (below FTS matches on the normalized scale).
+const LIKE_RELEVANCE_SCORE: f64 = 0.15;
+
+const FTS_FETCH_CAP: usize = 256;
 
 /// Exclusive upper bound for a byte-wise `nat_key` prefix range (`>= prefix AND < upper`).
 /// `None` when the prefix is empty (no upper) or when no finite exclusive upper exists
@@ -466,56 +473,123 @@ fn fts_or_query(tokens: &[String]) -> String {
         .join(" OR ")
 }
 
-fn last_seen_instant_sql() -> &'static str {
-    // Pulse-memory mixes Z / +00:00 / +02:00 / +05:30; unixepoch parses real instants (no DB write).
-    "COALESCE(unixepoch(t.last_seen, 'subsec'), 0)"
+struct SearchHit {
+    row: TraceRow,
+    /// FTS5 bm25 (smaller is a better match). `None` for LIKE-sourced rows.
+    bm25: Option<f64>,
+    instant: f64,
 }
 
-fn search_score_sql() -> String {
-    format!(
-        "ORDER BY (?2 * {inst}) + (1.0 - ?2) * (-bm25(memory_fts)) DESC LIMIT ?3",
-        inst = last_seen_instant_sql()
-    )
+fn trace_row_scored(r: &rusqlite::Row) -> rusqlite::Result<SearchHit> {
+    Ok(SearchHit {
+        row: trace_row(r)?,
+        bm25: Some(r.get::<_, f64>("_bm25")?),
+        instant: r.get::<_, f64>("_inst")?,
+    })
 }
 
-fn read_search_fts(
-    conn: &Connection,
-    fts_q: &str,
-    limit: usize,
-    recency_weight: f64,
-) -> Result<Vec<TraceRow>> {
+fn trace_row_instant(r: &rusqlite::Row) -> rusqlite::Result<SearchHit> {
+    Ok(SearchHit {
+        row: trace_row(r)?,
+        bm25: None,
+        instant: r.get::<_, f64>("_inst")?,
+    })
+}
+
+fn fts_fetch_limit(limit: usize) -> usize {
+    limit.saturating_mul(8).clamp(limit, FTS_FETCH_CAP)
+}
+
+fn read_search_fts_candidates(conn: &Connection, fts_q: &str, fetch: usize) -> Result<Vec<SearchHit>> {
     let cols = TRACE_COLS
         .split(", ")
         .map(|c| format!("t.{c}"))
         .collect::<Vec<_>>()
         .join(", ");
     let sql = format!(
-        "SELECT {cols} FROM memory_traces t JOIN memory_fts f ON f.rowid = t.id \
-         WHERE memory_fts MATCH ?1 {}",
-        search_score_sql()
+        "SELECT {cols}, bm25(memory_fts) AS _bm25, \
+         COALESCE(unixepoch(t.last_seen, 'subsec'), 0) AS _inst \
+         FROM memory_traces t JOIN memory_fts f ON f.rowid = t.id \
+         WHERE memory_fts MATCH ?1 LIMIT ?2"
     );
     let mut st = conn.prepare(&sql)?;
     let rows = st
-        .query_map(
-            params![fts_q, recency_weight, limit as i64],
-            trace_row,
-        )?
+        .query_map(params![fts_q, fetch as i64], trace_row_scored)?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     Ok(rows)
 }
 
-fn merge_traces(primary: Vec<TraceRow>, extra: Vec<TraceRow>, limit: usize) -> Vec<TraceRow> {
-    let mut seen: std::collections::BTreeSet<String> = primary.iter().map(|r| r.nat_key.clone()).collect();
-    let mut out = primary;
-    for row in extra {
-        if out.len() >= limit {
-            break;
-        }
-        if seen.insert(row.nat_key.clone()) {
-            out.push(row);
+fn absorb_fts_hits(pool: &mut BTreeMap<String, SearchHit>, hits: Vec<SearchHit>) {
+    for hit in hits {
+        let key = hit.row.nat_key.clone();
+        match pool.get_mut(&key) {
+            Some(existing) => {
+                if hit.bm25.unwrap_or(f64::INFINITY) < existing.bm25.unwrap_or(f64::INFINITY) {
+                    *existing = hit;
+                }
+            }
+            None => {
+                pool.insert(key, hit);
+            }
         }
     }
-    out
+}
+
+fn recency_score(instant: f64, newest_instant: f64, half_life_secs: f64) -> f64 {
+    let age = (newest_instant - instant).max(0.0);
+    if half_life_secs <= 0.0 {
+        return 1.0;
+    }
+    0.5_f64.powf(age / half_life_secs)
+}
+
+fn rank_search_hits(mut hits: Vec<SearchHit>, limit: usize, recency_weight: f64) -> Vec<TraceRow> {
+    if hits.is_empty() {
+        return Vec::new();
+    }
+    let newest = hits
+        .iter()
+        .map(|h| h.instant)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let half_life_secs = PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS * 86_400.0;
+    let fts_raw: Vec<f64> = hits
+        .iter()
+        .filter_map(|h| h.bm25.map(|b| -b))
+        .collect();
+    let (min_rel, max_rel) = if fts_raw.is_empty() {
+        (0.0, 0.0)
+    } else {
+        let min = fts_raw.iter().copied().fold(f64::INFINITY, f64::min);
+        let max = fts_raw.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        (min, max)
+    };
+    let rel_tied = fts_raw.is_empty() || (max_rel - min_rel).abs() < 1e-9;
+    let rel_span = (max_rel - min_rel).max(1e-9);
+
+    let fts_relevance = |bm25: f64| {
+        if rel_tied {
+            1.0
+        } else {
+            (-bm25 - min_rel) / rel_span
+        }
+    };
+
+    hits.sort_by(|a, b| {
+        let rel_a = a
+            .bm25
+            .map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
+        let rel_b = b
+            .bm25
+            .map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
+        let score_a = recency_weight * recency_score(a.instant, newest, half_life_secs)
+            + (1.0 - recency_weight) * rel_a;
+        let score_b = recency_weight * recency_score(b.instant, newest, half_life_secs)
+            + (1.0 - recency_weight) * rel_b;
+        score_b
+            .partial_cmp(&score_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    hits.into_iter().take(limit).map(|h| h.row).collect()
 }
 
 fn escape_like(term: &str) -> String {
@@ -524,7 +598,7 @@ fn escape_like(term: &str) -> String {
         .replace('_', "\\_")
 }
 
-fn read_search_like(conn: &Connection, tokens: &[String], limit: usize) -> Result<Vec<TraceRow>> {
+fn read_search_like_candidates(conn: &Connection, tokens: &[String], fetch: usize) -> Result<Vec<SearchHit>> {
     if tokens.is_empty() {
         return Ok(Vec::new());
     }
@@ -533,7 +607,8 @@ fn read_search_like(conn: &Connection, tokens: &[String], limit: usize) -> Resul
         .map(|_| "(nat_key LIKE ? ESCAPE '\\' OR snippet LIKE ? ESCAPE '\\')".to_string())
         .collect();
     let sql = format!(
-        "SELECT {TRACE_COLS} FROM memory_traces WHERE {} ORDER BY COALESCE(unixepoch(last_seen, 'subsec'), 0) DESC LIMIT ?",
+        "SELECT {TRACE_COLS}, COALESCE(unixepoch(last_seen, 'subsec'), 0) AS _inst \
+         FROM memory_traces WHERE {} LIMIT ?",
         preds.join(" AND ")
     );
     let mut st = conn.prepare(&sql)?;
@@ -543,48 +618,67 @@ fn read_search_like(conn: &Connection, tokens: &[String], limit: usize) -> Resul
         values.push(like.clone().into());
         values.push(like.into());
     }
-    values.push((limit as i64).into());
+    values.push((fetch as i64).into());
     let rows = st
-        .query_map(rusqlite::params_from_iter(values), trace_row)?
+        .query_map(rusqlite::params_from_iter(values), trace_row_instant)?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     Ok(rows)
 }
 
+fn absorb_like_hits(pool: &mut BTreeMap<String, SearchHit>, hits: Vec<SearchHit>) {
+    for hit in hits {
+        pool.entry(hit.row.nat_key.clone()).or_insert(hit);
+    }
+}
+
+fn collect_search_pool(
+    conn: &Connection,
+    tokens: &[String],
+    min_hits: usize,
+) -> Result<BTreeMap<String, SearchHit>> {
+    let fetch = fts_fetch_limit(min_hits);
+    let mut pool: BTreeMap<String, SearchHit> = BTreeMap::new();
+    let and_q = fts_and_query(tokens);
+    match read_search_fts_candidates(conn, &and_q, fetch) {
+        Ok(hits) => absorb_fts_hits(&mut pool, hits),
+        Err(_) if tokens.len() == 1 => {}
+        Err(_) => {
+            let or_q = fts_or_query(tokens);
+            if let Ok(hits) = read_search_fts_candidates(conn, &or_q, fetch) {
+                absorb_fts_hits(&mut pool, hits);
+            }
+            if pool.is_empty() {
+                absorb_like_hits(&mut pool, read_search_like_candidates(conn, tokens, fetch)?);
+            }
+            return Ok(pool);
+        }
+    }
+    if pool.len() < min_hits && tokens.len() > 1 {
+        let or_q = fts_or_query(tokens);
+        if let Ok(hits) = read_search_fts_candidates(conn, &or_q, fetch) {
+            absorb_fts_hits(&mut pool, hits);
+        }
+    }
+    if pool.len() < min_hits {
+        absorb_like_hits(&mut pool, read_search_like_candidates(conn, tokens, fetch)?);
+    }
+    Ok(pool)
+}
+
 /// Full-text search: FTS5 AND on content tokens (stopwords dropped when possible), ranked by
-/// bm25 blended with [`last_seen_instant_sql`]. If fewer than `limit` AND hits, OR (bm25 ranks
-/// more matching terms higher), then token AND-LIKE as last resort.
+/// normalized bm25 + exponential recency within the candidate set. If fewer than `limit` AND
+/// hits, OR then token AND-LIKE as last resort.
 pub fn read_search(conn: &Connection, text: &str, limit: usize) -> Result<Vec<TraceRow>> {
     let tokens = search_content_tokens(text);
     if tokens.is_empty() {
         return Ok(Vec::new());
     }
-    let and_q = fts_and_query(&tokens);
-    let mut rows = match read_search_fts(conn, &and_q, limit, PULSE_SEARCH_RECENCY_WEIGHT) {
-        Ok(v) => v,
-        Err(_) if tokens.len() == 1 => Vec::new(),
-        Err(_) => {
-            let or_q = fts_or_query(&tokens);
-            return match read_search_fts(conn, &or_q, limit, PULSE_SEARCH_RECENCY_WEIGHT) {
-                Ok(v) if v.len() >= limit => Ok(v),
-                Ok(v) => {
-                    let like = read_search_like(conn, &tokens, limit)?;
-                    Ok(merge_traces(v, like, limit))
-                }
-                Err(_) => read_search_like(conn, &tokens, limit),
-            };
-        }
-    };
-    if rows.len() < limit && tokens.len() > 1 {
-        let or_q = fts_or_query(&tokens);
-        if let Ok(or_rows) = read_search_fts(conn, &or_q, limit, PULSE_SEARCH_RECENCY_WEIGHT) {
-            rows = merge_traces(rows, or_rows, limit);
-        }
-    }
-    if rows.len() < limit {
-        let like = read_search_like(conn, &tokens, limit)?;
-        rows = merge_traces(rows, like, limit);
-    }
-    Ok(rows)
+    let pool = collect_search_pool(conn, &tokens, limit)?;
+    Ok(rank_search_hits(
+        pool.into_values().collect(),
+        limit,
+        PULSE_SEARCH_RECENCY_WEIGHT,
+    ))
 }
 
 // -------------------------------------------------------------------- premflow

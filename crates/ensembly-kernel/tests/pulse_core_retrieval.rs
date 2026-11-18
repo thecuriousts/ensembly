@@ -21,11 +21,14 @@ CREATE VIRTUAL TABLE memory_fts USING fts5(nat_key, snippet, source, content='me
 INSERT INTO schema_migrations VALUES (1, '2026-01-01T00:00:00+00:00');
 ";
 
-/// Slice 1a measure-only baseline (fixture). Gates fail if recall or fresh-first drop.
+/// Slice 1a measure-only baseline (fixture). After #93 merges to master, align with
+/// `retrieval-bench` `results.json` (not-below gate).
 const BASELINE_RECALL_AT_5: f64 = 1.0;
 const BASELINE_RECALL_AT_10: f64 = 1.0;
 const BASELINE_FRESH_FIRST: f64 = 1.0;
 const PREFIX_SCALE_MAX_RATIO: f64 = 5.0;
+const PREFIX_SCALE_SMALL_ROWS: i64 = 800;
+const PREFIX_SCALE_LARGE_ROWS: i64 = 4_000;
 
 fn open_fixture_db(path: &PathBuf) -> Connection {
     let c = Connection::open(path).unwrap();
@@ -139,12 +142,12 @@ fn prefix_read_scale_ratio_under_bound() {
     let large = dir_large.path().join("large.sqlite");
     let c_small = open_fixture_db(&small);
     let c_large = open_fixture_db(&large);
-    fill_synthetic(&c_small, 1_000, "syn/p/");
-    fill_synthetic(&c_large, 100_000, "syn/p/");
+    fill_synthetic(&c_small, PREFIX_SCALE_SMALL_ROWS, "syn/p/");
+    fill_synthetic(&c_large, PREFIX_SCALE_LARGE_ROWS, "syn/p/");
     let ro_small = pc::open_ro(&small).unwrap();
     let ro_large = pc::open_ro(&large).unwrap();
     let t_small = timed_prefix(&ro_small, "syn/p/000100", 50);
-    let t_large = timed_prefix(&ro_large, "syn/p/050000", 50);
+    let t_large = timed_prefix(&ro_large, "syn/p/002000", 50);
     let ratio = t_large.as_secs_f64() / t_small.as_secs_f64().max(1e-9);
     assert!(
         ratio < PREFIX_SCALE_MAX_RATIO,
@@ -253,6 +256,61 @@ fn search_recall_and_fresh_first_meet_baseline() {
     assert!(
         fresh_rate >= BASELINE_FRESH_FIRST,
         "fresh-first {fresh_rate} < baseline {BASELINE_FRESH_FIRST}"
+    );
+}
+
+#[test]
+fn search_relevance_beats_one_hour_recency_gap() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    insert_trace(
+        &c,
+        "rank/strong-old",
+        "widget calibration procedure widget calibration procedure detailed steps",
+        "2026-06-01T10:00:00Z",
+    );
+    insert_trace(
+        &c,
+        "rank/weak-new",
+        "widget noise unrelated",
+        "2026-06-01T11:00:00Z",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    let rows = pc::read_search(&conn, "widget calibration procedure", 5).unwrap();
+    assert_eq!(
+        rows.first().map(|r| r.nat_key.as_str()),
+        Some("rank/strong-old"),
+        "higher bm25 must beat a one-hour newer weak match, got {:?}",
+        rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn search_same_terms_newer_beats_older() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    let snippet = "parity twin terms for ranking";
+    insert_trace(
+        &c,
+        "parity/old",
+        snippet,
+        "2026-05-01T00:00:00Z",
+    );
+    insert_trace(
+        &c,
+        "parity/new",
+        snippet,
+        "2026-10-01T00:00:00Z",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    let rows = pc::read_search(&conn, "parity twin terms ranking", 5).unwrap();
+    assert_eq!(
+        rows.first().map(|r| r.nat_key.as_str()),
+        Some("parity/new"),
+        "same terms: newer row should win, got {:?}",
+        rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
     );
 }
 

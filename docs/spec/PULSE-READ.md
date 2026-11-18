@@ -38,16 +38,20 @@ Fixed English stopword list (`FTS_STOPWORDS` in `pulse_core.rs`). Tokens are low
 
 ## Search score
 
-Constant: `PULSE_SEARCH_RECENCY_WEIGHT` (default **0.35**).
+Constants: `PULSE_SEARCH_RECENCY_WEIGHT` (**0.35**), `PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS` (**30**).
+
+Within each query’s candidate pool (FTS fetch capped at 256 rows; LIKE when needed):
 
 ```text
-score = w * unixepoch(last_seen, 'subsec') + (1 - w) * (-bm25(memory_fts))
-ORDER BY score DESC
+rel = min-max normalize (-bm25) over FTS hits → [0, 1]  (ties → 1.0)
+recency = 0.5 ** ((t_newest - t_row) / half_life_seconds)   # half_life = 30 days
+score = w * recency + (1 - w) * rel
 ```
 
-- **bm25**: FTS5 on `memory_fts`; smaller bm25 ⇒ better lexical match; negated so larger contributes more. OR fallback keeps bm25 order so rows matching more terms float up.
-- **last_seen**: real instant via SQLite `unixepoch(..., 'subsec')` (handles `Z`, `+00:00`, `+02:00`, `+05:30` mixes); never raw TEXT compare.
-- **AND → OR → LIKE**: OR/LIKE only when AND returns fewer than `limit` rows (or AND errors on multi-token syntax). LIKE requires every content token in snippet or key.
+- **bm25**: FTS5 on `memory_fts`; smaller bm25 ⇒ better match; normalized within the pool so it cannot be swamped by epoch-scale instants.
+- **last_seen**: `unixepoch(..., 'subsec')` on mixed `Z` / offset stamps; decay vs **newest candidate**, not wall clock.
+- **LIKE** rows: fixed `LIKE_RELEVANCE_SCORE` (0.15) instead of bm25.
+- **AND → OR → LIKE**: OR/LIKE only when AND yields fewer than `limit` rows (or AND errors on multi-token syntax).
 
 ## CI gates (kernel tests)
 
