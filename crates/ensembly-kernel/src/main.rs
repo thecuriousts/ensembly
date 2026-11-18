@@ -1472,6 +1472,7 @@ fn cmd_clock(sub: ClockCmd) -> Result<()> {
                 transport,
                 force_refresh: force,
                 platform_probe: true,
+                worker_cancel: None,
             };
             let sample = ensembly_kernel::sample_latest(&opts)?;
             if json {
