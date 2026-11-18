@@ -588,7 +588,10 @@ fn sample_cancelled(cancel: &AtomicBool) -> bool {
 }
 
 #[allow(clippy::collapsible_if)]
-fn sample_now(opts: &SampleOpts<'_>, cancel: &AtomicBool) -> Result<ClockCacheRecord, &'static str> {
+fn sample_now(
+    opts: &SampleOpts<'_>,
+    cancel: &AtomicBool,
+) -> Result<ClockCacheRecord, &'static str> {
     if sample_cancelled(cancel) {
         return Err("cancelled");
     }
