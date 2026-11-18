@@ -222,6 +222,93 @@ fn confirm_is_idempotent_and_a_second_payload_conflicts() {
 }
 
 #[test]
+fn propose_confirm_and_expire_round_trip_on_v1_writes() {
+    let _w = setup_writer();
+    let dir = tempfile::tempdir().unwrap();
+    let writer = open_log(dir.path());
+    let rows = load_labels(&fixture_labels()).unwrap();
+    let flags = FlagList::default();
+    let model = decision::fit(
+        &rows
+            .iter()
+            .filter(|r| r.split() == SplitBucket::Train && r.decision.is_some())
+            .collect::<Vec<_>>(),
+        &flags,
+        0.90,
+    )
+    .unwrap();
+    let apply: Vec<_> = rows
+        .iter()
+        .filter(|r| r.decision == Some(FitLabel::Apply))
+        .take(2)
+        .collect();
+    assert_eq!(apply.len(), 2, "need two apply rows");
+
+    let proposed = writer
+        .propose_decision(
+            apply[0],
+            &score(&model, apply[0], &flags),
+            "laptop-1",
+            "2026-11-13T12:00:00+01:00",
+            None,
+        )
+        .unwrap();
+    assert!(proposed.appended);
+    let confirmed = writer
+        .confirm_decision(&proposed.rid, "laptop-1", "2026-11-13T13:00:00+01:00")
+        .unwrap();
+    assert!(confirmed.appended);
+    assert_eq!(
+        confirmed.event_type,
+        ensembly_schema::DecisionEventType::Confirmed
+    );
+
+    let waiting = writer
+        .propose_decision(
+            apply[1],
+            &score(&model, apply[1], &flags),
+            "laptop-1",
+            "2026-11-13T12:00:00+01:00",
+            None,
+        )
+        .unwrap();
+    assert!(waiting.appended);
+    let expired = writer
+        .expire_decision(&waiting.rid, "laptop-1", "2026-11-16T13:00:00+01:00")
+        .unwrap();
+    assert!(expired.appended);
+    assert_eq!(
+        expired.event_type,
+        ensembly_schema::DecisionEventType::Expired
+    );
+
+    let path = dir.path().join("decisions.jsonl");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let lines: Vec<_> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    assert_eq!(lines.len(), 4);
+    for line in &lines {
+        assert!(
+            line.contains("\"v\":1"),
+            "decision store writes v1 (no v2 bus fields): {line}"
+        );
+    }
+    assert_eq!(load_events(&path).unwrap().len(), 4);
+
+    let v2_path = dir.path().join("decisions-v2.jsonl");
+    std::fs::write(
+        &v2_path,
+        format!("{}\n", lines[0].replace("\"v\":1", "\"v\":2")),
+    )
+    .unwrap();
+    let from_v2 = load_events(&v2_path).unwrap();
+    assert_eq!(from_v2.len(), 1);
+    assert_eq!(
+        from_v2[0].event_type,
+        ensembly_schema::DecisionEventType::Proposed
+    );
+}
+
+#[test]
 fn split_helper_matches_fixture_urls() {
     assert_eq!(
         assign_split("https://jobs.example.test/posting/1"),

@@ -63,7 +63,7 @@ where
 /// Materialize current aggregate rows from ordered events (idempotent on same key + payload).
 pub fn replay<P>(events: &[EventEnvelope<P>]) -> Result<Vec<MaterializedAggregate<P>>, ReplayError>
 where
-    P: Checked + Serialize + Clone,
+    P: Checked + Serialize + Clone + for<'de> serde::Deserialize<'de>,
 {
     let mut seen: BTreeMap<(String, String), String> = BTreeMap::new();
     let mut latest: BTreeMap<String, MaterializedAggregate<P>> = BTreeMap::new();
@@ -197,24 +197,23 @@ mod tests {
     }
 
     fn event(n: u64, writer: &str, aggregate: &str, key: &str) -> EventEnvelope<ScenarioPayload> {
-        EventEnvelope {
-            id: EventId(ulid::Ulid::from_parts(
+        EventEnvelope::with_payload(
+            EventId(ulid::Ulid::from_parts(
                 1_700_000_000 + (n % 10_000_000),
                 n as u128,
             )),
-            aggregate: AggregateId(aggregate.into()),
-            key: IdempotencyKey(key.into()),
-            version: Version(n),
-            event_time: t("2026-10-26T18:59:00+01:00"),
-            record_time: t("2026-10-26T19:00:00+01:00"),
-            source: Source::Owner,
-            prev_hash: None,
-            schema_v: SCHEMA_VERSION,
-            payload: ScenarioPayload {
+            AggregateId(aggregate.into()),
+            IdempotencyKey(key.into()),
+            Version(n),
+            t("2026-10-26T18:59:00+01:00"),
+            t("2026-10-26T19:00:00+01:00"),
+            Source::Owner,
+            crate::SCHEMA_VERSION_LEGACY,
+            ScenarioPayload {
                 writer: writer.into(),
                 note: "scenario".into(),
             },
-        }
+        )
     }
 
     fn temp_log() -> (std::path::PathBuf, std::path::PathBuf) {

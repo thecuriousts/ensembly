@@ -705,7 +705,18 @@ mod tests {
         .expect("document source");
         let text = std::fs::read_to_string(&log).unwrap();
         assert!(!text.contains(planted), "{text}");
-        assert!(text.contains("+01:00") || text.contains("+02:00"), "{text}");
+        let rt = text
+            .split(r#""record_time":""#)
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .expect("record_time in committed line");
+        assert!(rt.ends_with('Z'), "expected UTC record_time, got {rt}");
+        let frac = rt.split('.').nth(1).and_then(|s| s.strip_suffix('Z'));
+        assert_eq!(
+            frac.map(str::len),
+            Some(6),
+            "expected microsecond frac in {rt}"
+        );
     }
 
     fn mcp_event(source: &str, record_time: &str) -> String {

@@ -16,6 +16,8 @@ pub struct PackRef {
     pub sha256: String,
 }
 
+impl crate::wire::WireDecode for PackRef {}
+
 impl Checked for PackRef {}
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "RecordEventLine",
+  "description": "Record event line (schema_v 1 legacy or schema_v 2 bus envelope).\n\nTop-level `deny_unknown_fields` lives only on this struct so new v2 keys land in one place (`EventEnvelope` + `EventEnvelopeV2Optional`) without a schema_v 3.",
   "type": "object",
   "required": [
     "aggregate",
@@ -18,14 +19,88 @@
     "aggregate": {
       "type": "string"
     },
+    "cause": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/EventId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "clock": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ClockInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "depth": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint8",
+      "minimum": 0.0
+    },
     "event_time": {
       "type": "string"
+    },
+    "event_time_prec": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/EventTimePrec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "hlc": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/HlcWire"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "id": {
       "$ref": "#/definitions/EventId"
     },
+    "ingress": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/IngressInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "key": {
       "type": "string"
+    },
+    "node": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parsed": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ParsedInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "payload": {
       "$ref": "#/definitions/RecordEventPayload"
@@ -40,16 +115,61 @@
         }
       ]
     },
+    "raw_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "raw_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "record_time": {
       "type": "string"
+    },
+    "rule": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "schema_v": {
       "type": "integer",
       "format": "uint32",
       "minimum": 0.0
     },
+    "seq": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0.0
+    },
     "source": {
       "$ref": "#/definitions/Source"
+    },
+    "subjects": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Supersedes"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "v": {
       "const": 1
@@ -58,15 +178,176 @@
       "type": "integer",
       "format": "uint64",
       "minimum": 0.0
+    },
+    "writer": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
-  "additionalProperties": false,
   "definitions": {
+    "ClockInfo": {
+      "description": "Wall-clock sync metadata on a v2 line. `src` is an open string (`chrony`, `sntp`, `peer:<alias>`, `none`, `roughtime`, …).",
+      "type": "object",
+      "required": [
+        "age_s",
+        "err_us",
+        "off_us",
+        "src"
+      ],
+      "properties": {
+        "age_s": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "err_us": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "off_us": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "src": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "EventId": {
       "type": "string"
     },
+    "EventTimePrec": {
+      "type": "string",
+      "enum": [
+        "us",
+        "ms",
+        "s",
+        "min",
+        "day",
+        "unknown"
+      ]
+    },
     "Hash": {
       "type": "string"
+    },
+    "HlcWire": {
+      "type": "object",
+      "required": [
+        "c",
+        "l"
+      ],
+      "properties": {
+        "c": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "l": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
+    },
+    "IngressInfo": {
+      "description": "Provider ingress metadata. `sig` holds the provider signature **header value only** — never a secret, API key, or shared signing material.",
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "msg_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "$ref": "#/definitions/IngressPath"
+        },
+        "provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recv_ts_us": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "sig": {
+          "description": "Signature header value from the provider (public wire copy), not a secret.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sig_ok": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "via": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "IngressPath": {
+      "description": "How the event entered the log. When `ingress` is present, `path` is required.",
+      "type": "string",
+      "enum": [
+        "push",
+        "reconcile"
+      ]
+    },
+    "ParsedInfo": {
+      "type": "object",
+      "required": [
+        "parser",
+        "state"
+      ],
+      "properties": {
+        "parser": {
+          "description": "Versioned parser id, e.g. `gmail-thread@1`.",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/definitions/ParsedState"
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ParsedState": {
+      "type": "string",
+      "enum": [
+        "recognized",
+        "decoded",
+        "raw"
+      ]
     },
     "RecordEventPayload": {
       "type": "object",
@@ -97,6 +378,12 @@
         "document",
         "legacy-unknown"
       ]
+    },
+    "Supersedes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EventId"
+      }
     }
   }
 }
