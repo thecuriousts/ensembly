@@ -613,13 +613,48 @@ fn search_or_fallback_fills_when_and_is_sparse() {
 
 #[test]
 fn fts_relevance_ratio_top_hit_is_one_in_one_or_two_hit_pools() {
-    assert!((pc::fts_relevance_ratio(2.5, 2.5) - 1.0).abs() < 1e-9);
-    assert!((pc::fts_relevance_ratio(-4.0, -4.0) - 1.0).abs() < 1e-9);
-    let top = pc::fts_relevance_ratio(-4.0, -4.0);
-    let runner = pc::fts_relevance_ratio(-2.5, -4.0);
+    assert!((pc::fts_relevance_ratio(2.5, 2.5, false) - 1.0).abs() < 1e-9);
+    assert!((pc::fts_relevance_ratio(-4.0, -4.0, false) - 1.0).abs() < 1e-9);
+    let top = pc::fts_relevance_ratio(-4.0, -4.0, false);
+    let runner = pc::fts_relevance_ratio(-2.5, -4.0, false);
     assert!((top - 1.0).abs() < 1e-9);
     assert!(runner < 1.0 && runner > 0.0);
-    assert!((pc::fts_relevance_ratio(1.0, 1.4) - pc::fts_relevance_ratio(1.0, 1.0)).abs() < 1e-9);
+    assert!(
+        (pc::fts_relevance_ratio(1.0, 1.4, false) - pc::fts_relevance_ratio(1.0, 1.0, false)).abs()
+            < 1e-9
+    );
+}
+
+#[test]
+fn fts_relevance_ratio_mixed_sign_pool_uses_gap_from_best() {
+    let best = -4.0;
+    let weaker = 1.4;
+    assert!((pc::fts_relevance_ratio(best, best, true) - 1.0).abs() < 1e-9);
+    let rel = pc::fts_relevance_ratio(weaker, best, true);
+    assert!(rel < 1.0 && rel > 0.0);
+    let expected = 1.0 / (1.0 + (weaker - best));
+    assert!((rel - expected).abs() < 1e-9);
+}
+
+#[test]
+fn fts_relevance_ratio_mixed_sign_grid_monotonic_in_unit_interval() {
+    for &best in &[-4.0, -0.5, 0.25, 2.0] {
+        let mut prev = 1.0_f64;
+        for &bm25 in &[-3.0, -1.0, 0.0, 0.5, 1.4, 3.0, 6.0] {
+            let rel = pc::fts_relevance_ratio(bm25, best, true);
+            assert!(rel.is_finite(), "bm25={bm25} best={best}");
+            assert!(
+                (0.0..=1.0).contains(&rel),
+                "rel={rel} bm25={bm25} best={best}"
+            );
+            if (bm25 - best).abs() < 1e-12 {
+                assert!((rel - 1.0).abs() < 1e-9);
+            } else if bm25 > best {
+                assert!(rel <= prev, "not monotonic: bm25={bm25} best={best}");
+                prev = rel;
+            }
+        }
+    }
 }
 
 #[test]
@@ -647,6 +682,46 @@ fn search_two_hit_pool_tf_gap_uses_epsilon_for_two_hour_newer() {
         Some("tf/sparse-new"),
         "two-hour newer should win within epsilon on tf gap, got {:?}",
         rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn search_like_fills_after_real_fts_and_syntax_error() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    let probe = pc::FTS_AND_ERR_PROBE;
+    insert_trace(
+        &c,
+        "err2/or-a",
+        "orxsyn99 alpha tail",
+        "2026-10-01T00:00:00+00:00",
+    );
+    insert_trace(
+        &c,
+        "err2/like-both",
+        "likefill ftsanderrprobez prefix_alphax suffix_bravoy substrings only",
+        "2026-10-03T00:00:00+00:00",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    let _ = pc::take_search_and_fts_err_count();
+    let q = format!("{probe} alpha bravo");
+    let tokens = pc::search_content_tokens(&q);
+    assert!(tokens.len() > 1, "need multi-token query");
+    let rows = pc::read_search(&conn, &q, 5).unwrap();
+    assert_eq!(
+        pc::take_search_and_fts_err_count(),
+        1,
+        "collect_search_pool must take the FTS AND Err arm"
+    );
+    let keys: std::collections::BTreeSet<_> = rows.iter().map(|r| r.nat_key.as_str()).collect();
+    assert!(
+        keys.contains("err2/or-a"),
+        "OR widen should return at least one partial hit, got {keys:?}"
+    );
+    assert!(
+        keys.contains("err2/like-both"),
+        "LIKE-only row (no OR token match) must appear after LIKE fill, got {keys:?}"
     );
 }
 

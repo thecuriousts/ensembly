@@ -49,10 +49,15 @@ Within one tier:
 ```text
 if superseded_by links a → b → rank b above a
 else if same nat_key → newer unixepoch(last_seen)
-else rel_i = min(1, bm25_best/bm25_i) when positive, else min(1, (-bm25_i)/(-bm25_best))
+else rel_i = homogeneous: min(1, bm25_best/bm25_i) or negated-strength ratio;
+     mixed-sign pool: min(1, 1 / (1 + max(0, bm25_i - bm25_best)))
      if |rel_a - rel_b| < epsilon → rank newer first
      else score = w * 0.5^((t_newest - t)/7d) + (1-w) * rel
 ```
+
+**Unrelated keys** with no `superseded_by` link are ordered by blended relevance and recency only — there is no stem/family heuristic.
+
+**Known limitation:** when relevance differs by more than ε, a stronger BM25 match can outrank a newer sibling row. Operators who need the fresh row on top should record an explicit **`superseded_by`** (or admit/replace at write time); ε recency is a tie-break, not a freshness override.
 
 - **LIKE** rows: fixed low relevance (0.15); tier 3 always below FTS.
 - **AND → OR → LIKE**: only when AND yields fewer than `limit` rows (or AND syntax error on multi-token input).
