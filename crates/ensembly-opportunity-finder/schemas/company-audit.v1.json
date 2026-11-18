@@ -4,7 +4,6 @@
   "type": "object",
   "required": [
     "audited_at",
-    "audited_by",
     "checks",
     "company",
     "domain",
@@ -22,7 +21,11 @@
       "type": "string"
     },
     "audited_by": {
-      "type": "string"
+      "description": "Who recorded the audit. Absent when the field was omitted (a row written before it existed) or JSON null. Readers must not fill in a label. A new append still requires a non-blank value.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "checks": {
       "type": "array",
