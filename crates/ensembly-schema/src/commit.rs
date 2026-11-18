@@ -1,5 +1,6 @@
 //! Domain-agnostic commit boundary: validate → append → fsync → verify.
 
+use crate::log_index::{append_bytes_to_log, ensure_tail_intact, LogIndexError};
 use crate::record::EventEnvelope;
 use crate::{encode_line, Checked, Decoded, SCHEMA_VERSION};
 use serde::{Deserialize, Serialize};
@@ -270,17 +271,10 @@ impl Commit {
 
     fn fsync_unit(&self, _lines: &[String]) -> Result<(), CommitError> {
         let staging = self.staging_path();
-        let staging_body = std::fs::read_to_string(&staging)
+        let staging_body = std::fs::read(&staging)
             .map_err(|e| CommitError::Phase(CommitPhase::Fsync, e.to_string()))?;
-        let mut combined = read_log(&self.log_path)?;
-        if !combined.is_empty() && !combined.ends_with('\n') {
-            return Err(CommitError::Phase(
-                CommitPhase::Fsync,
-                "log ends with partial line".into(),
-            ));
-        }
-        combined.push_str(&staging_body);
-        write_atomic(&self.log_path, combined.as_bytes()).map_err(CommitError::Io)?;
+        ensure_tail_intact(&self.log_path, None).map_err(map_log_index)?;
+        append_bytes_to_log(&self.log_path, &staging_body).map_err(map_log_index)?;
         self.cleanup_staging()?;
         Ok(())
     }
@@ -346,18 +340,27 @@ where
     P: Checked + for<'de> serde::Deserialize<'de> + PartialEq + std::fmt::Debug,
 {
     use crate::decode_line;
-    let body = read_log(path)?;
-    let mut lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
-    if lines.len() < expected.len() {
-        return Err(CommitError::Phase(
-            CommitPhase::Verify,
-            "log shorter than unit".into(),
-        ));
+    use crate::log_index::read_line_at;
+
+    let meta = std::fs::metadata(path).map_err(|e| CommitError::Io(e.to_string()))?;
+    let mut offset = meta.len();
+    let mut tail: Vec<String> = Vec::with_capacity(expected.len());
+    for line in expected.iter().rev() {
+        let line_len = u64::try_from(line.len().saturating_add(1))
+            .map_err(|_| CommitError::Phase(CommitPhase::Verify, "line too long".into()))?;
+        if offset < line_len {
+            return Err(CommitError::Phase(
+                CommitPhase::Verify,
+                "log shorter than unit".into(),
+            ));
+        }
+        offset -= line_len;
+        tail.push(
+            read_line_at(path, offset, line_len as u32)
+                .map_err(|e| CommitError::Phase(CommitPhase::Verify, e.to_string()))?,
+        );
     }
-    let tail: Vec<String> = lines
-        .drain(lines.len() - expected.len()..)
-        .map(|s| s.to_string())
-        .collect();
+    tail.reverse();
     if tail != expected {
         return Err(CommitError::Phase(
             CommitPhase::Verify,
@@ -371,11 +374,11 @@ where
     Ok(())
 }
 
-fn read_log(path: &Path) -> Result<String, CommitError> {
-    match std::fs::read_to_string(path) {
-        Ok(s) => Ok(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-        Err(e) => Err(CommitError::Io(e.to_string())),
+fn map_log_index(err: LogIndexError) -> CommitError {
+    match err {
+        LogIndexError::Io(m) => CommitError::Io(m),
+        LogIndexError::Replay(e) => CommitError::Phase(CommitPhase::Fsync, e.to_string()),
+        LogIndexError::Tail(m) => CommitError::Phase(CommitPhase::Fsync, m),
     }
 }
 

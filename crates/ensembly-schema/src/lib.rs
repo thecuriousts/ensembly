@@ -13,6 +13,7 @@
 pub const SCHEMA_VERSION: u32 = 1;
 
 mod commit;
+mod log_index;
 #[cfg(feature = "opportunity-finder")]
 mod decision;
 mod exit;
@@ -44,6 +45,11 @@ pub use apps_record::{
 #[cfg(feature = "opportunity-finder")]
 pub use audit::*;
 pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
+pub use log_index::{
+    append_bytes_to_log, ensure_tail_intact, extend_index_lines, load_events_since_version,
+    load_events_up_to_version, load_or_rebuild, rebuild_index, sidecar_path, torn_fragment_path,
+    LogIndexError, LogIndexSidecar,
+};
 #[cfg(feature = "opportunity-finder")]
 pub use decision::{
     assign_split, proposal_rid, snapshot_hash, DecisionEvent, DecisionEventType, FitLabel,

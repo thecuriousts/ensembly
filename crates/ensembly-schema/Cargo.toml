@@ -20,6 +20,11 @@ libc = "0.2"
 ulid = { version = "1", features = ["serde"] }
 [dev-dependencies]
 schemars = "0.8"
+ulid = { version = "1", features = ["serde"] }
+
+[[test]]
+name = "record_scale"
+path = "tests/record_scale.rs"
 
 [[test]]
 name = "apps_record"

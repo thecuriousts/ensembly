@@ -198,9 +198,10 @@ impl fmt::Display for IllegalTransition {
     }
 }
 
+/// Wire envelope for one log line. Extra object members are ignored on read so a
+/// future bus can add timestamps, HLC, or source metadata without retiring old logs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
-#[serde(deny_unknown_fields)]
 pub struct EventEnvelope<P> {
     pub id: EventId,
     pub aggregate: AggregateId,
@@ -465,9 +466,9 @@ mod tests {
     }
 
     #[test]
-    fn unknown_field_on_envelope_refused() {
+    fn unknown_field_on_envelope_ignored_for_forward_compat() {
         let line = r#"{"id":"01JCV1Q8Z00000000000000000","aggregate":"https://jobs.example.test/acme/1","key":"acme-1-submit","version":1,"event_time":"2026-10-26T18:59:00+01:00","record_time":"2026-10-26T18:59:00+01:00","source":"owner","schema_v":1,"payload":{"host":"laptop-1","company":"Acme Fictional"},"extra":1,"v":1}"#;
-        assert!(decode_line::<EventEnvelope<RecordEventPayload>>(line).is_err());
+        assert!(decode_line::<EventEnvelope<RecordEventPayload>>(line).is_ok());
     }
 
     #[test]

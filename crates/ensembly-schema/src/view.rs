@@ -127,7 +127,7 @@ pub fn view_append<P>(_view: &RecordView<P>, _unit: UnitOfWork<P>) -> Result<(),
     Err(ViewError::ReadOnly)
 }
 
-fn facts_from_rows<P>(rows: &[MaterializedAggregate<P>]) -> Vec<Fact> {
+pub(crate) fn facts_from_rows<P>(rows: &[MaterializedAggregate<P>]) -> Vec<Fact> {
     let mut facts: Vec<Fact> = rows
         .iter()
         .map(|r| Fact {
