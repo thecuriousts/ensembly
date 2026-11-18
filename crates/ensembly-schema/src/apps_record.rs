@@ -8,12 +8,12 @@
 //! ledger fields only, so a second import with another writer or another clock
 //! appends nothing. A return to an earlier stage is refused.
 
+use crate::identity::{require_configured_writer, validate_writer_identity};
 use crate::record::{
     AggregateId, EventEnvelope, EventId, Evidence, IdempotencyKey, Rfc3339Time, Source,
     Status as RecordStatus, SubmitTime as RecordSubmitTime, TextForm, Version,
 };
 use crate::replay::replay;
-use crate::identity::{require_configured_writer, validate_writer_identity};
 use crate::{link_key, LedgerRow};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};

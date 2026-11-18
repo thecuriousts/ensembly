@@ -1,3 +1,6 @@
+#[path = "envelope_v2.rs"]
+pub mod envelope_v2;
+
 use crate::hlc::HlcWire;
 use crate::url;
 use crate::{Checked, SCHEMA_VERSION, SCHEMA_VERSION_LEGACY};
@@ -224,24 +227,7 @@ pub struct ClockInfo {
     pub age_s: u32,
 }
 
-/// Optional v2 bus fields — extend **here** (with `EventEnvelope`) before ship.
-/// Fleet field list still open (`ingress`, `settle`, `supersedes`, …).
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[cfg_attr(test, derive(schemars::JsonSchema))]
-#[serde(default)]
-pub struct EventEnvelopeV2Optional {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub clock: Option<ClockInfo>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cause: Option<EventId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub depth: Option<u8>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rule: Option<String>,
-    #[cfg_attr(test, schemars(skip))]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ext: Option<EnvelopeExt>,
-}
+pub use envelope_v2::EventEnvelopeV2Optional;
 
 /// Optional envelope extension bag; unknown keys are preserved and ignored on read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -300,6 +286,11 @@ pub struct EventEnvelope<P> {
 }
 
 impl<P> EventEnvelope<P> {
+    /// Prior event ids this line supersedes (for pulse-style successor links).
+    pub fn supersedes_ids(&self) -> Option<&[EventId]> {
+        self.v2_optional.supersedes_ids()
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn with_payload(
         id: EventId,
@@ -383,7 +374,9 @@ impl<P: Checked> Checked for EventEnvelope<P> {
                 .ok_or_else(|| "writer is required on schema_v 2".to_string())?;
             crate::identity::validate_writer_identity(writer)?;
             self.v2_optional.depth.unwrap_or(0);
+            self.v2_optional.check()?;
         } else {
+            self.v2_optional.check()?;
             url::check_submit_time(self.event_time.as_str())?;
             url::check_submit_time(self.record_time.as_str())?;
         }

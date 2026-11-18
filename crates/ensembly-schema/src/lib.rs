@@ -24,7 +24,7 @@ mod log_index;
 #[cfg(feature = "opportunity-finder")]
 mod pack;
 mod reconcile;
-mod record;
+mod record; // after envelope_v2 (record re-exports optional bus types)
 mod replay;
 mod sealed_io;
 mod surface;
@@ -78,10 +78,16 @@ pub use reconcile::{
     apply_conflict_action, is_terminal, merge_copy_into_owner, reconcile, Conflict, ConflictAction,
     ConflictValue, CopySnapshot, IllegalConflictTransition, OwnerSnapshot, ReconcileError,
 };
+pub use record::envelope_v2::{
+    self, validate_event_id_str, validate_ingress, validate_parsed, validate_parser_id,
+    validate_raw_ref, validate_raw_sha256, validate_subjects, validate_supersedes,
+    EventEnvelopeV2Optional, IngressInfo, IngressPath, ParsedInfo, ParsedState, Supersedes,
+    PARSED_SUMMARY_MAX, RAW_REF_MAX_CHARS, SUBJECTS_MAX, SUBJECT_MAX_CHARS, SUPERSEDES_MAX,
+};
 pub use record::{
-    transition, Aggregate, AggregateId, ConflictState, EventEnvelope, EventId, EventKind, Evidence,
-    Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Rfc3339Time, Source,
-    Status as RecordStatus, TextForm, Version,
+    transition, Aggregate, AggregateId, ClockInfo, ConflictState, EventEnvelope, EventId,
+    EventKind, Evidence, Hash, IdempotencyKey, IllegalTransition, RecordEventPayload, Rfc3339Time,
+    Source, Status as RecordStatus, TextForm, Version,
 };
 pub use replay::{
     current_rows, parse_event_log, replay, replay_log_file, restore_drill, restore_log,

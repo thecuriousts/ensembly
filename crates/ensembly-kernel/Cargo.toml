@@ -2,6 +2,7 @@
 name = "ensembly-kernel"
 version = "0.5.1"
 edition = "2021"
+rust-version = "1.90"
 description = "ensembly operator kernel — S+G+CP, MsgBus, HITL/HOOTL runtime, privacy, turn, durable store, episodic memory bridge"
 license = "MIT"
 default-run = "ensembly"

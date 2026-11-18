@@ -73,6 +73,16 @@
     "id": {
       "$ref": "#/definitions/EventId"
     },
+    "ingress": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/IngressInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "key": {
       "type": "string"
     },
@@ -80,6 +90,16 @@
       "type": [
         "string",
         "null"
+      ]
+    },
+    "parsed": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ParsedInfo"
+        },
+        {
+          "type": "null"
+        }
       ]
     },
     "payload": {
@@ -93,6 +113,18 @@
         {
           "type": "null"
         }
+      ]
+    },
+    "raw_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "raw_sha256": {
+      "type": [
+        "string",
+        "null"
       ]
     },
     "record_time": {
@@ -119,6 +151,25 @@
     },
     "source": {
       "$ref": "#/definitions/Source"
+    },
+    "subjects": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string"
+      }
+    },
+    "supersedes": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Supersedes"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "v": {
       "const": 1
@@ -202,6 +253,102 @@
         }
       }
     },
+    "IngressInfo": {
+      "description": "Provider ingress metadata. `sig` holds the provider signature **header value only** — never a secret, API key, or shared signing material.",
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "msg_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "$ref": "#/definitions/IngressPath"
+        },
+        "provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "recv_ts_us": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "sig": {
+          "description": "Signature header value from the provider (public wire copy), not a secret.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sig_ok": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "via": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "IngressPath": {
+      "description": "How the event entered the log. When `ingress` is present, `path` is required.",
+      "type": "string",
+      "enum": [
+        "push",
+        "reconcile"
+      ]
+    },
+    "ParsedInfo": {
+      "type": "object",
+      "required": [
+        "parser",
+        "state"
+      ],
+      "properties": {
+        "parser": {
+          "description": "Versioned parser id, e.g. `gmail-thread@1`.",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/definitions/ParsedState"
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ParsedState": {
+      "type": "string",
+      "enum": [
+        "recognized",
+        "decoded",
+        "raw"
+      ]
+    },
     "RecordEventPayload": {
       "type": "object",
       "required": [
@@ -231,6 +378,12 @@
         "document",
         "legacy-unknown"
       ]
+    },
+    "Supersedes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EventId"
+      }
     }
   }
 }

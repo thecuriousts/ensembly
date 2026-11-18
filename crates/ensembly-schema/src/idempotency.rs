@@ -21,6 +21,12 @@ pub fn same_idempotent_content<P: PartialEq>(a: &EventEnvelope<P>, b: &EventEnve
         && a.v2_optional.cause == b.v2_optional.cause
         && a.v2_optional.depth == b.v2_optional.depth
         && a.v2_optional.rule == b.v2_optional.rule
+        && a.v2_optional.ingress == b.v2_optional.ingress
+        && a.v2_optional.supersedes == b.v2_optional.supersedes
+        && a.v2_optional.parsed == b.v2_optional.parsed
+        && a.v2_optional.raw_ref == b.v2_optional.raw_ref
+        && a.v2_optional.raw_sha256 == b.v2_optional.raw_sha256
+        && a.v2_optional.subjects == b.v2_optional.subjects
         && a.v2_optional.ext == b.v2_optional.ext
 }
 

@@ -11,6 +11,7 @@ pub mod agent;
 pub mod approvals;
 pub mod backup;
 pub mod channel_pulse;
+pub mod clock;
 pub mod critical_path;
 #[cfg(feature = "opportunity-finder")]
 pub mod decision;
@@ -24,6 +25,7 @@ pub mod msg_bus;
 pub mod paths;
 pub mod privacy;
 pub mod pulse_core;
+pub mod pulse_index;
 pub mod pulse_pack;
 pub mod pulse_supersede;
 pub mod realm;
@@ -51,6 +53,14 @@ pub use backup::{
 pub use channel_pulse::{
     project_wait_snapshot, read_channel_pulse, reconcile_channel_pulse, resolve_focus_plan,
     seed_live_channel_actions, write_channel_pulse, ReconcileReport, DEFAULT_CHANNEL_PULSE_PATH,
+};
+pub use clock::{
+    clock_status, parse_chronyc_tracking_csv, parse_sntp_output, parse_src_kind,
+    peer_offset_and_err, peer_src_token, sample_latest, validate_ntp_hostname, validate_peer_alias,
+    ClockSample, ClockSrcKind, ClockStatusReport, ParsedClockOffset, PeerClockTransport,
+    PeerExchange, PeerTransportError, SampleOpts, UnwiredPeerTransport, CLOCK_UNKNOWN_ERR_US,
+    DEFAULT_CLOCK_CACHE_NAME, DEFAULT_CLOCK_MAX_AGE_S, DEFAULT_CLOCK_SAMPLE_TIMEOUT,
+    DEFAULT_SNTP_SERVER,
 };
 pub use critical_path::{compute_critical_path, explain_node, CriticalPathReport};
 #[cfg(feature = "opportunity-finder")]
