@@ -22,6 +22,58 @@ pub const DEFAULT_CLOCK_SAMPLE_TIMEOUT: Duration = Duration::from_secs(2);
 
 const PEER_ALIASES: [&str; 4] = ["laptop-1", "laptop-2", "mac-mini", "box"];
 
+/// Wire tokens for `ClockSample::src`. The field stays a **string** on the wire so future
+/// sources (e.g. `roughtime`) can land without breaking readers of older caches or events.
+pub mod src_token {
+    pub const NONE: &str = "none";
+    pub const CHRONY: &str = "chrony";
+    pub const SNTP: &str = "sntp";
+    /// Reserved for a future slice; not sampled in E1.
+    pub const ROUGHTIME: &str = "roughtime";
+    pub const PEER_PREFIX: &str = "peer:";
+}
+
+/// Classify a `src` string for branching in kernel code. Unknown tokens map to `Other`.
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClockSrcKind {
+    None,
+    Chrony,
+    Sntp,
+    Roughtime,
+    /// Full wire token (`peer:<alias>`).
+    Peer(String),
+    Other(String),
+}
+
+impl ClockSrcKind {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::None => src_token::NONE,
+            Self::Chrony => src_token::CHRONY,
+            Self::Sntp => src_token::SNTP,
+            Self::Roughtime => src_token::ROUGHTIME,
+            Self::Peer(token) => token,
+            Self::Other(s) => s,
+        }
+    }
+}
+
+pub fn peer_src_token(alias: &str) -> String {
+    format!("{}{alias}", src_token::PEER_PREFIX)
+}
+
+pub fn parse_src_kind(src: &str) -> ClockSrcKind {
+    match src {
+        src_token::NONE => ClockSrcKind::None,
+        src_token::CHRONY => ClockSrcKind::Chrony,
+        src_token::SNTP => ClockSrcKind::Sntp,
+        src_token::ROUGHTIME => ClockSrcKind::Roughtime,
+        s if s.starts_with(src_token::PEER_PREFIX) => ClockSrcKind::Peer(s.to_string()),
+        other => ClockSrcKind::Other(other.to_string()),
+    }
+}
+
 /// Parsed offset from chrony or sntp before attaching provenance `src`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ParsedClockOffset {
@@ -44,7 +96,7 @@ impl ClockSample {
         Self {
             off_us: 0,
             err_us: CLOCK_UNKNOWN_ERR_US,
-            src: "none".into(),
+            src: src_token::NONE.into(),
             age_s,
         }
     }
@@ -467,16 +519,24 @@ fn sample_now(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'static str> {
             .round_trip()
             .map_err(|_| "peer transport failed")?;
         let (off_us, err_us) = peer_offset_and_err(&ex);
-        return Ok(new_record(off_us, err_us, format!("peer:{alias}")));
+        return Ok(new_record(off_us, err_us, peer_src_token(alias)));
     }
     if opts.platform_probe {
         if let Some(parsed) = sample_chrony() {
-            return Ok(new_record(parsed.off_us, parsed.err_us, "chrony".into()));
+            return Ok(new_record(
+                parsed.off_us,
+                parsed.err_us,
+                src_token::CHRONY.into(),
+            ));
         }
     }
     if opts.platform_probe && cfg!(target_os = "macos") && validate_ntp_hostname(opts.sntp_server) {
         if let Some(parsed) = sample_sntp(opts.sntp_server) {
-            return Ok(new_record(parsed.off_us, parsed.err_us, "sntp".into()));
+            return Ok(new_record(
+                parsed.off_us,
+                parsed.err_us,
+                src_token::SNTP.into(),
+            ));
         }
     }
     Err("no source")
@@ -838,7 +898,37 @@ mod tests {
         let s = ClockSample::none(3);
         assert_eq!(s.off_us, 0);
         assert_eq!(s.err_us, CLOCK_UNKNOWN_ERR_US);
-        assert_eq!(s.src, "none");
+        assert_eq!(s.src, src_token::NONE);
         assert_eq!(s.age_s, 3);
+    }
+
+    #[test]
+    fn cache_accepts_unknown_future_src_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = resolve_clock_cache_path(dir.path(), None);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let body = r#"{
+  "sampled_at": "2026-01-01T00:00:00Z",
+  "off_us": 1,
+  "err_us": 2,
+  "src": "roughtime"
+}"#;
+        fs::write(&path, body).unwrap();
+        let record = read_cache(&path).unwrap().expect("cache read");
+        assert_eq!(record.src, src_token::ROUGHTIME);
+        match parse_src_kind(&record.src) {
+            ClockSrcKind::Roughtime => {}
+            other => panic!("unexpected kind {other:?}"),
+        }
+        let sample = record_to_sample(&record, 0);
+        assert_eq!(sample.src, src_token::ROUGHTIME);
+    }
+
+    #[test]
+    fn parse_src_kind_other_for_unknown() {
+        assert_eq!(
+            parse_src_kind("future-clock-v2"),
+            ClockSrcKind::Other("future-clock-v2".into())
+        );
     }
 }

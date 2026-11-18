@@ -6,7 +6,7 @@ Future record events may carry an optional `clock` object:
 { "off_us": 250, "err_us": 11750, "src": "chrony", "age_s": 12 }
 ```
 
-`src` is `chrony`, `sntp`, `peer:<alias>`, or `none`. Microsecond digits are **resolution**, not accuracy; `err_us` is the honest bound from the source (not “precision”).
+`src` is an open **string** (not a closed enum on the wire). E1 emits `chrony`, `sntp`, `peer:<alias>`, or `none`; later slices may add tokens such as `roughtime` without breaking readers. Kernel code classifies via `ClockSrcKind` (`#[non_exhaustive]`) and leaves unknown cache/event values as `Other`. Microsecond digits are **resolution**, not accuracy; `err_us` is the honest bound from the source (not “precision”).
 
 ## Flow
 
