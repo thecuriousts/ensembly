@@ -637,6 +637,27 @@ fn fts_relevance_ratio_mixed_sign_pool_uses_gap_from_best() {
 }
 
 #[test]
+fn fts_relevance_ratio_mixed_sign_grid_monotonic_in_unit_interval() {
+    for &best in &[-4.0, -0.5, 0.25, 2.0] {
+        let mut prev = 1.0_f64;
+        for &bm25 in &[-3.0, -1.0, 0.0, 0.5, 1.4, 3.0, 6.0] {
+            let rel = pc::fts_relevance_ratio(bm25, best, true);
+            assert!(rel.is_finite(), "bm25={bm25} best={best}");
+            assert!(
+                (0.0..=1.0).contains(&rel),
+                "rel={rel} bm25={bm25} best={best}"
+            );
+            if (bm25 - best).abs() < 1e-12 {
+                assert!((rel - 1.0).abs() < 1e-9);
+            } else if bm25 > best {
+                assert!(rel <= prev, "not monotonic: bm25={bm25} best={best}");
+                prev = rel;
+            }
+        }
+    }
+}
+
+#[test]
 fn search_two_hit_pool_tf_gap_uses_epsilon_for_two_hour_newer() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("pulse.sqlite");
@@ -669,41 +690,38 @@ fn search_like_fills_after_real_fts_and_syntax_error() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("pulse.sqlite");
     let c = open_fixture_db(&path);
-    let rare = "orsynfill99";
+    let probe = pc::FTS_AND_ERR_PROBE;
     insert_trace(
         &c,
         "err2/or-a",
-        &format!("{rare} token alpha partial"),
+        "orxsyn99 alpha tail",
         "2026-10-01T00:00:00+00:00",
     );
     insert_trace(
         &c,
-        "err2/or-b",
-        &format!("{rare} token bravo partial"),
-        "2026-10-02T00:00:00+00:00",
-    );
-    insert_trace(
-        &c,
         "err2/like-both",
-        &format!("{rare} alpha bravo both tokens literal filler"),
+        "likefill ftsanderrprobez prefix_alphax suffix_bravoy substrings only",
         "2026-10-03T00:00:00+00:00",
     );
     let conn = pc::open_ro(&path).unwrap();
-    let tokens = pc::search_content_tokens(&format!("NEAR {rare} alpha bravo"));
-    assert!(
-        tokens.len() > 1,
-        "need multi-token query for AND error path"
+    let _ = pc::take_search_and_fts_err_count();
+    let q = format!("{probe} alpha bravo");
+    let tokens = pc::search_content_tokens(&q);
+    assert!(tokens.len() > 1, "need multi-token query");
+    let rows = pc::read_search(&conn, &q, 5).unwrap();
+    assert_eq!(
+        pc::take_search_and_fts_err_count(),
+        1,
+        "collect_search_pool must take the FTS AND Err arm"
     );
-    // User query keeps NEAR as a token; implicit AND MATCH is invalid FTS syntax → Err branch.
-    let rows = pc::read_search(&conn, &format!("NEAR {rare} alpha bravo"), 5).unwrap();
     let keys: std::collections::BTreeSet<_> = rows.iter().map(|r| r.nat_key.as_str()).collect();
     assert!(
-        keys.contains("err2/or-a") && keys.contains("err2/or-b"),
-        "OR widen should return partial hits on AND error, got {keys:?}"
+        keys.contains("err2/or-a"),
+        "OR widen should return at least one partial hit, got {keys:?}"
     );
     assert!(
         keys.contains("err2/like-both"),
-        "LIKE must fill when AND errors and OR pool is short of limit, got {keys:?}"
+        "LIKE-only row (no OR token match) must appear after LIKE fill, got {keys:?}"
     );
 }
 

@@ -487,7 +487,28 @@ fn fts_quote_tokens(tokens: &[String]) -> String {
         .join(" ")
 }
 
+/// Integration tests include this token in the query to force an invalid FTS AND `MATCH`
+/// (unbalanced paren). Omitted in release builds; otherwise treated as a normal term.
+#[cfg(debug_assertions)]
+pub const FTS_AND_ERR_PROBE: &str = "ftsanderrprobe";
+
+#[cfg(debug_assertions)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[cfg(debug_assertions)]
+static SEARCH_AND_FTS_ERR_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// Reset/read how many times multi-token FTS AND returned `Err` (debug test hook).
+#[cfg(debug_assertions)]
+pub fn take_search_and_fts_err_count() -> usize {
+    SEARCH_AND_FTS_ERR_COUNT.swap(0, Ordering::SeqCst)
+}
+
 fn fts_and_query(tokens: &[String]) -> String {
+    #[cfg(debug_assertions)]
+    if tokens.iter().any(|t| t == FTS_AND_ERR_PROBE) {
+        return format!("\"{FTS_AND_ERR_PROBE}\" (");
+    }
     fts_quote_tokens(tokens)
 }
 
@@ -766,6 +787,8 @@ fn collect_search_pool(
         Ok(hits) => absorb_fts_hits(&mut pool, hits, SearchTier::AllTerms),
         Err(_) if tokens.len() == 1 => {}
         Err(_) => {
+            #[cfg(debug_assertions)]
+            SEARCH_AND_FTS_ERR_COUNT.fetch_add(1, Ordering::SeqCst);
             let or_q = fts_or_query(tokens);
             if let Ok(hits) = read_search_fts_candidates(conn, &or_q, fetch) {
                 absorb_fts_hits(&mut pool, hits, SearchTier::OrWiden);
