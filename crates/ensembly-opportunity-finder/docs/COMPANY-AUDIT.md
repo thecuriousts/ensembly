@@ -79,7 +79,8 @@ refuses a new row that breaks any of these rules and writes nothing;
 `--strict` is not an append flag. Export leaves the auditor cell blank for a
 legacy row and does not rewrite the store. A store that predates the writer
 seal can be sealed with `ensembly apps adopt-seal --store PATH --sha256 HEX
---reason TEXT`. The audit writer does not consult that seal on append.
+--reason TEXT`. `audit append` then checks that seal and updates it, the same
+way a ledger append does. A missing seal blocks the append.
 
 ### Exit-code contract (`status`)
 

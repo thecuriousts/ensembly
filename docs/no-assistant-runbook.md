@@ -94,4 +94,4 @@ Adoption writes the seal only when all of these hold:
 
 Stored rows that only break a newer per-row rule warn `legacy: <rule>` and do not block adoption. Invalid JSON, unknown fields, and a blank `audited_by` do. The command prints `adopted path=… sha256=… rows=…` and appends one JSON line (path, sha256, rows, timestamp, reason) to `{file}.adoptions`. It does not rewrite the data file.
 
-The audit writer does not consult the seal on append. `adopt-seal --store` still records the hash, the validation, the seal, and the adoption log. The ledger writer does consult the seal: after a successful adopt, `ensembly apps append` can write a new row.
+`adopt-seal` locks the file, re-reads those bytes, and writes `{file}.adoptions` before it publishes the seal. A symlink at the seal or the adoption log is refused. The ledger writer and the audit writer both consult the seal: a missing seal blocks `ensembly apps append` and `ensembly apps audit append`, and a successful append updates the seal. After `adopt-seal`, either append can write a new row. Deleting a seal does not let append recreate it.

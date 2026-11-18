@@ -447,31 +447,23 @@ pub fn export_markdown(rows: &[Audit]) -> String {
 }
 
 /// Append one validated audit; an identical row (after trimming) is refused (exit 1).
+/// A missing writer seal is refused. A successful append updates the seal.
 pub fn append_audit(path: &Path, a: &Audit) -> anyhow::Result<()> {
-    use std::io::Write;
     validate_audit(a)?;
-    let existing = match std::fs::read_to_string(path) {
-        Ok(t) => parse_audits(&t)?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-        Err(e) => return Err(e.into()),
-    };
+    let existing = read_existing_audits(path)?;
     if existing.iter().any(|x| x == a) {
         anyhow::bail!("identical audit already in store for {}", a.domain);
     }
     check_reuse(&existing, a)?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let mut f = crate::application_ledger::open_jsonl_append(path)?;
-    writeln!(f, "{}", serde_json::to_string(a)?)?;
-    Ok(())
+    let mut line = serde_json::to_string(a)?;
+    line.push('\n');
+    append_sealed(path, line.as_bytes())
 }
 
 /// Batch append from JSONL text: every line is validated first (any error
 /// writes nothing); rows already in the store are skipped. Returns
 /// (appended, skipped). Re-running the same batch appends nothing.
 pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> {
-    use std::io::Write;
     let incoming = parse_new_audits(text)?;
     let mut existing = match std::fs::read_to_string(path) {
         Ok(t) => parse_audits(&t)?,
@@ -492,13 +484,53 @@ pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> 
         appended += 1;
     }
     if appended > 0 {
+        append_sealed(path, lines.as_bytes())?;
+    }
+    Ok((appended, skipped))
+}
+
+fn read_existing_audits(path: &Path) -> anyhow::Result<Vec<Audit>> {
+    match std::fs::read_to_string(path) {
+        Ok(t) => parse_audits(&t),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Same seal protocol as the ledger writer: refuse a missing or mismatched
+/// seal, then publish the hash of the bytes just written.
+fn append_sealed(path: &Path, extra: &[u8]) -> anyhow::Result<()> {
+    use std::io::Write;
+    let before = ensembly_schema::read_bytes(path).map_err(map_sealed)?;
+    ensembly_schema::check_seal(path, &before).map_err(map_sealed)?;
+    ensembly_schema::unlock(path).map_err(map_sealed)?;
+    let written = (|| -> anyhow::Result<()> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let mut f = crate::application_ledger::open_jsonl_append(path)?;
-        f.write_all(lines.as_bytes())?;
-    }
-    Ok((appended, skipped))
+        let mut file = crate::application_ledger::open_jsonl_append(path)?;
+        file.write_all(extra)?;
+        file.flush()?;
+        let after = ensembly_schema::read_bytes(path).map_err(map_sealed)?;
+        if !ensembly_schema::grew_without_rewrite(&before, &after) {
+            anyhow::bail!("history was rewritten; the writer will not append");
+        }
+        ensembly_schema::write_seal(path, &after).map_err(map_sealed)?;
+        Ok(())
+    })();
+    let locked = ensembly_schema::lock(path).map_err(map_sealed);
+    written?;
+    locked?;
+    Ok(())
+}
+
+fn map_sealed(err: ensembly_schema::SealedIoError) -> anyhow::Error {
+    let msg = match err {
+        ensembly_schema::SealedIoError::Io(msg) | ensembly_schema::SealedIoError::Refused(msg) => {
+            msg
+        }
+    };
+    anyhow::anyhow!("{msg}")
 }
 
 fn instant(t: &str) -> Option<i64> {
@@ -561,6 +593,17 @@ mod tests {
     fn sample() -> Vec<Audit> {
         parse_audits(SAMPLE).expect("sample valid")
     }
+    fn seal_store(path: &std::path::Path) {
+        if !path.exists() {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir).unwrap();
+            }
+            std::fs::write(path, b"").unwrap();
+        }
+        let bytes = std::fs::read(path).unwrap();
+        ensembly_schema::write_seal(path, &bytes).unwrap();
+    }
+
     fn first() -> Audit {
         sample()
             .into_iter()
@@ -684,6 +727,7 @@ mod tests {
         let p = dir.path().join("a.jsonl");
         let body = format!("{legacy}\n");
         std::fs::write(&p, &body).unwrap();
+        seal_store(&p);
         assert_eq!(append_audits(&p, fresh).unwrap(), (1, 0));
         let after = std::fs::read_to_string(&p).unwrap();
         assert!(after.starts_with(&body), "old row was rewritten:\n{after}");
@@ -701,6 +745,7 @@ mod tests {
         let p = dir.path().join("a.jsonl");
         let body = format!("{legacy_line}\n");
         std::fs::write(&p, &body).unwrap();
+        seal_store(&p);
         append_audit(&p, &later).unwrap();
         let after = std::fs::read_to_string(&p).unwrap();
         assert!(after.starts_with(&body), "old row was rewritten:\n{after}");
@@ -896,6 +941,7 @@ mod tests {
         let bad_line = serde_json::to_string(&bad).unwrap();
         assert!(append_audits(&p, &bad_line).is_err());
         assert_eq!(std::fs::read(&p).unwrap(), before);
+        seal_store(&p);
         let mut good = first();
         good.domain = "quarry.example.test".into();
         good.company = "Quarry Sample".into();
@@ -927,6 +973,7 @@ mod tests {
         assert!(append_audits(&p, &line(&dangling)).is_err());
         assert!(append_audit(&p, &dangling).is_err());
         assert!(!p.exists(), "nothing written");
+        seal_store(&p);
         append_audits(&p, SAMPLE).unwrap();
         // contoso's stamp exists, but for another domain
         let other = reuse_of(
@@ -1168,6 +1215,7 @@ mod tests {
         let rest: Vec<&str> = lines.collect();
         let p = dir.path().join("a.jsonl");
         std::fs::write(&p, rest.join("\n")).unwrap();
+        seal_store(&p);
         append_audit(&p, &serde_json::from_str(first_line).unwrap()).unwrap();
         let n = parse_audits(&std::fs::read_to_string(&p).unwrap())
             .unwrap()
@@ -1175,6 +1223,7 @@ mod tests {
         assert_eq!(n, rest.len() + 1);
         let q = dir.path().join("b.jsonl");
         std::fs::write(&q, rest.join("\n")).unwrap();
+        seal_store(&q);
         assert_eq!(append_audits(&q, first_line).unwrap(), (1, 0));
         let n = parse_audits(&std::fs::read_to_string(&q).unwrap())
             .unwrap()
@@ -1186,6 +1235,7 @@ mod tests {
     fn append_validates_and_refuses_duplicates() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("a.jsonl");
+        seal_store(&p);
         let a = first();
         append_audit(&p, &a).unwrap();
         assert!(append_audit(&p, &a).is_err());
@@ -1202,6 +1252,7 @@ mod tests {
     fn batch_append_is_all_or_nothing_and_rerun_is_a_noop() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("a.jsonl");
+        seal_store(&p);
         assert_eq!(append_audits(&p, SAMPLE).unwrap(), (3, 0));
         assert_eq!(append_audits(&p, SAMPLE).unwrap(), (0, 3));
         let bad = format!("{}\nnot json\n", SAMPLE.lines().next().unwrap());
@@ -1209,6 +1260,43 @@ mod tests {
         assert!(append_audits(&q, &bad).is_err());
         assert!(!q.exists(), "nothing written when any line is invalid");
         assert_eq!(std::fs::read_to_string(&p).unwrap().lines().count(), 3);
+    }
+
+    #[test]
+    fn audit_append_with_missing_seal_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        let row = first();
+        let err = append_audit(&p, &row).unwrap_err();
+        assert!(err.to_string().contains("seal is missing"), "{err}");
+        assert!(!p.exists(), "a missing seal writes nothing");
+        let err = append_audits(&p, &serde_json::to_string(&row).unwrap()).unwrap_err();
+        assert!(err.to_string().contains("seal is missing"), "{err}");
+        assert!(!p.exists());
+    }
+
+    #[test]
+    fn audit_append_after_adopt_keeps_the_seal_valid() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        let legacy = without_audited_by(SAMPLE.lines().next().unwrap());
+        std::fs::write(&p, format!("{legacy}\n")).unwrap();
+        let bytes = std::fs::read(&p).unwrap();
+        let hex = ensembly_schema::content_sha256(&bytes);
+        crate::seal_adopt::adopt_seal(&p, &hex, "reviewed on laptop-1", |text| {
+            Ok(parse_audit_store(text)?.rows.len())
+        })
+        .unwrap();
+        let mut row = first();
+        row.domain = "quarry.example.test".into();
+        row.company = "Quarry Sample".into();
+        append_audit(&p, &row).unwrap();
+        let after = std::fs::read(&p).unwrap();
+        ensembly_schema::check_seal(&p, &after).unwrap();
+        assert!(after.starts_with(&bytes));
+        assert!(std::str::from_utf8(&after)
+            .unwrap()
+            .contains("quarry.example.test"));
     }
 
     #[test]

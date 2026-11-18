@@ -139,7 +139,10 @@ fn versioned_lines_and_old_refusals() {
     ledger(dir, &lv1, true, "ok: 6 rows");
     audit_file(dir, &av0, true, "ok: 4 audits");
     audit_file(dir, &av1, true, "ok: 4 audits");
-    let store = dir.join("a.jsonl").into_os_string().into_string().unwrap();
+    let store_path = dir.join("a.jsonl");
+    fs::write(&store_path, b"").unwrap();
+    ensembly_schema::write_seal(&store_path, b"").unwrap();
+    let store = store_path.into_os_string().into_string().unwrap();
     let one0 = put(
         dir,
         "one0.jsonl",
@@ -418,6 +421,7 @@ fn legacy_audited_by_warns_strict_fails_and_append_rejects() {
     let kept = dir.join("kept.jsonl");
     let body = format!("{legacy_line}\n");
     fs::write(&kept, &body).unwrap();
+    ensembly_schema::write_seal(&kept, body.as_bytes()).unwrap();
     let kept_s = kept.to_str().unwrap();
     append_to(dir, kept_s, &fresh_file, true, "appended 1");
     let after = fs::read_to_string(&kept).unwrap();

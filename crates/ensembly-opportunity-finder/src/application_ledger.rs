@@ -139,6 +139,10 @@ fn sent_status_name(status: &str) -> bool {
 
 /// True when the stored JSON is a sent row whose time was never recorded.
 /// A real timestamp, or an explicit `submit_time_unknown: true`, is not legacy.
+fn is_missing_submit_time_check(err: &str) -> bool {
+    err.contains("submit_time is required when status is")
+}
+
 fn raw_legacy_submit_time(line: &str) -> bool {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
         return false;
@@ -187,7 +191,9 @@ pub fn read_ledger(text: &str) -> anyhow::Result<LedgerRead> {
             });
         }
         if let Err(err) = check {
-            if !omitted_time {
+            // A missing submit_time on a sent row is the legacy warning above.
+            // Any other check failure on that same line is still reported.
+            if !(omitted_time && is_missing_submit_time_check(&err)) {
                 legacy.push(LegacyNote {
                     line: line_no,
                     rule: err,
@@ -874,6 +880,53 @@ pub(crate) mod tests {
         let after = std::fs::read_to_string(&p).unwrap();
         assert!(after.starts_with(text));
         assert!(after.contains("quarry/9"));
+    }
+
+    #[test]
+    fn legacy_submit_time_still_reports_other_check_errors() {
+        let missing = r#"{"company":"Pebble Sample","role":"Widget Engineer","link":"http://jobs.example.test/pebble/1","status":"rejected","submit_time":null,"cv_version":"unknown"}"#;
+        let read = read_ledger(missing).unwrap();
+        assert!(
+            read.legacy
+                .iter()
+                .any(|n| n.line == 1 && n.rule == "submit_time missing"),
+            "{:?}",
+            read.legacy
+        );
+        assert!(
+            read.legacy.iter().any(|n| n.rule.contains("https URL")),
+            "{:?}",
+            read.legacy
+        );
+        assert!(
+            read.legacy
+                .iter()
+                .any(|n| n.rule.contains("legacy-unknown")),
+            "{:?}",
+            read.legacy
+        );
+        let bad_time = row(
+            "https://jobs.example.test/pebble/2",
+            "submitted",
+            Some("2026-10-26T18:59:00"),
+        );
+        let read = read_ledger(&bad_time).unwrap();
+        assert!(
+            read.legacy.iter().any(|n| n.rule.contains("RFC 3339")),
+            "{:?}",
+            read.legacy
+        );
+        assert!(
+            !read.legacy.iter().any(|n| n.rule == "submit_time missing"),
+            "a bad timestamp is not the missing-time rule: {:?}",
+            read.legacy
+        );
+        assert!(is_missing_submit_time_check(
+            "submit_time is required when status is rejected (if it was never recorded, set submit_time_unknown: true)"
+        ));
+        assert!(!is_missing_submit_time_check(
+            "submit_time_unknown is either true or absent"
+        ));
     }
 
     #[test]
