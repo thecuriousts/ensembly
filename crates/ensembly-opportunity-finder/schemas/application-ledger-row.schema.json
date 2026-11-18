@@ -10,7 +10,6 @@
     "role",
     "link",
     "status",
-    "submit_time",
     "cv_version"
   ],
   "properties": {
@@ -43,7 +42,7 @@
       ]
     },
     "submit_time": {
-      "description": "RFC 3339 with seconds and a numeric offset or Z/z (UTC). null for prepared, for withdrawn dropped before sending, or with submit_time_unknown: true.",
+      "description": "RFC 3339 with seconds and a numeric offset or Z/z (UTC). null for prepared, for withdrawn dropped before sending, or with submit_time_unknown: true. A stored sent row may omit this key or use null or a blank string when the time was never recorded; readers warn and do not invent a timestamp. A new append still requires a time or submit_time_unknown: true. A schema cannot tell new rows from old, so that write-time rule lives in Rust.",
       "type": [
         "string",
         "null"
@@ -94,7 +93,7 @@
       "then": {
         "properties": {
           "submit_time": {
-            "type": "string"
+            "type": ["string", "null"]
           }
         }
       }

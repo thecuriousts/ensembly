@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use clap::Subcommand;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Subcommand)]
 pub enum RecordAppsCmd {
@@ -39,8 +39,13 @@ pub enum AppsCmd {
         #[command(subcommand)]
         sub: AuditCmd,
     },
-    /// Validate every line; print row count and current-state count
-    Validate,
+    /// Validate every line; print row count and current-state count.
+    /// A stored sent row that omits `submit_time` is a warning. `--strict` exits 1.
+    Validate {
+        /// Exit 1 when a stored sent row omits submit_time
+        #[arg(long)]
+        strict: bool,
+    },
     /// Append one validated row (identical row refused)
     Append {
         #[arg(long)]
@@ -156,14 +161,51 @@ fn read_file(p: &PathBuf) -> Result<String> {
     std::fs::read_to_string(p).map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))
 }
 
+fn report_ledger_legacy(lines: &[usize], strict: bool) -> Result<()> {
+    use ensembly_kernel::application_ledger as al;
+    for &line in lines {
+        eprintln!("{}", al::legacy_submit_time_warning(line));
+    }
+    if let Some(msg) = strict
+        .then(|| al::legacy_submit_time_failure(lines))
+        .flatten()
+    {
+        anyhow::bail!("{msg}");
+    }
+    Ok(())
+}
+
+/// Print legacy submit-time warnings when the file reads. A missing file or a
+/// real parse error is left to the command that owns that exit code.
+fn note_ledger_legacy(path: &Path) -> Result<()> {
+    use ensembly_kernel::application_ledger as al;
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return Ok(());
+    };
+    let Ok(read) = al::read_ledger(&text) else {
+        return Ok(());
+    };
+    report_ledger_legacy(&read.legacy_submit_time, false)
+}
+
+fn read_ledger_rows(
+    path: &Path,
+    strict: bool,
+) -> Result<Vec<ensembly_kernel::application_ledger::Row>> {
+    use ensembly_kernel::application_ledger as al;
+    let text = read_file(&path.to_path_buf())?;
+    let read = al::read_ledger(&text)?;
+    report_ledger_legacy(&read.legacy_submit_time, strict)?;
+    Ok(read.rows)
+}
+
 pub fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
     use ensembly_kernel::application_ledger as al;
     let ledger = ledger.unwrap_or_else(|| PathBuf::from(al::DEFAULT_LEDGER_PATH));
-    let read = |p: &PathBuf| -> Result<Vec<al::Row>> { al::parse_ledger(&read_file(p)?) };
     match sub {
         AppsCmd::Audit { store, sub } => cmd_audit(store, sub),
-        AppsCmd::Validate => {
-            let rows = read(&ledger)?;
+        AppsCmd::Validate { strict } => {
+            let rows = read_ledger_rows(&ledger, strict)?;
             println!(
                 "ok: {} rows, {} current applications",
                 rows.len(),
@@ -193,6 +235,8 @@ pub fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
                 submit_time_unknown: submit_time_unknown.then_some(true),
                 cv_version,
             };
+            al::validate_row(&row)?;
+            note_ledger_legacy(&ledger)?;
             let writer = ensembly_kernel::KernelWriter::open_ledger(&ledger)?;
             if !ledger.exists() {
                 writer.init_ledger()?;
@@ -212,12 +256,12 @@ pub fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
             prepared,
             stamp,
         } => {
-            let rows = read(&ledger)?;
+            let rows = read_ledger_rows(&ledger, false)?;
             let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
             export_tracker(&rows, &dir, join.as_deref(), prepared.as_deref(), stamp)
         }
         AppsCmd::Export { out_dir, .. } => {
-            let rows = read(&ledger)?;
+            let rows = read_ledger_rows(&ledger, false)?;
             let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
             al::write_exports(&rows, &dir)?;
             println!(
@@ -336,6 +380,7 @@ pub fn cmd_record_apps(cmd: RecordAppsCmd) -> Result<()> {
             writer,
             at,
         } => {
+            note_ledger_legacy(&ledger)?;
             let at = at.unwrap_or_else(ensembly_schema::record_now_local);
             let receipt = ensembly_kernel::import_ledger(&ledger, &log, &writer, &at)
                 .map_err(anyhow::Error::msg)?;
@@ -343,6 +388,7 @@ pub fn cmd_record_apps(cmd: RecordAppsCmd) -> Result<()> {
             Ok(())
         }
         RecordAppsCmd::Compare { ledger, log } => {
+            note_ledger_legacy(&ledger)?;
             match ensembly_kernel::compare_files(&ledger, &log) {
                 Ok(report) => finish_compare(&report),
                 Err(err) => {

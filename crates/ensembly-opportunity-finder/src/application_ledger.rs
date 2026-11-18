@@ -1,5 +1,6 @@
 //! Application ledger (Stage 1) — Ensembly is SoT for job applications.
 //! Append-only JSONL; later row for the same `link` supersedes earlier ones.
+//! A sent row that omits `submit_time` stays readable. The line is not rewritten.
 //!
 //! # Compile-fail checks
 //!
@@ -17,6 +18,8 @@ pub type Row = LedgerRow;
 pub const DEFAULT_LEDGER_PATH: &str = "data/local/applications/ledger.jsonl";
 /// Explicit marker for rows migrated from records that never noted which CV was sent.
 pub const LEGACY_UNKNOWN_CV: &str = "legacy-unknown";
+/// Warning text for a stored sent row that omits `submit_time`.
+pub const LEGACY_SUBMIT_TIME: &str = "legacy: submit_time missing";
 pub const DEFAULT_EXPORT_DIR: &str = "data/local/applications/exports";
 
 /// `submit_time` must be RFC 3339 with a numeric offset or `Z`/`z` (UTC).
@@ -24,7 +27,16 @@ pub(crate) fn check_submit_time(t: &str) -> anyhow::Result<()> {
     ensembly_schema::check_submit_time(t).map_err(anyhow::Error::msg)
 }
 
+/// Checks for a new row. A sent status still needs a time or `submit_time_unknown`.
 pub fn validate_row(r: &Row) -> anyhow::Result<()> {
+    validate_stored_row(r)?;
+    ensembly_schema::check_row_submit_time(r).map_err(anyhow::Error::msg)?;
+    Ok(())
+}
+
+/// Body checks for stored rows and for new rows.
+/// The submit-time requirement for sent statuses is not one of them.
+fn validate_stored_row(r: &Row) -> anyhow::Result<()> {
     for (name, v) in [
         ("company", &r.company),
         ("role", &r.role),
@@ -36,7 +48,10 @@ pub fn validate_row(r: &Row) -> anyhow::Result<()> {
     }
     const AD_HOC_UNKNOWN: [&str; 8] = ["unknown", "n/a", "na", "none", "?", "-", "legacy", "tbd"];
     if AD_HOC_UNKNOWN.contains(&r.cv_version.trim().to_lowercase().as_str()) {
-        anyhow::bail!("cv_version {:?}: use the explicit marker \"{LEGACY_UNKNOWN_CV}\" when the CV is not recorded", r.cv_version);
+        anyhow::bail!(
+            "cv_version {:?}: use the explicit marker \"{LEGACY_UNKNOWN_CV}\" when the CV is not recorded",
+            r.cv_version
+        );
     }
     if !r.link.starts_with("https://") || r.link.len() <= "https://".len() {
         anyhow::bail!("link must be an https URL");
@@ -46,24 +61,106 @@ pub fn validate_row(r: &Row) -> anyhow::Result<()> {
             anyhow::bail!("apply_url must be an https URL");
         }
     }
-    ensembly_schema::check_row_submit_time(r).map_err(anyhow::Error::msg)?;
+    if let Some(t) = r.submit_time.as_deref() {
+        check_submit_time(t)?;
+    }
     Ok(())
 }
 
+/// One read of an append-only ledger.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LedgerRead {
+    pub rows: Vec<Row>,
+    /// 1-based file lines of sent rows that omit `submit_time` and do not set
+    /// `submit_time_unknown`. The bytes are left as written.
+    pub legacy_submit_time: Vec<usize>,
+}
+
+/// `warning: line N: legacy: submit_time missing`
+pub fn legacy_submit_time_warning(line: usize) -> String {
+    format!("warning: line {line}: {LEGACY_SUBMIT_TIME}")
+}
+
+/// Error text when `--strict` refuses legacy rows. `None` when there are none.
+pub fn legacy_submit_time_failure(lines: &[usize]) -> Option<String> {
+    if lines.is_empty() {
+        return None;
+    }
+    let listed = lines
+        .iter()
+        .map(usize::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!("{LEGACY_SUBMIT_TIME} on line(s) {listed}"))
+}
+
+fn sent_status_name(status: &str) -> bool {
+    matches!(
+        status,
+        "submitted" | "interview" | "rejected" | "silent-closed"
+    )
+}
+
+/// True when the stored JSON is a sent row whose time was never recorded.
+/// A real timestamp, or an explicit `submit_time_unknown: true`, is not legacy.
+fn raw_legacy_submit_time(line: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return false;
+    };
+    let Some(obj) = value.as_object() else {
+        return false;
+    };
+    let Some(status) = obj.get("status").and_then(|v| v.as_str()) else {
+        return false;
+    };
+    if !sent_status_name(status) {
+        return false;
+    }
+    match obj.get("submit_time_unknown") {
+        None | Some(serde_json::Value::Null) => {}
+        Some(_) => return false,
+    }
+    match obj.get("submit_time") {
+        None | Some(serde_json::Value::Null) => true,
+        Some(serde_json::Value::String(s)) if s.trim().is_empty() => true,
+        _ => false,
+    }
+}
+
 /// Parse JSONL (blank lines ignored). Errors name the 1-based line.
-pub fn parse_ledger(text: &str) -> anyhow::Result<Vec<Row>> {
-    let mut out = Vec::new();
+/// A sent row that omits `submit_time` is kept, and its line number is listed
+/// in [`LedgerRead::legacy_submit_time`]. Invalid JSON, unknown fields, and
+/// other rule failures stay errors.
+pub fn read_ledger(text: &str) -> anyhow::Result<LedgerRead> {
+    let mut rows = Vec::new();
+    let mut legacy_submit_time = Vec::new();
     for (i, line) in text.lines().enumerate() {
         if line.trim().is_empty() {
             continue;
         }
+        let legacy = raw_legacy_submit_time(line);
         let r = ensembly_schema::decode_line(line)
             .map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?
             .value;
-        validate_row(&r).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
-        out.push(r);
+        if legacy {
+            // The time was never recorded. Do not apply the later "time required"
+            // rule to this stored line. New appends still go through `validate_row`.
+            validate_stored_row(&r).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
+            legacy_submit_time.push(i + 1);
+        } else {
+            validate_row(&r).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
+        }
+        rows.push(r);
     }
-    Ok(out)
+    Ok(LedgerRead {
+        rows,
+        legacy_submit_time,
+    })
+}
+
+/// Parse JSONL (blank lines ignored). Errors name the 1-based line.
+pub fn parse_ledger(text: &str) -> anyhow::Result<Vec<Row>> {
+    Ok(read_ledger(text)?.rows)
 }
 
 /// Current state: last row per `link` wins; sorted by (submit_time, link), prepared (no time) last.
@@ -448,6 +545,100 @@ pub(crate) mod tests {
                 "{ad_hoc}: {err}"
             );
         }
+    }
+
+    #[test]
+    fn append_after_legacy_rejected_without_submit_time_keeps_the_old_line() {
+        let legacy = row("https://jobs.example.test/pebble/1", "rejected", None);
+        let omitted = {
+            let mut v: serde_json::Value = serde_json::from_str(&legacy).unwrap();
+            v.as_object_mut().unwrap().remove("submit_time");
+            serde_json::to_string(&v).unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("l.jsonl");
+        let body = format!("{legacy}\n\n{omitted}\n");
+        std::fs::write(&p, &body).unwrap();
+        let fresh: Row = serde_json::from_str(&row(
+            "https://jobs.example.test/quarry/2",
+            "submitted",
+            Some("2026-10-26T18:59:00+01:00"),
+        ))
+        .unwrap();
+        append_row(&p, &fresh).unwrap_or_else(|e| panic!("history blocked append: {e}"));
+        let after = std::fs::read_to_string(&p).unwrap();
+        assert!(
+            after.starts_with(&body),
+            "old rows were rewritten:\n{after}"
+        );
+        let read = read_ledger(&after).unwrap();
+        assert_eq!(read.legacy_submit_time, vec![1, 3]);
+        assert_eq!(
+            legacy_submit_time_warning(1),
+            "warning: line 1: legacy: submit_time missing"
+        );
+        assert!(legacy_submit_time_failure(&[1, 3])
+            .unwrap()
+            .contains("legacy: submit_time missing"));
+        assert!(legacy_submit_time_failure(&[]).is_none());
+        let cur = current_rows(&read.rows);
+        assert!(cur
+            .iter()
+            .any(|r| r.link == "https://jobs.example.test/quarry/2"));
+        assert!(matches!(
+            cur.iter()
+                .find(|r| r.link.contains("pebble"))
+                .unwrap()
+                .submit_time(),
+            Some(SubmitTime::Unknown)
+        ));
+    }
+
+    #[test]
+    fn unparseable_json_still_blocks_append_and_a_bad_new_row_is_not_written() {
+        let legacy = row("https://jobs.example.test/pebble/1", "rejected", None);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("l.jsonl");
+        let broken = "{not json\n";
+        std::fs::write(&p, broken).unwrap();
+        let fresh: Row = serde_json::from_str(&row(
+            "https://jobs.example.test/quarry/2",
+            "submitted",
+            Some("2026-10-26T18:59:00+01:00"),
+        ))
+        .unwrap();
+        let err = append_row(&p, &fresh).unwrap_err();
+        assert!(err.to_string().contains("line 1"), "{err}");
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), broken);
+
+        let body = format!("{legacy}\n");
+        std::fs::write(&p, &body).unwrap();
+        let bad: Row = serde_json::from_str(&legacy).unwrap();
+        let err = append_row(&p, &bad).unwrap_err();
+        assert!(err.to_string().contains("submit_time"), "{err}");
+        assert_eq!(std::fs::read_to_string(&p).unwrap(), body);
+    }
+
+    #[test]
+    fn later_stage_for_the_same_link_supersedes_a_legacy_row() {
+        let legacy = row("https://jobs.example.test/pebble/1", "rejected", None);
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("l.jsonl");
+        let body = format!("{legacy}\n");
+        std::fs::write(&p, &body).unwrap();
+        let later: Row = serde_json::from_str(&row(
+            "https://jobs.example.test/pebble/1",
+            "withdrawn",
+            None,
+        ))
+        .unwrap();
+        append_row(&p, &later).unwrap();
+        let after = std::fs::read_to_string(&p).unwrap();
+        assert!(after.starts_with(&body), "old row was rewritten:\n{after}");
+        let cur = current_rows(&parse_ledger(&after).unwrap());
+        assert_eq!(cur.len(), 1);
+        assert_eq!(cur[0].status, Status::Withdrawn);
+        assert!(read_ledger(&after).unwrap().legacy_submit_time == vec![1]);
     }
 
     #[test]

@@ -1097,6 +1097,11 @@ mod tests {
         let mut rk: Vec<_> = full.as_object().unwrap().keys().cloned().collect();
         rk.sort();
         assert_eq!(keys, rk);
+        assert_eq!(
+            s["properties"]["audited_by"]["type"],
+            serde_json::json!(["string", "null"])
+        );
+        assert_eq!(s["properties"]["audited_by"]["pattern"], "\\S");
         let re =
             regex::Regex::new(s["properties"]["audited_at"]["pattern"].as_str().unwrap()).unwrap();
         for a in sample() {

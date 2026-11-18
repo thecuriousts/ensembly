@@ -195,6 +195,119 @@ fn versioned_lines_and_old_refusals() {
     audit_file(dir, &adup, false, "duplicate key");
 }
 
+#[test]
+fn legacy_submit_time_warns_strict_fails_and_append_keeps_the_old_lines() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let body = slurp("ledger-legacy-submit-time.jsonl");
+    let ledger_path = dir.join("ledger.jsonl");
+    fs::write(&ledger_path, &body).unwrap();
+    let ledger = ledger_path.to_str().unwrap();
+
+    let ok = call(dir, &["apps", "--ledger", ledger, "validate"]);
+    see(&ok, true, "ok: 2 rows, 2 current applications");
+    let warned = String::from_utf8_lossy(&ok.stderr);
+    assert!(
+        warned.contains("warning: line 1: legacy: submit_time missing"),
+        "{warned}"
+    );
+    assert!(
+        warned.contains("warning: line 3: legacy: submit_time missing"),
+        "{warned}"
+    );
+
+    let strict = call(dir, &["apps", "--ledger", ledger, "validate", "--strict"]);
+    see(
+        &strict,
+        false,
+        "legacy: submit_time missing on line(s) 1, 3",
+    );
+    assert_eq!(strict.status.code(), Some(1));
+
+    let bytes = fs::read(&ledger_path).unwrap();
+    ensembly_schema::write_seal(&ledger_path, &bytes).unwrap();
+    ensembly_schema::lock(&ledger_path).unwrap();
+    see(
+        &call(
+            dir,
+            &[
+                "apps",
+                "--ledger",
+                ledger,
+                "append",
+                "--company",
+                "Pebble Sample",
+                "--role",
+                "Widget Engineer",
+                "--link",
+                "https://jobs.example.test/pebble/1",
+                "--status",
+                "withdrawn",
+                "--cv-version",
+                "cv-sample-1",
+            ],
+        ),
+        true,
+        "appended: https://jobs.example.test/pebble/1 (withdrawn)",
+    );
+    let after = fs::read(&ledger_path).unwrap();
+    assert!(
+        after.starts_with(body.as_bytes()),
+        "legacy lines were rewritten"
+    );
+
+    let conflict = call(
+        dir,
+        &[
+            "apps",
+            "--ledger",
+            ledger,
+            "append",
+            "--company",
+            "Pebble Sample",
+            "--role",
+            "Widget Engineer",
+            "--link",
+            "https://jobs.example.test/pebble/1",
+            "--status",
+            "rejected",
+            "--submit-time",
+            "2026-10-20T09:15:00+02:00",
+            "--cv-version",
+            "cv-sample-1",
+        ],
+    );
+    see(&conflict, false, "idempotency conflict");
+    assert_eq!(fs::read(&ledger_path).unwrap(), after);
+
+    let fresh = dir.join("new.jsonl");
+    let fresh_s = fresh.to_str().unwrap();
+    see(
+        &call(
+            dir,
+            &[
+                "apps",
+                "--ledger",
+                fresh_s,
+                "append",
+                "--company",
+                "Quarry Sample",
+                "--role",
+                "Widget Engineer",
+                "--link",
+                "https://jobs.example.test/quarry/2",
+                "--status",
+                "rejected",
+                "--cv-version",
+                "cv-sample-1",
+            ],
+        ),
+        false,
+        "submit_time is required when status is rejected",
+    );
+    assert!(!fresh.exists(), "a rejected row without a time was written");
+}
+
 fn stderr_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).into_owned()
 }
