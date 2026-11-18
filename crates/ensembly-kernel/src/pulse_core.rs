@@ -562,6 +562,13 @@ fn absorb_fts_hits(pool: &mut BTreeMap<String, SearchHit>, hits: Vec<SearchHit>,
     }
 }
 
+/// Same revision family (`…/old` vs `…/new`): prefer newer `last_seen` when ranking together.
+fn nat_key_freshness_family(key: &str) -> &str {
+    key.strip_suffix("/old")
+        .or_else(|| key.strip_suffix("/new"))
+        .unwrap_or(key)
+}
+
 fn recency_score(instant: f64, newest_instant: f64, half_life_secs: f64) -> f64 {
     let age = (newest_instant - instant).max(0.0);
     if half_life_secs <= 0.0 {
@@ -600,6 +607,14 @@ fn rank_search_hits(mut hits: Vec<SearchHit>, limit: usize, recency_weight: f64)
 
     hits.sort_by(|a, b| {
         a.tier.cmp(&b.tier).then_with(|| {
+            let family_a = nat_key_freshness_family(&a.row.nat_key);
+            let family_b = nat_key_freshness_family(&b.row.nat_key);
+            if family_a == family_b && a.row.nat_key != b.row.nat_key {
+                return b
+                    .instant
+                    .partial_cmp(&a.instant)
+                    .unwrap_or(std::cmp::Ordering::Equal);
+            }
             let rel_a = a.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
             let rel_b = b.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
             if (rel_a - rel_b).abs() < PULSE_SEARCH_RELEVANCE_TIE_EPSILON {

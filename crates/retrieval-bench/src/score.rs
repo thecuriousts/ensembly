@@ -135,8 +135,8 @@ mod tests {
         assert!(s.fresh_first_accuracy >= 0.99);
     }
 
-    /// Master (pre-1b) baselines on the same synthetic set — not-below for strong types;
-    /// NL / paraphrase / fts_zero must clear obvious zero-hit plateaus after slice 1b.
+    /// Master (pre-1b) baselines on the synthetic 1k set; slice 1b must not regress strong types
+    /// and must lift NL / paraphrase / fts-zero off the zero plateau.
     #[test]
     fn slice_1b_recall_gates_on_synthetic_1k() {
         const MASTER_UNIQUE_AT_10: f64 = 1.0;

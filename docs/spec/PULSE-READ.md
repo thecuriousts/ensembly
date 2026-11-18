@@ -48,7 +48,8 @@ Within one tier:
 
 ```text
 rel = min-max normalize (-bm25) over FTS hits in pool → [0, 1]  (ties → 1.0)
-if |rel_a - rel_b| < epsilon → rank newer `unixepoch(last_seen)` first
+same revision family (`…/old` vs `…/new`) → newer `unixepoch(last_seen)` wins
+else if |rel_a - rel_b| < epsilon → rank newer first
 else score = w * 0.5^((t_newest - t)/7d) + (1-w) * rel
 ```
 

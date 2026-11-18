@@ -276,6 +276,34 @@ fn search_recall_and_fresh_first_meet_baseline() {
 }
 
 #[test]
+fn search_revision_family_prefers_newer_over_stronger_bm25() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    let anchor = "revtoken-a7";
+    insert_trace(
+        &c,
+        "supersede/alpha/old",
+        &format!("{anchor} {anchor} {anchor} extra stale padding"),
+        "2026-06-01T10:00:00Z",
+    );
+    insert_trace(
+        &c,
+        "supersede/alpha/new",
+        &format!("{anchor} light fresh body"),
+        "2026-09-01T12:00:00Z",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    let rows = pc::read_search(&conn, anchor, 5).unwrap();
+    assert_eq!(
+        rows.first().map(|r| r.nat_key.as_str()),
+        Some("supersede/alpha/new"),
+        "revision family should rank newer above stronger stale bm25, got {:?}",
+        rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn search_relevance_beats_one_hour_recency_gap() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("pulse.sqlite");
