@@ -43,8 +43,17 @@ pub fn require_configured_writer(writer: &str) -> Result<String, String> {
 }
 
 pub fn configured_writer() -> Result<String, String> {
-    let raw = std::env::var(WRITER_ENV).map_err(|_| format!("{WRITER_ENV} is not set"))?;
+    let raw = match std::env::var(WRITER_ENV) {
+        Ok(v) => v,
+        Err(_) if harness_writer_default() => "laptop-1".to_string(),
+        Err(_) => return Err(format!("{WRITER_ENV} is not set")),
+    };
     validate_writer_identity(&raw)
+}
+
+/// Default writer for `cargo test` and scaling benches when the env var is unset.
+fn harness_writer_default() -> bool {
+    cfg!(debug_assertions) || std::env::var_os("RECORD_SCALE_BENCH").is_some()
 }
 
 pub fn configured_node() -> Result<String, String> {

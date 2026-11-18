@@ -203,8 +203,7 @@ where
             continue;
         }
         let line_str = std::str::from_utf8(line).map_err(|e| LogIndexError::Io(e.to_string()))?;
-        let decoded =
-            decode_line::<EventEnvelope<P>>(line_str).map_err(|e| LogIndexError::Tail(e))?;
+        let decoded = decode_line::<EventEnvelope<P>>(line_str).map_err(LogIndexError::Tail)?;
         let event = decoded.value;
         let line_len = u32::try_from(line.len().saturating_add(1))
             .map_err(|_| LogIndexError::Tail("line too long".into()))?;
@@ -339,7 +338,7 @@ pub fn ensure_tail_intact(log: &Path, bytes: Option<&[u8]>) -> Result<(), LogInd
         )));
     }
     let text = std::str::from_utf8(&data).map_err(|e| LogIndexError::Io(e.to_string()))?;
-    if let Some(last) = text.lines().filter(|l| !l.trim().is_empty()).last() {
+    if let Some(last) = text.lines().rev().find(|l| !l.trim().is_empty()) {
         serde_json::from_str::<serde_json::Value>(last)
             .map_err(|e| LogIndexError::Tail(format!("last line is not valid json: {e}")))?;
     }
@@ -386,6 +385,7 @@ pub fn read_line_at(log: &Path, offset: u64, len: u32) -> Result<String, LogInde
     String::from_utf8(line.to_vec()).map_err(|e| LogIndexError::Io(e.to_string()))
 }
 
+#[allow(dead_code)] // used in log_index tests and for slice 3 hash chain reads
 pub fn load_events_indexed<P>(log: &Path) -> Result<Vec<EventEnvelope<P>>, LogIndexError>
 where
     P: Checked + Serialize + for<'de> Deserialize<'de> + Clone,
@@ -405,7 +405,7 @@ where
     let mut events = Vec::new();
     for entry in idx.events.iter().filter(|e| e.version <= at) {
         let line = read_line_at(log, entry.offset, entry.len)?;
-        let decoded = decode_line::<EventEnvelope<P>>(&line).map_err(|e| LogIndexError::Tail(e))?;
+        let decoded = decode_line::<EventEnvelope<P>>(&line).map_err(LogIndexError::Tail)?;
         events.push(decoded.value);
     }
     Ok(events)
@@ -422,7 +422,7 @@ where
     let mut events = Vec::new();
     for entry in idx.events.iter().filter(|e| e.version > since) {
         let line = read_line_at(log, entry.offset, entry.len)?;
-        let decoded = decode_line::<EventEnvelope<P>>(&line).map_err(|e| LogIndexError::Tail(e))?;
+        let decoded = decode_line::<EventEnvelope<P>>(&line).map_err(LogIndexError::Tail)?;
         events.push(decoded.value);
     }
     Ok(events)
@@ -438,7 +438,7 @@ where
     let mut events = Vec::with_capacity(idx.events.len());
     for entry in &idx.events {
         let line = read_line_at(log, entry.offset, entry.len)?;
-        let decoded = decode_line::<EventEnvelope<P>>(&line).map_err(|e| LogIndexError::Tail(e))?;
+        let decoded = decode_line::<EventEnvelope<P>>(&line).map_err(LogIndexError::Tail)?;
         events.push(decoded.value);
     }
     Ok(events)
@@ -511,7 +511,6 @@ mod tests {
         AggregateId, EventId, IdempotencyKey, Rfc3339Time, Source, Version as RecordVersion,
     };
     use crate::replay::{parse_event_log, replay};
-    use crate::surface::JsonPayload;
     use crate::view::{RecordView, ViewContract};
     use crate::{encode_line, SCHEMA_VERSION, SCHEMA_VERSION_LEGACY};
 
@@ -578,7 +577,7 @@ mod tests {
         extend_index_lines(
             &log,
             &lines,
-            &[ev.clone()],
+            std::slice::from_ref(&ev),
             ev.hlc.unwrap_or(HlcWire { l: 0, c: 0 }),
             ev.seq.unwrap_or(3),
         )

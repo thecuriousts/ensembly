@@ -3,10 +3,7 @@
 use crate::commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult};
 use crate::hlc::{local_append, physical_time_us, HlcState};
 use crate::idempotency::same_idempotent_content;
-pub use crate::identity::{
-    configured_node, configured_writer, require_configured_writer, validate_writer_identity,
-    WRITER_ENV,
-};
+use crate::identity::{configured_node, configured_writer, validate_writer_identity};
 use crate::log_index::{
     ensure_snapshot_at_max, extend_index_lines, load_events_since_version,
     load_events_up_to_version, load_or_rebuild, lookup_aggregate_key_entry, read_line_at,
@@ -388,7 +385,7 @@ fn check_known_keys(
                 let line = read_line_at(log, entry.offset, entry.len)
                     .map_err(RecordSurfaceError::Index)?;
                 let prior = crate::decode_line::<EventEnvelope<JsonPayload>>(&line)
-                    .map_err(|e| RecordSurfaceError::Json(e))?
+                    .map_err(RecordSurfaceError::Json)?
                     .value;
                 if !same_idempotent_content(&prior, event) {
                     return Err(RecordSurfaceError::Idempotency { key: id.1 });

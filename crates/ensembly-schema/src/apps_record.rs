@@ -13,8 +13,8 @@ use crate::record::{
     Status as RecordStatus, SubmitTime as RecordSubmitTime, TextForm, Version,
 };
 use crate::replay::replay;
-use crate::surface::{require_configured_writer, validate_writer_identity};
-use crate::{link_key, LedgerRow, SCHEMA_VERSION};
+use crate::identity::{require_configured_writer, validate_writer_identity};
+use crate::{link_key, LedgerRow};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -40,7 +40,6 @@ fn v1_fixture_line_round_trips_byte_identical() {
 
 #[test]
 fn mixed_v1_then_v2_commits() {
-    std::env::set_var("ENSEMBLY_WRITER", "laptop-1");
     let log = temp_log();
     let v1_unit = include_str!("../fixtures/scenarios/a-happy-events.json");
     commit_json(&log, v1_unit, &CommitFault::default()).unwrap();

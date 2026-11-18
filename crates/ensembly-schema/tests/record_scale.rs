@@ -1,13 +1,18 @@
 //! Scaling checks for append commit and version-scoped feed (run with `--release`).
 //!
-//! Set `RECORD_SCALE_BENCH=1` to print 1k / 10k / 100k timings in the test log.
+//! Set `RECORD_SCALE_BENCH=1` to print 1k / 10k / 100k timings in the test log and
+//! enforce the commit ratio gate (`commit_ms` at 100k ≤ `COMMIT_RATIO_MAX` × at 1k).
 
 use ensembly_schema::{
     commit_json, feed_json, snapshot_json, AggregateId, CommitFault, EventEnvelope, EventId,
-    IdempotencyKey, JsonPayload, Rfc3339Time, Source, UnitOfWork, Version, SCHEMA_VERSION,
+    IdempotencyKey, JsonPayload, Rfc3339Time, Source, UnitOfWork, Version, SCHEMA_VERSION_LEGACY,
 };
-use std::path::PathBuf;
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
+
+/// Upper bound on `commit_ms(100k) / commit_ms(1k)` so O(n) full rewrites cannot regress.
+const COMMIT_RATIO_MAX: f64 = 30.0;
 
 fn temp_log() -> (PathBuf, PathBuf) {
     let nanos = std::time::SystemTime::now()
@@ -38,7 +43,7 @@ fn synth_event(n: u64) -> EventEnvelope<JsonPayload> {
         Rfc3339Time::new("2026-10-26T18:59:00+01:00").unwrap(),
         Rfc3339Time::new("2026-10-26T19:00:00+01:00").unwrap(),
         Source::Owner,
-        ensembly_schema::SCHEMA_VERSION_LEGACY,
+        SCHEMA_VERSION_LEGACY,
         JsonPayload(serde_json::json!({
             "writer": "laptop-1",
             "note": format!("n={n}")
@@ -46,8 +51,7 @@ fn synth_event(n: u64) -> EventEnvelope<JsonPayload> {
     )
 }
 
-fn seed_log(log: &PathBuf, count: usize) {
-    std::env::set_var("ENSEMBLY_WRITER", "laptop-1");
+fn seed_log(log: &Path, count: usize) {
     for n in 1..=count {
         let unit = UnitOfWork {
             events: vec![synth_event(n as u64)],
@@ -70,7 +74,18 @@ fn record_log_scaling_commit_and_feed() {
         return;
     }
 
-    eprintln!("record scale bench (release build recommended)");
+    let host = std::fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|s| {
+            s.lines()
+                .find(|l| l.starts_with("model name"))
+                .map(|l| l.split(':').nth(1).unwrap_or("").trim().to_string())
+        })
+        .unwrap_or_else(|| "unknown".into());
+    eprintln!("record scale bench (release build recommended); cpu={host}");
+
+    let mut commit_ms_by_count: BTreeMap<usize, f64> = BTreeMap::new();
+
     for count in [1_000usize, 10_000, 100_000] {
         let (_dir, log) = temp_log();
         seed_log(&log, count.saturating_sub(1));
@@ -81,6 +96,7 @@ fn record_log_scaling_commit_and_feed() {
         let t0 = Instant::now();
         commit_json(&log, &json, &CommitFault::default()).unwrap();
         let commit_ms = t0.elapsed().as_secs_f64() * 1000.0;
+        commit_ms_by_count.insert(count, commit_ms);
 
         let t1 = Instant::now();
         let _ = snapshot_json(&log, None).unwrap();
@@ -96,6 +112,17 @@ fn record_log_scaling_commit_and_feed() {
             "events={count} commit_ms={commit_ms:.2} snapshot_ms={snap_ms:.2} feed_last_10_ms={feed_ms:.2}"
         );
     }
+
+    let at_1k = commit_ms_by_count[&1_000];
+    let at_100k = commit_ms_by_count[&100_000];
+    let ratio = at_100k / at_1k;
+    eprintln!(
+        "commit_ratio_100k_over_1k={ratio:.2} (max {COMMIT_RATIO_MAX}) commit_ms_1k={at_1k:.2} commit_ms_100k={at_100k:.2}"
+    );
+    assert!(
+        ratio <= COMMIT_RATIO_MAX,
+        "append commit looks O(n): ratio {ratio:.2} > {COMMIT_RATIO_MAX} (1k={at_1k:.2}ms 100k={at_100k:.2}ms)"
+    );
 }
 
 #[test]

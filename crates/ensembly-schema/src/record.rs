@@ -300,6 +300,7 @@ pub struct EventEnvelope<P> {
 }
 
 impl<P> EventEnvelope<P> {
+    #[allow(clippy::too_many_arguments)]
     pub fn with_payload(
         id: EventId,
         aggregate: AggregateId,
@@ -618,7 +619,7 @@ pub(crate) struct RecordEventLine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{decode_line, encode_line, SCHEMA_VERSION};
+    use crate::{decode_line, encode_line};
     use serde_json::json;
 
     type LegalEdgeArgs = fn() -> (Option<Evidence>, Option<SubmitTime>, Option<Rfc3339Time>);

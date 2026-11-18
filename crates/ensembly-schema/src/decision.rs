@@ -182,6 +182,8 @@ impl LabelRow {
     }
 }
 
+impl crate::wire::WireDecode for LabelRow {}
+
 impl Checked for LabelRow {
     fn check(&self) -> Result<(), String> {
         if self.id.trim().is_empty() {
@@ -259,6 +261,8 @@ impl DecisionEventType {
         }
     }
 }
+
+impl crate::wire::WireDecode for DecisionEvent {}
 
 impl Checked for DecisionEvent {
     fn check(&self) -> Result<(), String> {

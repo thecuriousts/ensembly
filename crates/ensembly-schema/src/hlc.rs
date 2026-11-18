@@ -15,8 +15,6 @@ pub struct HlcState {
     pub c: u16,
 }
 
-const C_MAX: u16 = u16::MAX;
-
 /// Physical time in microseconds since Unix epoch (`CLOCK_REALTIME`).
 pub fn physical_time_us() -> u64 {
     u64::try_from(
@@ -33,22 +31,21 @@ pub fn local_append(state: &mut HlcState, pt_us: u64) -> Result<HlcWire, String>
     loop {
         let l_prime = state.l;
         state.l = state.l.max(pt);
-        state.c = if state.l == l_prime {
-            state
-                .c
-                .checked_add(1)
-                .ok_or_else(|| "hlc counter overflow".to_string())?
+        if state.l == l_prime {
+            match state.c.checked_add(1) {
+                Some(c) => state.c = c,
+                None => {
+                    pt = pt.saturating_add(1);
+                    continue;
+                }
+            }
         } else {
-            0
-        };
-        if state.c <= C_MAX {
-            return Ok(HlcWire {
-                l: state.l,
-                c: state.c,
-            });
+            state.c = 0;
         }
-        state.c = C_MAX;
-        pt = pt.saturating_add(1);
+        return Ok(HlcWire {
+            l: state.l,
+            c: state.c,
+        });
     }
 }
 
@@ -57,23 +54,25 @@ pub fn receive_merge(state: &mut HlcState, pt_us: u64, remote: HlcWire) -> Resul
     loop {
         let l_prime = state.l;
         state.l = state.l.max(l_prime).max(remote.l).max(pt);
-        state.c = if state.l == l_prime && state.l == remote.l {
-            state.c.max(remote.c).saturating_add(1)
-        } else if state.l == l_prime {
-            state.c.saturating_add(1)
-        } else if state.l == remote.l {
-            remote.c.saturating_add(1)
-        } else {
-            0
+        let next_c = match (
+            state.l == l_prime && state.l == remote.l,
+            state.l == l_prime,
+            state.l == remote.l,
+        ) {
+            (true, _, _) => state.c.max(remote.c).checked_add(1),
+            (_, true, _) => state.c.checked_add(1),
+            (_, _, true) => remote.c.checked_add(1),
+            _ => Some(0),
         };
-        if state.c <= C_MAX {
-            return Ok(HlcWire {
-                l: state.l,
-                c: state.c,
-            });
-        }
-        state.c = C_MAX;
-        pt = pt.saturating_add(1);
+        let Some(next_c) = next_c else {
+            pt = pt.saturating_add(1);
+            continue;
+        };
+        state.c = next_c;
+        return Ok(HlcWire {
+            l: state.l,
+            c: state.c,
+        });
     }
 }
 
