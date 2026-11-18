@@ -1,4 +1,4 @@
-use crate::{Checked, SCHEMA_VERSION};
+use crate::{Checked, SCHEMA_VERSION, SCHEMA_VERSION_LEGACY};
 use serde::{de::DeserializeOwned, Serialize};
 use std::collections::BTreeSet;
 
@@ -18,7 +18,7 @@ struct Envelope<'a, T: Serialize> {
 
 /// Decode one JSON object line.
 ///
-/// A missing `v` means the v0 shape. The only accepted present value is [`SCHEMA_VERSION`].
+/// A missing `v` means the v0 shape. Present values `1` or `2` (and legacy `1`) are accepted on read.
 /// An explicit `v` of 0 is refused, as is any other value. Duplicate keys are refused.
 pub fn decode_line<T: DeserializeOwned + Checked>(line: &str) -> Result<Decoded<T>, String> {
     reject_duplicate_keys(line)?;
@@ -37,27 +37,35 @@ fn take_version(
     };
     match obj.remove("v") {
         None => Ok(0),
-        Some(serde_json::Value::Number(n)) if n.as_u64() == Some(u64::from(SCHEMA_VERSION)) => {
-            Ok(SCHEMA_VERSION)
-        }
-        Some(seen) => Err(unsupported_version(&seen)),
+        Some(serde_json::Value::Number(n)) => match n.as_u64() {
+            Some(0) => Err("explicit v 0 is refused".into()),
+            Some(1) => Ok(SCHEMA_VERSION_LEGACY),
+            Some(2) => Ok(SCHEMA_VERSION),
+            Some(other) => Err(unsupported_version(other)),
+            None => Err(unsupported_version_from_json(&serde_json::Value::Number(n))),
+        },
+        Some(seen) => Err(unsupported_version_from_json(&seen)),
     }
 }
 
-fn unsupported_version(seen: &serde_json::Value) -> String {
+fn unsupported_version(v: u64) -> String {
     format!(
-        "unsupported v {seen}; supported versions: omitted or {SCHEMA_VERSION}; explicit v 0 is refused"
+        "unsupported v {v}; supported versions: omitted, {SCHEMA_VERSION_LEGACY}, or {SCHEMA_VERSION}; explicit v 0 is refused"
     )
 }
 
-pub fn encode_line<T: Serialize>(version: u32, value: &T) -> Result<String, String> {
-    let v = match version {
+fn unsupported_version_from_json(seen: &serde_json::Value) -> String {
+    format!(
+        "unsupported v {seen}; supported versions: omitted, {SCHEMA_VERSION_LEGACY}, or {SCHEMA_VERSION}; explicit v 0 is refused"
+    )
+}
+
+pub fn encode_line<T: Serialize>(wire_v: u32, value: &T) -> Result<String, String> {
+    let v = match wire_v {
         0 => None,
-        SCHEMA_VERSION => Some(SCHEMA_VERSION),
+        SCHEMA_VERSION_LEGACY | SCHEMA_VERSION => Some(wire_v),
         other => {
-            return Err(format!(
-                "unsupported v {other}; supported versions: omitted or {SCHEMA_VERSION}; explicit v 0 is refused"
-            ));
+            return Err(unsupported_version(u64::from(other)));
         }
     };
     serde_json::to_string(&Envelope { body: value, v }).map_err(|e| e.to_string())

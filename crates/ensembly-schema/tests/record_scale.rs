@@ -30,21 +30,20 @@ fn fixture_event_id(n: u64) -> EventId {
 }
 
 fn synth_event(n: u64) -> EventEnvelope<JsonPayload> {
-    EventEnvelope {
-        id: fixture_event_id(n),
-        aggregate: AggregateId(format!("agg://example.test/scale/{n}")),
-        key: IdempotencyKey(format!("scale-key-{n}")),
-        version: Version(n),
-        event_time: Rfc3339Time::new("2026-10-26T18:59:00+01:00").unwrap(),
-        record_time: Rfc3339Time::new("2026-10-26T19:00:00+01:00").unwrap(),
-        source: Source::Owner,
-        prev_hash: None,
-        schema_v: SCHEMA_VERSION,
-        payload: JsonPayload(serde_json::json!({
+    EventEnvelope::with_payload(
+        fixture_event_id(n),
+        AggregateId(format!("agg://example.test/scale/{n}")),
+        IdempotencyKey(format!("scale-key-{n}")),
+        Version(n),
+        Rfc3339Time::new("2026-10-26T18:59:00+01:00").unwrap(),
+        Rfc3339Time::new("2026-10-26T19:00:00+01:00").unwrap(),
+        Source::Owner,
+        ensembly_schema::SCHEMA_VERSION_LEGACY,
+        JsonPayload(serde_json::json!({
             "writer": "laptop-1",
             "note": format!("n={n}")
         })),
-    }
+    )
 }
 
 fn seed_log(log: &PathBuf, count: usize) {

@@ -2,7 +2,7 @@
 
 use crate::log_index::{append_bytes_to_log, ensure_tail_intact, LogIndexError};
 use crate::record::EventEnvelope;
-use crate::{encode_line, Checked, Decoded, SCHEMA_VERSION};
+use crate::{encode_line, Checked, Decoded, SCHEMA_VERSION, SCHEMA_VERSION_LEGACY};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -246,7 +246,8 @@ impl Commit {
             .open(&staging)
             .map_err(|e| CommitError::Io(e.to_string()))?;
         for event in &unit.events {
-            let line = encode_line(SCHEMA_VERSION, event)
+            let wire_v = wire_version_for_event(event);
+            let line = encode_line(wire_v, event)
                 .map_err(|e| CommitError::Phase(CommitPhase::Append, e))?;
             let bytes = format!("{line}\n");
             if let Some(n) = fault.append_abort_after_bytes {
@@ -295,11 +296,20 @@ impl Commit {
     }
 }
 
+fn wire_version_for_event<P>(event: &EventEnvelope<P>) -> u32 {
+    if event.schema_v == SCHEMA_VERSION {
+        SCHEMA_VERSION
+    } else {
+        SCHEMA_VERSION_LEGACY
+    }
+}
+
 fn encode_unit<P: Serialize>(events: &[EventEnvelope<P>]) -> Result<Vec<String>, CommitError> {
     events
         .iter()
         .map(|e| {
-            encode_line(SCHEMA_VERSION, e).map_err(|e| CommitError::Phase(CommitPhase::Validate, e))
+            encode_line(wire_version_for_event(e), e)
+                .map_err(|e| CommitError::Phase(CommitPhase::Validate, e))
         })
         .collect()
 }
@@ -470,21 +480,20 @@ mod tests {
             11 => "01JCV1Q8Z30000000000000000",
             _ => "01JCV1Q8Z40000000000000000",
         };
-        EventEnvelope {
-            id: EventId(id.parse().unwrap()),
-            aggregate: AggregateId(format!("agg://example.test/acme-north/{n}")),
-            key: IdempotencyKey(key.into()),
-            version: Version(n),
-            event_time: t("2026-10-26T18:59:00+01:00"),
-            record_time: t("2026-10-26T19:00:00+01:00"),
-            source: Source::Owner,
-            prev_hash: None,
-            schema_v: SCHEMA_VERSION,
-            payload: ScenarioPayload {
+        EventEnvelope::with_payload(
+            EventId(id.parse().unwrap()),
+            AggregateId(format!("agg://example.test/acme-north/{n}")),
+            IdempotencyKey(key.into()),
+            Version(n),
+            t("2026-10-26T18:59:00+01:00"),
+            t("2026-10-26T19:00:00+01:00"),
+            Source::Owner,
+            SCHEMA_VERSION_LEGACY,
+            ScenarioPayload {
                 writer: writer.into(),
                 note: "scenario-d".into(),
             },
-        }
+        )
     }
 
     fn temp_log() -> PathBuf {

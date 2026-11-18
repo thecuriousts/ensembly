@@ -1,6 +1,8 @@
+use crate::hlc::HlcWire;
 use crate::url;
-use crate::{Checked, SCHEMA_VERSION};
+use crate::{Checked, SCHEMA_VERSION, SCHEMA_VERSION_LEGACY};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -198,37 +200,191 @@ impl fmt::Display for IllegalTransition {
     }
 }
 
-/// Wire envelope for one log line. Extra object members are ignored on read so a
-/// future bus can add timestamps, HLC, or source metadata without retiring old logs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum EventTimePrec {
+    Us,
+    Ms,
+    S,
+    Min,
+    Day,
+    Unknown,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct ClockInfo {
+    pub off_us: i64,
+    pub err_us: u64,
+    pub src: String,
+    pub age_s: u32,
+}
+
+/// Optional envelope extension bag; unknown keys are preserved and ignored on read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EnvelopeExt(#[serde(with = "ext_map")] pub BTreeMap<String, serde_json::Value>);
+
+mod ext_map {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::BTreeMap;
+
+    pub fn serialize<S>(map: &BTreeMap<String, serde_json::Value>, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        map.serialize(s)
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<BTreeMap<String, serde_json::Value>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        BTreeMap::deserialize(d)
+    }
+}
+
+/// Record event line (schema_v 1 legacy or schema_v 2 bus envelope).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct EventEnvelope<P> {
     pub id: EventId,
     pub aggregate: AggregateId,
     pub key: IdempotencyKey,
     pub version: Version,
     pub event_time: Rfc3339Time,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_time_prec: Option<EventTimePrec>,
     pub record_time: Rfc3339Time,
     pub source: Source,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prev_hash: Option<Hash>,
     pub schema_v: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub node: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seq: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hlc: Option<HlcWire>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub writer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock: Option<ClockInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<EventId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    #[cfg_attr(test, schemars(skip))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext: Option<EnvelopeExt>,
     pub payload: P,
+}
+
+impl<P> EventEnvelope<P> {
+  pub fn with_payload(
+        id: EventId,
+        aggregate: AggregateId,
+        key: IdempotencyKey,
+        version: Version,
+        event_time: Rfc3339Time,
+        record_time: Rfc3339Time,
+        source: Source,
+        schema_v: u32,
+        payload: P,
+    ) -> Self {
+        Self {
+            id,
+            aggregate,
+            key,
+            version,
+            event_time,
+            record_time,
+            source,
+            schema_v,
+            payload,
+            event_time_prec: None,
+            prev_hash: None,
+            node: None,
+            seq: None,
+            hlc: None,
+            writer: None,
+            clock: None,
+            cause: None,
+            depth: None,
+            rule: None,
+            ext: None,
+        }
+    }
+}
+
+pub fn is_host_alias(s: &str) -> bool {
+    crate::identity::is_host_alias(s)
 }
 
 impl<P: Checked> Checked for EventEnvelope<P> {
     fn check(&self) -> Result<(), String> {
-        if self.schema_v != SCHEMA_VERSION {
-            return Err(format!(
-                "unsupported schema_v {}; supported: {SCHEMA_VERSION}",
-                self.schema_v
-            ));
+        match self.schema_v {
+            SCHEMA_VERSION_LEGACY | SCHEMA_VERSION => {}
+            other => {
+                return Err(format!(
+                    "unsupported schema_v {other}; supported: {SCHEMA_VERSION_LEGACY} or {SCHEMA_VERSION}"
+                ));
+            }
         }
-        url::check_submit_time(self.event_time.as_str())?;
-        url::check_submit_time(self.record_time.as_str())?;
+        crate::idempotency::clamp_key(self.key.0.as_str())?;
+        if self.schema_v == SCHEMA_VERSION {
+            check_utc_z_time(self.event_time.as_str(), "event_time")?;
+            check_utc_z_time(self.record_time.as_str(), "record_time")?;
+            let Some(prec) = self.event_time_prec else {
+                return Err("event_time_prec is required on schema_v 2".into());
+            };
+            if prec == EventTimePrec::Unknown {
+                return Err("event_time_prec must not be unknown on schema_v 2 writes".into());
+            }
+            let node = self
+                .node
+                .as_deref()
+                .ok_or_else(|| "node is required on schema_v 2".to_string())?;
+            if !is_host_alias(node) {
+                return Err("node is not a host alias".into());
+            }
+            self.seq.ok_or_else(|| "seq is required on schema_v 2".to_string())?;
+            self.hlc.ok_or_else(|| "hlc is required on schema_v 2".to_string())?;
+            let writer = self
+                .writer
+                .as_deref()
+                .ok_or_else(|| "writer is required on schema_v 2".to_string())?;
+            crate::identity::validate_writer_identity(writer)?;
+            self.depth.unwrap_or(0);
+        } else {
+            url::check_submit_time(self.event_time.as_str())?;
+            url::check_submit_time(self.record_time.as_str())?;
+        }
         self.payload.check()?;
         Ok(())
     }
+}
+
+/// RFC3339 UTC with `Z` suffix; `record_time` must carry exactly six fraction digits on v2.
+pub fn check_utc_z_time(t: &str, field: &str) -> Result<(), String> {
+    let dt = chrono::DateTime::parse_from_rfc3339(t)
+        .map_err(|e| format!("{field} {t:?} is not RFC 3339: {e}"))?;
+    if !t.ends_with('Z') && !t.ends_with('z') {
+        return Err(format!("{field} must be UTC Z"));
+    }
+    if field == "record_time" {
+        let frac = t.split('.').nth(1).and_then(|s| s.strip_suffix('Z'));
+        match frac {
+            Some(f) if f.len() == 6 => {}
+            _ => return Err("record_time must have exactly six fraction digits".into()),
+        }
+    }
+    let _ = dt;
+    Ok(())
 }
 
 impl Status {
@@ -466,25 +622,24 @@ mod tests {
     }
 
     #[test]
-    fn unknown_field_on_envelope_ignored_for_forward_compat() {
+    fn unknown_top_level_field_refused() {
         let line = r#"{"id":"01JCV1Q8Z00000000000000000","aggregate":"https://jobs.example.test/acme/1","key":"acme-1-submit","version":1,"event_time":"2026-10-26T18:59:00+01:00","record_time":"2026-10-26T18:59:00+01:00","source":"owner","schema_v":1,"payload":{"host":"laptop-1","company":"Acme Fictional"},"extra":1,"v":1}"#;
-        assert!(decode_line::<EventEnvelope<RecordEventPayload>>(line).is_ok());
+        assert!(decode_line::<EventEnvelope<RecordEventPayload>>(line).is_err());
     }
 
     #[test]
-    fn schema_v_two_on_envelope_refused() {
-        let line = r#"{"id":"01JCV1Q8Z00000000000000000","aggregate":"https://jobs.example.test/acme/1","key":"acme-1-submit","version":1,"event_time":"2026-10-26T18:59:00+01:00","record_time":"2026-10-26T18:59:00+01:00","source":"owner","schema_v":2,"payload":{"host":"laptop-1","company":"Acme Fictional"},"v":1}"#;
-        let err = decode_line::<EventEnvelope<RecordEventPayload>>(line).unwrap_err();
-        assert!(err.contains("schema_v 2"), "{err}");
+    fn schema_v_two_body_without_bus_fields_fails_check() {
+        let line = r#"{"id":"01JCV1Q8Z00000000000000000","aggregate":"https://jobs.example.test/acme/1","key":"acme-1-submit","version":1,"event_time":"2026-10-26T18:59:00Z","record_time":"2026-10-26T18:59:00.000000Z","source":"owner","schema_v":2,"payload":{"host":"laptop-1","company":"Acme Fictional"},"v":1}"#;
+        assert!(decode_line::<EventEnvelope<RecordEventPayload>>(line).is_err());
     }
 
     #[test]
-    fn version_two_line_refused() {
+    fn version_two_wire_reads_v1_body() {
         let line =
             std::fs::read_to_string(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), FIXTURE)).unwrap();
         let first = line.lines().find(|l| !l.trim().is_empty()).unwrap();
-        let bad = first.replacen("\"v\":1", "\"v\":2", 1);
-        assert!(decode_line::<EventEnvelope<RecordEventPayload>>(&bad).is_err());
+        let wire2 = first.replacen("\"v\":1", "\"v\":2", 1);
+        assert!(decode_line::<EventEnvelope<RecordEventPayload>>(&wire2).is_ok());
     }
 
     #[test]
@@ -718,13 +873,13 @@ mod tests {
             std::fs::read_to_string(format!("{}/{}", env!("CARGO_MANIFEST_DIR"), FIXTURE)).unwrap();
         for line in text.lines().filter(|l| !l.trim().is_empty()) {
             let d = decode_line::<EventEnvelope<RecordEventPayload>>(line).unwrap();
-            assert_eq!(d.version, SCHEMA_VERSION);
-            assert_eq!(encode_line(SCHEMA_VERSION, &d.value).unwrap(), line);
+            assert_eq!(d.version, SCHEMA_VERSION_LEGACY);
+            assert_eq!(encode_line(d.version, &d.value).unwrap(), line);
             let row = RecordEventLine {
                 body: d.value.clone(),
                 v: crate::version_one::VersionOne,
             };
-            assert_eq!(row.body.schema_v, SCHEMA_VERSION);
+            assert_eq!(row.body.schema_v, SCHEMA_VERSION_LEGACY);
             assert!(matches!(
                 row.body.payload.host.as_str(),
                 "laptop-1" | "laptop-2" | "mac-mini"

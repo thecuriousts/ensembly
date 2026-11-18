@@ -183,12 +183,12 @@ fn version_one_round_trips() {
 
 #[cfg(feature = "opportunity-finder")]
 #[test]
-fn encode_line_writes_v1_and_never_v2() {
+fn encode_line_writes_current_schema_version() {
     let row = decode_line::<LedgerRow>(&first(LEDGER)).unwrap().value;
     let line = encode_line(SCHEMA_VERSION, &row).unwrap();
-    assert!(line.contains("\"v\":1"), "{line}");
-    assert!(!line.contains("\"v\":2"), "{line}");
-    assert!(encode_line(2, &row).is_err());
+    assert!(line.contains(&format!("\"v\":{SCHEMA_VERSION}")), "{line}");
+    let legacy = encode_line(SCHEMA_VERSION_LEGACY, &row).unwrap();
+    assert!(legacy.contains("\"v\":1"), "{legacy}");
 }
 
 fn legacy(status: &str, time: Option<&str>) -> String {

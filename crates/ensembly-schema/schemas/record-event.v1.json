@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "RecordEventLine",
-  "description": "Wire envelope for one log line. Extra object members are ignored on read so a future bus can add timestamps, HLC, or source metadata without retiring old logs.",
+  "description": "Record event line (schema_v 1 legacy or schema_v 2 bus envelope).",
   "type": "object",
   "required": [
     "aggregate",
@@ -19,14 +19,68 @@
     "aggregate": {
       "type": "string"
     },
+    "cause": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/EventId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "clock": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ClockInfo"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "depth": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint8",
+      "minimum": 0.0
+    },
     "event_time": {
       "type": "string"
+    },
+    "event_time_prec": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/EventTimePrec"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "hlc": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/HlcWire"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "id": {
       "$ref": "#/definitions/EventId"
     },
     "key": {
       "type": "string"
+    },
+    "node": {
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "payload": {
       "$ref": "#/definitions/RecordEventPayload"
@@ -44,29 +98,109 @@
     "record_time": {
       "type": "string"
     },
+    "rule": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "schema_v": {
       "type": "integer",
       "format": "uint32",
+      "minimum": 0.0
+    },
+    "seq": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
       "minimum": 0.0
     },
     "source": {
       "$ref": "#/definitions/Source"
     },
     "v": {
-      "const": 1
+      "const": 2
     },
     "version": {
       "type": "integer",
       "format": "uint64",
       "minimum": 0.0
+    },
+    "writer": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
+  "additionalProperties": false,
   "definitions": {
+    "ClockInfo": {
+      "type": "object",
+      "required": [
+        "age_s",
+        "err_us",
+        "off_us",
+        "src"
+      ],
+      "properties": {
+        "age_s": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "err_us": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "off_us": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "src": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "EventId": {
       "type": "string"
     },
+    "EventTimePrec": {
+      "type": "string",
+      "enum": [
+        "us",
+        "ms",
+        "s",
+        "min",
+        "day",
+        "unknown"
+      ]
+    },
     "Hash": {
       "type": "string"
+    },
+    "HlcWire": {
+      "type": "object",
+      "required": [
+        "c",
+        "l"
+      ],
+      "properties": {
+        "c": {
+          "type": "integer",
+          "format": "uint16",
+          "minimum": 0.0
+        },
+        "l": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      }
     },
     "RecordEventPayload": {
       "type": "object",

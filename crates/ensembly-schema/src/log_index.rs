@@ -3,6 +3,7 @@
 //! Derived data only: safe to delete; rebuilt from the log when missing or stale.
 //! `keys_by_idempotency` is reserved for global ingest dedupe (empty in slice 2).
 
+use crate::hlc::{HlcState, HlcWire};
 use crate::record::{EventEnvelope, Version};
 use crate::replay::{parse_event_log, replay, ReplayError};
 use crate::view::{facts_from_rows, Snapshot};
@@ -17,10 +18,17 @@ use std::path::{Path, PathBuf};
 pub const INDEX_SCHEMA_V: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeysHeader {
+    pub log_len: u64,
+    pub last_line_sha256: String,
+    pub last_seq: u64,
+    pub last_hlc: HlcWire,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogIndexSidecar {
     pub schema_v: u32,
-    pub log_len: u64,
-    pub tail_sha256: String,
+    pub header: KeysHeader,
     pub event_count: u64,
     pub max_version: u64,
     /// `(aggregate \\0 idempotency_key)` → line location (today's uniqueness scope).
@@ -73,7 +81,7 @@ pub fn sidecar_path(log: &Path) -> PathBuf {
         .file_name()
         .map(|n| n.to_os_string())
         .unwrap_or_else(|| std::ffi::OsString::from("events.jsonl"));
-    name.push(".idx");
+    name.push(".keys");
     match log.parent() {
         Some(dir) if !dir.as_os_str().is_empty() => dir.join(name),
         Some(_) | None => PathBuf::from(name),
@@ -124,7 +132,9 @@ fn log_metadata(log: &Path) -> Result<(u64, String), LogIndexError> {
 }
 
 fn idx_matches_log(idx: &LogIndexSidecar, len: u64, tail_sha256: &str) -> bool {
-    idx.schema_v == INDEX_SCHEMA_V && idx.log_len == len && idx.tail_sha256 == tail_sha256
+    idx.schema_v == INDEX_SCHEMA_V
+        && idx.header.log_len == len
+        && idx.header.last_line_sha256 == tail_sha256
 }
 
 pub fn rebuild_index<P>(log: &Path) -> Result<LogIndexSidecar, LogIndexError>
@@ -185,6 +195,9 @@ where
     let mut offset = 0u64;
     let mut tail_sha256 = sha256_hex(b"");
     let mut event_count = 0u64;
+    let mut last_seq = 0u64;
+    let mut last_hlc = HlcWire { l: 0, c: 0 };
+    let mut line_index = 0u64;
     for line in bytes.split(|&b| b == b'\n') {
         if line.is_empty() {
             continue;
@@ -211,13 +224,22 @@ where
         });
         max_version = max_version.max(event.version.0);
         event_count += 1;
+        line_index += 1;
+        last_seq = event.seq.unwrap_or(line_index);
+        if let Some(hlc) = event.hlc {
+            last_hlc = hlc;
+        }
         tail_sha256 = sha256_hex(line);
         offset = offset.saturating_add(u64::from(line_len));
     }
     Ok(LogIndexSidecar {
         schema_v: INDEX_SCHEMA_V,
-        log_len: len,
-        tail_sha256,
+        header: KeysHeader {
+            log_len: len,
+            last_line_sha256: tail_sha256,
+            last_seq,
+            last_hlc,
+        },
         event_count,
         max_version,
         keys_by_aggregate,
@@ -227,16 +249,35 @@ where
     })
 }
 
+pub fn sidecar_header_state<P>(log: &Path) -> Result<(HlcState, u64), LogIndexError>
+where
+    P: Checked + Serialize + for<'de> Deserialize<'de> + Clone,
+{
+    if !log.is_file() {
+        return Ok((HlcState::default(), 0));
+    }
+    let idx = load_or_rebuild::<P>(log)?;
+    Ok((
+        HlcState {
+            l: idx.header.last_hlc.l,
+            c: idx.header.last_hlc.c,
+        },
+        idx.header.last_seq,
+    ))
+}
+
 pub fn extend_index_lines<P>(
     log: &Path,
     new_lines: &[String],
     new_events: &[EventEnvelope<P>],
+    last_hlc: HlcWire,
+    last_seq: u64,
 ) -> Result<(), LogIndexError>
 where
     P: Checked + Serialize + for<'de> Deserialize<'de> + Clone,
 {
     let mut idx = load_or_rebuild::<P>(log)?;
-    let mut offset = idx.log_len;
+    let mut offset = idx.header.log_len;
     for (event, line) in new_events.iter().zip(new_lines) {
         let nbytes = line.as_bytes();
         let line_len = u32::try_from(nbytes.len())
@@ -258,13 +299,27 @@ where
         idx.max_version = idx.max_version.max(event.version.0);
         idx.event_count += 1;
         let line_body = nbytes.strip_suffix(b"\n").unwrap_or(nbytes);
-        idx.tail_sha256 = sha256_hex(line_body);
+        idx.header.last_line_sha256 = sha256_hex(line_body);
         offset = offset.saturating_add(u64::from(line_len));
     }
-    idx.log_len = offset;
+    idx.header.log_len = offset;
+    idx.header.last_hlc = last_hlc;
+    idx.header.last_seq = last_seq;
     idx.snapshot_at_max = None;
     write_sidecar(log, &idx)
 }
+
+#[cfg(unix)]
+pub fn ring_doorbell(log: &Path) {
+    use std::os::unix::net::UnixDatagram;
+    let sock = format!("{}.doorbell", sidecar_path(log).display());
+    if let Ok(sender) = UnixDatagram::unbound() {
+        let _ = sender.send_to(&[0u8], sock);
+    }
+}
+
+#[cfg(not(unix))]
+pub fn ring_doorbell(_log: &Path) {}
 
 pub fn ensure_tail_intact(log: &Path, bytes: Option<&[u8]>) -> Result<(), LogIndexError> {
     let data = match bytes {
@@ -420,7 +475,7 @@ fn write_sidecar(log: &Path, idx: &LogIndexSidecar) -> Result<(), LogIndexError>
         fs::create_dir_all(dir).map_err(|e| LogIndexError::Io(e.to_string()))?;
     }
     let body = serde_json::to_string(idx).map_err(|e| LogIndexError::Io(e.to_string()))?;
-    let tmp = path.with_extension("idx.tmp");
+    let tmp = path.with_extension("keys.tmp");
     fs::write(&tmp, body.as_bytes()).map_err(|e| LogIndexError::Io(e.to_string()))?;
     fs::rename(&tmp, &path).map_err(|e| LogIndexError::Io(e.to_string()))?;
     Ok(())
@@ -457,7 +512,7 @@ mod tests {
     use crate::surface::JsonPayload;
     use crate::replay::{parse_event_log, replay};
     use crate::view::{RecordView, ViewContract};
-    use crate::{encode_line, SCHEMA_VERSION};
+    use crate::{encode_line, SCHEMA_VERSION, SCHEMA_VERSION_LEGACY};
 
     #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
     struct NotePayload {
@@ -488,21 +543,20 @@ mod tests {
     }
 
     fn event(n: u64, key: &str) -> EventEnvelope<NotePayload> {
-        EventEnvelope {
-            id: fixture_event_id(n),
-            aggregate: AggregateId(format!("agg://example.test/index/{n}")),
-            key: IdempotencyKey(key.into()),
-            version: RecordVersion(n),
-            event_time: Rfc3339Time::new("2026-10-26T18:59:00+01:00").unwrap(),
-            record_time: Rfc3339Time::new("2026-10-26T19:00:00+01:00").unwrap(),
-            source: Source::Owner,
-            prev_hash: None,
-            schema_v: SCHEMA_VERSION,
-            payload: NotePayload {
+        EventEnvelope::with_payload(
+            fixture_event_id(n),
+            AggregateId(format!("agg://example.test/index/{n}")),
+            IdempotencyKey(key.into()),
+            RecordVersion(n),
+            Rfc3339Time::new("2026-10-26T18:59:00+01:00").unwrap(),
+            Rfc3339Time::new("2026-10-26T19:00:00+01:00").unwrap(),
+            Source::Owner,
+            SCHEMA_VERSION_LEGACY,
+            NotePayload {
                 writer: "laptop-1".into(),
                 note: "idx".into(),
             },
-        }
+        )
     }
 
     #[test]
@@ -519,11 +573,19 @@ mod tests {
             ),
         ];
         append_bytes_to_log(&log, lines[0].as_bytes()).unwrap();
-        extend_index_lines(&log, &lines, &[event(3, "k3")]).unwrap();
+        let ev = event(3, "k3");
+        extend_index_lines(
+            &log,
+            &lines,
+            &[ev.clone()],
+            ev.hlc.unwrap_or(HlcWire { l: 0, c: 0 }),
+            ev.seq.unwrap_or(3),
+        )
+        .unwrap();
         let incremental = load_or_rebuild::<NotePayload>(&log).unwrap();
         fs::remove_file(sidecar_path(&log)).unwrap();
         let rebuilt = rebuild_index::<NotePayload>(&log).unwrap();
-        assert_eq!(incremental.log_len, rebuilt.log_len);
+        assert_eq!(incremental.header.log_len, rebuilt.header.log_len);
         assert_eq!(incremental.event_count, rebuilt.event_count);
         assert_eq!(rebuilt.event_count, 3);
     }

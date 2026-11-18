@@ -320,24 +320,23 @@ fn build_event(
     require_link(&row.link)?;
     let status = status_for(row, at)?;
     let key = link_key(&row.link);
-    Ok(EventEnvelope {
-        id: EventId(ulid::Ulid::new()),
-        aggregate: AggregateId(key.to_string()),
-        key: IdempotencyKey(format!("{key}\t{}", stage_token(&status))),
-        version: Version(next_version(existing, key)),
-        event_time: when(row, at)?,
-        record_time: at.clone(),
-        source: Source::Document,
-        prev_hash: None,
-        schema_v: SCHEMA_VERSION,
-        payload: AppEventPayload {
+    Ok(EventEnvelope::with_payload(
+        EventId(ulid::Ulid::new()),
+        AggregateId(key.to_string()),
+        IdempotencyKey(format!("{key}\t{}", stage_token(&status))),
+        Version(next_version(existing, key)),
+        when(row, at)?,
+        at.clone(),
+        Source::Document,
+        crate::SCHEMA_VERSION_LEGACY,
+        AppEventPayload {
             writer: writer.to_string(),
             company: row.company.clone(),
             role: row.role.clone(),
             synthetic_time: !known_submit(row),
             status,
         },
-    })
+    ))
 }
 
 fn known_submit(row: &LedgerRow) -> bool {

@@ -10,9 +10,13 @@
 //! Regenerate the checked-in JSON Schema files with
 //! `WRITE_SCHEMA=1 cargo test -p ensembly-schema --features opportunity-finder --lib checked_in_schema_matches_types`.
 
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION_LEGACY: u32 = 1;
 
 mod commit;
+mod hlc;
+mod idempotency;
+mod identity;
 mod log_index;
 #[cfg(feature = "opportunity-finder")]
 mod decision;
@@ -45,6 +49,10 @@ pub use apps_record::{
 #[cfg(feature = "opportunity-finder")]
 pub use audit::*;
 pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
+pub use hlc::{HlcState, HlcWire, local_append, physical_time_us, receive_merge};
+pub use idempotency::{
+    clamp_key, deterministic_key, same_idempotent_content, source_key,
+};
 pub use log_index::{
     append_bytes_to_log, ensure_tail_intact, extend_index_lines, load_events_since_version,
     load_events_up_to_version, load_or_rebuild, rebuild_index, sidecar_path, torn_fragment_path,
@@ -81,10 +89,13 @@ pub use sealed_io::{
     check_seal, grew_without_rewrite, lock, read_bytes, seal_path, unlock, write_seal,
     SealedIoError,
 };
+pub use identity::{
+    configured_node, configured_writer, require_configured_writer, validate_writer_identity,
+    NODE_ENV, WRITER_ENV,
+};
 pub use surface::{
-    commit_json, configured_writer, feed_json, record_now_local, recover_json,
-    require_configured_writer, snapshot_json, validate_writer_identity, JsonPayload,
-    RecordSurfaceError, WRITER_ENV,
+    commit_json, feed_json, record_now_micros_utc, record_now_local, recover_json, snapshot_json,
+    JsonPayload, RecordSurfaceError,
 };
 pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};
 pub use url::{check_submit_time, link_key};
