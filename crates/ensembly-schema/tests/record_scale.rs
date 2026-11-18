@@ -11,8 +11,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-/// Upper bound on `commit_ms(100k) / commit_ms(1k)` so O(n) full rewrites cannot regress.
-const COMMIT_RATIO_MAX: f64 = 30.0;
+/// Upper bound on `commit_ms(100k) / commit_ms(1k)`.
+///
+/// A flat append lands near 1 (CI has reported about 0.99). A bound of 3 leaves
+/// room for runner noise and still fails if commit starts scanning the log
+/// (that path was ~10× from 1k to 10k, and ~100× out to 100k).
+const COMMIT_RATIO_MAX: f64 = 3.0;
 
 fn temp_log() -> (PathBuf, PathBuf) {
     let nanos = std::time::SystemTime::now()

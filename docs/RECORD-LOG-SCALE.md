@@ -31,7 +31,7 @@ flowchart TB
 | **Sidecar** | `events.jsonl.keys`: header (`log_len`, `last_line_sha256`, `last_seq`, `last_hlc`), `(aggregate,key)→offset`, empty `keys_by_idempotency` (reserved). Safe to delete; rebuilt when stale. A live process keeps the index in memory and extends it on append (tail check reads the last line only). The keys file is rewritten on rebuild, not on every commit. |
 | **Snapshot** | At `max_version`, optional cached facts in the idx; otherwise indexed line reads + replay. |
 | **Feed** | Index scan for `version > since`, then seek/read only those lines. |
-| **Ratio gate** | Release CI: `commit_ms(100k) / commit_ms(1k) ≤ 30` (`RECORD_SCALE_BENCH=1`, `record_scale` test). |
+| **Ratio gate** | Release CI: `commit_ms(100k) / commit_ms(1k) ≤ 3` (`RECORD_SCALE_BENCH=1`, `record_scale` test). A flat append sits near 1 (about 0.99 on CI). Three leaves room for runner noise and fails if commit starts reading the log again. |
 
 ### Envelope v2 optional fields (`schema_v: 2`, wire `"v":2`)
 
@@ -63,4 +63,4 @@ Scaling: `RECORD_SCALE_BENCH=1 cargo test -p ensembly-schema --test record_scale
 | 10k | 43.55–49.68 | 0.54 |
 | 100k | not finished on this VM (per-commit cost grew with the log) | 0.53 |
 
-Ratio on this VM: `commit_ms(100k) / commit_ms(1k) = 0.96` (gate ≤ 30). Machine: Intel Xeon, cloud agent VM, `--release`.
+Ratio on this VM: `commit_ms(100k) / commit_ms(1k) = 0.96` (gate ≤ 3). Machine: Intel Xeon, cloud agent VM, `--release`.

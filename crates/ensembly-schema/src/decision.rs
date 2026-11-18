@@ -262,7 +262,13 @@ impl DecisionEventType {
     }
 }
 
-impl crate::wire::WireDecode for DecisionEvent {}
+impl crate::wire::WireDecode for DecisionEvent {
+    /// Decision events have no v2 bus fields. Readers accept v1 and v2 so a line
+    /// written either way still loads. The decision store keeps writing v1.
+    fn max_wire_version() -> u32 {
+        crate::SCHEMA_VERSION
+    }
+}
 
 impl Checked for DecisionEvent {
     fn check(&self) -> Result<(), String> {
