@@ -21,6 +21,11 @@ CREATE VIRTUAL TABLE memory_fts USING fts5(nat_key, snippet, source, content='me
 INSERT INTO schema_migrations VALUES (1, '2026-01-01T00:00:00+00:00');
 ";
 
+#[allow(clippy::invalid_utf8_in_unchecked)]
+fn bytes_key(raw: &[u8]) -> String {
+    unsafe { String::from_utf8_unchecked(raw.to_vec()) }
+}
+
 /// Slice 1a measure-only baseline (fixture). After #93 merges to master, align with
 /// `retrieval-bench` `results.json` (not-below gate).
 const BASELINE_RECALL_AT_5: f64 = 1.0;
@@ -37,10 +42,20 @@ fn open_fixture_db(path: &PathBuf) -> Connection {
 }
 
 fn insert_trace(c: &Connection, key: &str, snippet: &str, last_seen: &str) {
+    insert_trace_supersede(c, key, snippet, last_seen, None);
+}
+
+fn insert_trace_supersede(
+    c: &Connection,
+    key: &str,
+    snippet: &str,
+    last_seen: &str,
+    superseded_by: Option<&str>,
+) {
     c.execute(
-        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, first_seen, last_seen)
-         VALUES (?1, ?2, 'fixture', ?3, 'tool-verified', 'memory', ?3, ?3)",
-        rusqlite::params![key, snippet, last_seen],
+        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, first_seen, last_seen, superseded_by)
+         VALUES (?1, ?2, 'fixture', ?3, 'tool-verified', 'memory', ?3, ?3, ?4)",
+        rusqlite::params![key, snippet, last_seen, superseded_by],
     )
     .unwrap();
     let id = c.last_insert_rowid();
@@ -58,6 +73,29 @@ fn fill_synthetic(c: &Connection, n: i64, key_prefix: &str) {
         let ts = format!("2026-01-{:02}T12:00:00+00:00", (i % 28) + 1);
         insert_trace(c, &key, &snippet, &ts);
     }
+}
+
+fn prefix_explain_uses_index_seek(conn: &Connection, prefix: &str) -> bool {
+    let upper = pc::nat_key_prefix_upper_bound(prefix);
+    let plan_sql = match upper {
+        Some(ub) => format!(
+            "EXPLAIN QUERY PLAN SELECT nat_key FROM memory_traces \
+             WHERE nat_key >= '{prefix}' AND nat_key < '{ub}' ORDER BY nat_key LIMIT 10"
+        ),
+        None => format!(
+            "EXPLAIN QUERY PLAN SELECT nat_key FROM memory_traces \
+             WHERE nat_key >= '{prefix}' ORDER BY nat_key LIMIT 10"
+        ),
+    };
+    let mut st = conn.prepare(&plan_sql).unwrap();
+    let lines: Vec<String> = st
+        .query_map([], |r| r.get::<_, String>(3))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    lines
+        .iter()
+        .any(|l| l.contains("SEARCH") || l.contains("USING INDEX"))
 }
 
 fn prefix_explain_scans_table(conn: &Connection, prefix: &str) -> bool {
@@ -103,6 +141,8 @@ fn nat_key_prefix_upper_bound_cases() {
         pc::nat_key_prefix_upper_bound("demo/\u{ff0e}\u{ff0e}"),
         Some("demo/\u{ff0e}\u{ff0f}".into())
     );
+    let all_ff = bytes_key(b"tail/\xff");
+    assert_eq!(pc::nat_key_prefix_upper_bound(&all_ff), None);
 }
 
 #[test]
@@ -136,6 +176,40 @@ fn prefix_query_plan_avoids_table_scan() {
         !prefix_explain_scans_table(&ro, "ix/0005"),
         "prefix read must use the nat_key index, not SCAN memory_traces"
     );
+    assert!(
+        prefix_explain_uses_index_seek(&ro, "ix/0005"),
+        "prefix plan must SEARCH or USING INDEX on nat_key"
+    );
+}
+
+#[test]
+fn prefix_read_all_ff_tail_lower_bound_only() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    let prefix = bytes_key(b"max/\xff");
+    insert_trace(
+        &c,
+        "max/ascii",
+        "ascii sibling",
+        "2026-10-02T00:00:00+00:00",
+    );
+    let ro = pc::open_ro(&path).unwrap();
+    assert!(pc::nat_key_prefix_upper_bound(&prefix).is_none());
+    let rows = pc::read_prefix(&ro, &prefix, 10).unwrap();
+    assert!(
+        rows.is_empty(),
+        "lower-bound-only prefix must not include keys below {:?}",
+        prefix.as_bytes()
+    );
+    let n: i64 = c
+        .query_row(
+            "SELECT COUNT(*) FROM memory_traces WHERE nat_key >= ?1",
+            [&prefix],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(n, 0, "no rows stored under 0xFF lower-bound prefix yet");
 }
 
 #[test]
@@ -199,12 +273,25 @@ fn build_recall_fixture(path: &PathBuf) {
             "alpha bravo mission stale",
             "2026-01-01T00:00:00+00:00",
         ),
-        ("rec/s-old", "alpha bravo twin", "2026-01-01T00:00:00+00:00"),
-        ("rec/s-new", "alpha bravo twin", "2026-11-01T00:00:00+00:00"),
+        (
+            "rec/s-stale",
+            "alpha bravo twin",
+            "2026-01-01T00:00:00+00:00",
+        ),
+        (
+            "rec/s-current",
+            "alpha bravo twin",
+            "2026-11-01T00:00:00+00:00",
+        ),
     ];
     for (k, snip, ts) in rows {
         insert_trace(&c, k, snip, ts);
     }
+    c.execute(
+        "UPDATE memory_traces SET superseded_by = 'rec/s-current' WHERE nat_key = 'rec/s-stale'",
+        [],
+    )
+    .unwrap();
 }
 
 fn recall_at(conn: &Connection, cases: &[RecallCase], k: usize) -> f64 {
@@ -262,10 +349,10 @@ fn search_recall_and_fresh_first_meet_baseline() {
         fresh.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
     );
     let twins = pc::read_search(&conn, "alpha bravo twin", 5).unwrap();
-    let fresh_ok = twins.first().is_some_and(|r| r.nat_key == "rec/s-new");
+    let fresh_ok = twins.first().is_some_and(|r| r.nat_key == "rec/s-current");
     assert!(
         fresh_ok,
-        "fresh-first: rec/s-new should beat rec/s-old, order {:?}",
+        "fresh-first: rec/s-current should beat rec/s-stale, order {:?}",
         twins.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
     );
     let fresh_rate = if fresh_ok { 1.0 } else { 0.0 };
@@ -276,29 +363,31 @@ fn search_recall_and_fresh_first_meet_baseline() {
 }
 
 #[test]
-fn search_revision_family_prefers_newer_over_stronger_bm25() {
+fn search_superseded_by_prefers_successor_over_stronger_bm25() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("pulse.sqlite");
     let c = open_fixture_db(&path);
     let anchor = "revtoken-a7";
-    insert_trace(
+    insert_trace_supersede(
         &c,
-        "supersede/alpha/old",
+        "supersede/alpha/stale",
         &format!("{anchor} {anchor} {anchor} extra stale padding"),
         "2026-06-01T10:00:00Z",
+        Some("supersede/alpha/current"),
     );
-    insert_trace(
+    insert_trace_supersede(
         &c,
-        "supersede/alpha/new",
+        "supersede/alpha/current",
         &format!("{anchor} light fresh body"),
         "2026-09-01T12:00:00Z",
+        None,
     );
     let conn = pc::open_ro(&path).unwrap();
     let rows = pc::read_search(&conn, anchor, 5).unwrap();
     assert_eq!(
         rows.first().map(|r| r.nat_key.as_str()),
-        Some("supersede/alpha/new"),
-        "revision family should rank newer above stronger stale bm25, got {:?}",
+        Some("supersede/alpha/current"),
+        "superseded_by should rank successor above stronger stale bm25, got {:?}",
         rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
     );
 }
@@ -520,4 +609,94 @@ fn search_or_fallback_fills_when_and_is_sparse() {
     let rows = pc::read_search(&conn, "alpha bravo", 5).unwrap();
     let keys: std::collections::BTreeSet<_> = rows.iter().map(|r| r.nat_key.as_str()).collect();
     assert!(keys.contains("or/a") && keys.contains("or/b"));
+}
+
+#[test]
+fn fts_relevance_ratio_top_hit() {
+    assert_eq!(pc::fts_relevance_ratio(-4.0, -4.0), 1.0);
+    assert_eq!(pc::fts_relevance_ratio(-2.0, -2.0), 1.0);
+}
+
+#[test]
+fn search_two_hit_pool_tf_gap_uses_epsilon_for_two_hour_newer() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    let term = "epspool";
+    insert_trace(
+        &c,
+        "tf/dense-old",
+        &format!("{term} {term} {term} {term} {term}"),
+        "2026-08-01T10:00:00Z",
+    );
+    insert_trace(
+        &c,
+        "tf/sparse-new",
+        &format!("{term} {term}"),
+        "2026-08-01T12:00:00Z",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    let rows = pc::read_search(&conn, term, 5).unwrap();
+    assert_eq!(
+        rows.first().map(|r| r.nat_key.as_str()),
+        Some("tf/sparse-new"),
+        "two-hour newer should win within epsilon on tf gap, got {:?}",
+        rows.iter().map(|r| &r.nat_key).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn search_like_runs_when_and_errors_with_partial_or_hits() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    insert_trace(
+        &c,
+        "err/and",
+        "fill alpha beta gamma packed row",
+        "2026-10-01T00:00:00+00:00",
+    );
+    insert_trace(
+        &c,
+        "err/or",
+        "fill alpha only partial token",
+        "2026-10-02T00:00:00+00:00",
+    );
+    insert_trace(
+        &c,
+        "err/like",
+        "fill beta unique like tier filler",
+        "2026-10-03T00:00:00+00:00",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    let rows = pc::read_search(&conn, "fill alpha beta", 3).unwrap();
+    let keys: std::collections::BTreeSet<_> = rows.iter().map(|r| r.nat_key.as_str()).collect();
+    assert!(keys.contains("err/and"), "AND tier hit missing: {keys:?}");
+    assert!(
+        keys.contains("err/like"),
+        "LIKE must fill when AND/OR pool is short, got {keys:?}"
+    );
+}
+
+#[test]
+fn search_fts_hostile_input_does_not_error() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("pulse.sqlite");
+    let c = open_fixture_db(&path);
+    insert_trace(
+        &c,
+        "hostile/pct",
+        "progress 100% done_ok marker",
+        "2026-10-01T00:00:00+00:00",
+    );
+    let conn = pc::open_ro(&path).unwrap();
+    for q in [
+        "100% done_ok",
+        "\"quoted\" AND (",
+        "NEAR * -:",
+        "alpha AND ( bravo",
+    ] {
+        let rows = pc::read_search(&conn, q, 10).unwrap();
+        let _ = rows;
+    }
 }

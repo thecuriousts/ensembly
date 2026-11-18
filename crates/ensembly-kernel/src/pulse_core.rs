@@ -385,6 +385,9 @@ pub fn nat_key_prefix_upper_bound(prefix: &str) -> Option<String> {
         return None;
     }
     let mut bytes = prefix.as_bytes().to_vec();
+    if bytes.last() == Some(&0xFF) {
+        return None;
+    }
     while let Some(last) = bytes.last_mut() {
         if *last < 0xFF {
             *last += 1;
@@ -434,7 +437,9 @@ pub const FTS_STOPWORDS: &[&str] = &[
     "you", "your",
 ];
 
-/// Split on non-alphanumerics (FTS5 default **unicode61** token boundaries), lowercase.
+/// Split query text on non-alphanumerics, lowercase. Close to FTS5 **unicode61** on indexed
+/// text; query-side we use Rust [`char::is_alphanumeric`] (includes `_`), while unicode61
+/// keeps `_` inside tokens — a narrow mismatch only for underscore-heavy queries.
 pub fn search_content_tokens(text: &str) -> Vec<String> {
     let raw: Vec<String> = text
         .split(|c: char| !c.is_alphanumeric())
@@ -562,11 +567,33 @@ fn absorb_fts_hits(pool: &mut BTreeMap<String, SearchHit>, hits: Vec<SearchHit>,
     }
 }
 
-/// Same revision family (`…/old` vs `…/new`): prefer newer `last_seen` when ranking together.
-fn nat_key_freshness_family(key: &str) -> &str {
-    key.strip_suffix("/old")
-        .or_else(|| key.strip_suffix("/new"))
-        .unwrap_or(key)
+/// Prefer the non-superseded row when one trace lists the other in `superseded_by`.
+fn supersession_cmp(a: &TraceRow, b: &TraceRow) -> Option<std::cmp::Ordering> {
+    use std::cmp::Ordering;
+    let a_succ = a
+        .superseded_by
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .is_some_and(|k| k == b.nat_key);
+    let b_succ = b
+        .superseded_by
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .is_some_and(|k| k == a.nat_key);
+    match (a_succ, b_succ) {
+        (true, false) => Some(Ordering::Greater),
+        (false, true) => Some(Ordering::Less),
+        _ => None,
+    }
+}
+
+/// Scale-free FTS relevance in `(0, 1]`: `bm25_best / bm25` (FTS5 lower bm25 is better).
+/// Avoids min–max stretching two-hit pools to `0.0` vs `1.0`. Top hit is always `1.0`.
+pub fn fts_relevance_ratio(bm25: f64, best_bm25: f64) -> f64 {
+    if !bm25.is_finite() || !best_bm25.is_finite() || bm25 <= 0.0 {
+        return 1.0;
+    }
+    (best_bm25 / bm25).min(1.0)
 }
 
 fn recency_score(instant: f64, newest_instant: f64, half_life_secs: f64) -> f64 {
@@ -586,37 +613,28 @@ fn rank_search_hits(mut hits: Vec<SearchHit>, limit: usize, recency_weight: f64)
         .map(|h| h.instant)
         .fold(f64::NEG_INFINITY, f64::max);
     let half_life_secs = PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS * 86_400.0;
-    let fts_raw: Vec<f64> = hits.iter().filter_map(|h| h.bm25.map(|b| -b)).collect();
-    let (min_rel, max_rel) = if fts_raw.is_empty() {
-        (0.0, 0.0)
-    } else {
-        let min = fts_raw.iter().copied().fold(f64::INFINITY, f64::min);
-        let max = fts_raw.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-        (min, max)
-    };
-    let rel_tied = fts_raw.is_empty() || (max_rel - min_rel).abs() < 1e-9;
-    let rel_span = (max_rel - min_rel).max(1e-9);
-
-    let fts_relevance = |bm25: f64| {
-        if rel_tied {
-            1.0
-        } else {
-            (-bm25 - min_rel) / rel_span
-        }
-    };
+    let best_bm25 = hits
+        .iter()
+        .filter_map(|h| h.bm25)
+        .fold(f64::INFINITY, f64::min);
 
     hits.sort_by(|a, b| {
         a.tier.cmp(&b.tier).then_with(|| {
-            let family_a = nat_key_freshness_family(&a.row.nat_key);
-            let family_b = nat_key_freshness_family(&b.row.nat_key);
-            if family_a == family_b && a.row.nat_key != b.row.nat_key {
+            if let Some(ord) = supersession_cmp(&a.row, &b.row) {
+                return ord;
+            }
+            if a.row.nat_key == b.row.nat_key {
                 return b
                     .instant
                     .partial_cmp(&a.instant)
                     .unwrap_or(std::cmp::Ordering::Equal);
             }
-            let rel_a = a.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
-            let rel_b = b.bm25.map_or(LIKE_RELEVANCE_SCORE, fts_relevance);
+            let rel_a = a
+                .bm25
+                .map_or(LIKE_RELEVANCE_SCORE, |b| fts_relevance_ratio(b, best_bm25));
+            let rel_b = b
+                .bm25
+                .map_or(LIKE_RELEVANCE_SCORE, |b| fts_relevance_ratio(b, best_bm25));
             if (rel_a - rel_b).abs() < PULSE_SEARCH_RELEVANCE_TIE_EPSILON {
                 b.instant
                     .partial_cmp(&a.instant)
@@ -701,7 +719,7 @@ fn collect_search_pool(
             if let Ok(hits) = read_search_fts_candidates(conn, &or_q, fetch) {
                 absorb_fts_hits(&mut pool, hits, SearchTier::OrWiden);
             }
-            if pool.is_empty() {
+            if pool.len() < min_hits {
                 absorb_like_hits(&mut pool, read_search_like_candidates(conn, tokens, fetch)?);
             }
             return Ok(pool);
