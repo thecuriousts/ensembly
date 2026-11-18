@@ -4,10 +4,10 @@
 //! in place. Never copy or rename a live DB.
 
 pub use ensembly_paths::{
-    env_alias, resolve_data_paths, resolve_memory_path, resolve_memory_path_at, resolve_ops_db,
-    resolve_ops_db_at, DataPaths, DEFAULT_AGENT_ID, DEFAULT_MEMORY_PATH, DEFAULT_OPS_PATH,
-    DEFAULT_OPS_PRIVATE_PATH, LEGACY_AGENT_ID, LEGACY_MEMORY_PATH, LEGACY_OPS_PATH,
-    LEGACY_OPS_PRIVATE_PATH,
+    env_alias, resolve_data_paths, resolve_data_paths_opts, resolve_memory_path,
+    resolve_memory_path_at, resolve_ops_db, resolve_ops_db_at, DataPaths, DEFAULT_AGENT_ID,
+    DEFAULT_MEMORY_PATH, DEFAULT_OPS_PATH, DEFAULT_OPS_PRIVATE_PATH, LEGACY_AGENT_ID,
+    LEGACY_MEMORY_PATH, LEGACY_OPS_PATH, LEGACY_OPS_PRIVATE_PATH,
 };
 
 use serde::Serialize;

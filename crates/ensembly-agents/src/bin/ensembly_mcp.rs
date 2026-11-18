@@ -24,7 +24,7 @@ struct Cli {
     agent_id: Option<String>,
 }
 
-fn main() {
+pub fn main() {
     let cli = Cli::parse();
     let mut config = match McpServeConfig::from_env(cli.memory) {
         Ok(c) => c,

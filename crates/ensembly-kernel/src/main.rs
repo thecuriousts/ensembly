@@ -28,7 +28,7 @@ use ensembly_kernel::doctor;
 use ensembly_kernel::memory_sink::MemorySink;
 use ensembly_kernel::msg_bus::ManualCmd;
 use ensembly_kernel::paths::{
-    env_alias, migrate_local_paths_at, resolve_data_paths, DataPaths, DEFAULT_MEMORY_PATH,
+    env_alias, migrate_local_paths_at, resolve_data_paths_opts, DataPaths, DEFAULT_MEMORY_PATH,
 };
 use ensembly_kernel::pulse_core as pc;
 use ensembly_kernel::pulse_pack::{
@@ -365,7 +365,7 @@ enum Commands {
         /// premflow binary. Default: first `premflow` on PATH, else ~/.local/bin/premflow
         #[arg(long, global = true)]
         premflow_bin: Option<PathBuf>,
-        /// Mission store directory. Default: /workspace/ops/ensembly-pulse/missions
+        /// Mission store directory. Default: `ENSEMBLY_PULSE_MISSIONS`, else `/workspace/ops/ensembly-pulse/missions` when that harness folder exists, else `paths.data_dir/pulse/missions`
         #[arg(long, global = true)]
         missions_dir: Option<PathBuf>,
         /// Override "now" (RFC 3339 or YYYY-MM-DD), for tests and replays
@@ -1110,14 +1110,15 @@ fn load_operator_config(cli: &Cli) -> (Option<PathBuf>, Option<ConfigError>) {
     }
 }
 
-fn main() -> Result<()> {
+pub fn main() -> Result<()> {
     let cli = Cli::parse();
     let (config_data_dir, config_problem) = load_operator_config(&cli);
-    let data_paths = resolve_data_paths(
+    let data_paths = resolve_data_paths_opts(
         Path::new(""),
         cli.db.clone(),
         cli.memory.clone(),
         config_data_dir.as_deref(),
+        !cli.no_memory,
     );
     let ctx = Ctx {
         db_path: data_paths.ops_db.clone(),

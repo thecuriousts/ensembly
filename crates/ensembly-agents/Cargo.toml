@@ -13,7 +13,7 @@ path = "src/bin/ensembly_mcp.rs"
 # One-release compat alias (same source; cargo warns, harmless). Prefer `ensembly-mcp`.
 [[bin]]
 name = "peram-mcp"
-path = "src/bin/ensembly_mcp.rs"
+path = "src/bin/peram_mcp.rs"
 
 [[bin]]
 name = "ensembly-local-check"

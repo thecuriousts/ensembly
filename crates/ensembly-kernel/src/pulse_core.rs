@@ -65,9 +65,9 @@ pub struct PulseCfg {
     /// HOME handed to premflow; its data lives in `<home>/.premflow`.
     pub premflow_home: PathBuf,
     pub premflow_timeout: Duration,
-    /// Harness default `/workspace/ops/ensembly-pulse/missions` (see [`PulseCfg::from_env`]).
+    /// Default from [`pulse_dirs`]: the harness folder when it exists, else `<data_dir>/pulse/missions`.
     pub missions_dir: PathBuf,
-    /// Harness default `/workspace/ops/ensembly-pulse`. Folder holding `pulse-YYYY-MM-DD.md` notes (optional freshness signal).
+    /// Default from [`pulse_dirs`]. Folder holding `pulse-YYYY-MM-DD.md` notes (optional freshness signal).
     pub notes_dir: Option<PathBuf>,
     /// Roots tried, in order, to resolve relative G source paths. Harness defaults
     /// under `/workspace` (see [`PulseCfg::from_env`]).
@@ -79,13 +79,13 @@ pub struct PulseCfg {
 impl PulseCfg {
     /// Config from the environment, with defaults for the agent harness.
     ///
-    /// The `/workspace/...` defaults (G roots, missions, notes) are the harness
-    /// layout: the box the bot runs on mounts its ops tree at `/workspace`. They are
-    /// not paths on a user machine and nothing here creates them. Anywhere else, set
-    /// `ENSEMBLY_PULSE_G_ROOTS` (colon-separated), `ENSEMBLY_PULSE_MISSIONS` and
-    /// `ENSEMBLY_PULSE_NOTES` (`pulse --missions-dir` also overrides missions). The DB default
-    /// (`$XDG_DATA_HOME/pulse-memory/pulse.sqlite`) and premflow (`PATH`, then
-    /// `~/.local/bin`) follow the user's home, not the harness.
+    /// The `/workspace/...` G roots are the harness layout: the box the bot runs on
+    /// mounts its ops tree at `/workspace`. Anywhere else, set `ENSEMBLY_PULSE_G_ROOTS`
+    /// (colon-separated). Missions and notes come from [`pulse_dirs`]: env, then the
+    /// harness folder only when it exists, then `<data_dir>/pulse`, where `data_dir` is
+    /// `paths.data_dir` from config, else `$XDG_DATA_HOME/ensembly`. Nothing here creates
+    /// them. The DB default (`$XDG_DATA_HOME/pulse-memory/pulse.sqlite`) and premflow
+    /// (`PATH`, then `~/.local/bin`) follow the user's home, not the harness.
     pub fn from_env(now: DateTime<Utc>) -> Self {
         let home = std::env::var_os("HOME")
             .map(PathBuf::from)
@@ -93,11 +93,21 @@ impl PulseCfg {
         let data = std::env::var_os("XDG_DATA_HOME")
             .map(PathBuf::from)
             .unwrap_or_else(|| home.join(".local/share"));
-        let env_path = |k: &str, d: &str| {
+        let ensembly_data = ensembly_paths::load_paths_data_dir()
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| data.join("ensembly"));
+        let env_dir = |k: &str| {
             std::env::var_os(k)
+                .filter(|v| !v.is_empty())
                 .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from(d))
         };
+        let dirs = pulse_dirs(
+            env_dir("ENSEMBLY_PULSE_MISSIONS"),
+            env_dir("ENSEMBLY_PULSE_NOTES"),
+            Path::new(HARNESS_PULSE_DIR),
+            &ensembly_data,
+        );
         let g_roots = match std::env::var("ENSEMBLY_PULSE_G_ROOTS") {
             Ok(v) if !v.is_empty() => v.split(':').map(PathBuf::from).collect(),
             _ => vec![
@@ -113,18 +123,42 @@ impl PulseCfg {
                 .unwrap_or_else(|| home.join(".local/bin/premflow")),
             premflow_home: home,
             premflow_timeout: Duration::from_secs(PREMFLOW_TIMEOUT_SECS),
-            missions_dir: env_path(
-                "ENSEMBLY_PULSE_MISSIONS",
-                "/workspace/ops/ensembly-pulse/missions",
-            ),
-            notes_dir: Some(env_path(
-                "ENSEMBLY_PULSE_NOTES",
-                "/workspace/ops/ensembly-pulse",
-            )),
+            missions_dir: dirs.missions,
+            notes_dir: Some(dirs.notes),
             g_roots,
             now,
             stale_warn_days: STALE_WARN_DAYS,
         }
+    }
+}
+
+/// The agent harness mounts its pulse tree here. Used only when it exists.
+pub const HARNESS_PULSE_DIR: &str = "/workspace/ops/ensembly-pulse";
+
+/// Default mission store and notes folder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PulseDirs {
+    pub missions: PathBuf,
+    pub notes: PathBuf,
+}
+
+/// Pick the mission store and notes folder: env value, else `harness` when that
+/// directory exists (the bot layout), else `<data_dir>/pulse`. Pure: reads only
+/// whether `harness` is a directory.
+pub fn pulse_dirs(
+    env_missions: Option<PathBuf>,
+    env_notes: Option<PathBuf>,
+    harness: &Path,
+    data_dir: &Path,
+) -> PulseDirs {
+    let base = if harness.is_dir() {
+        harness.to_path_buf()
+    } else {
+        data_dir.join("pulse")
+    };
+    PulseDirs {
+        missions: env_missions.unwrap_or_else(|| base.join("missions")),
+        notes: env_notes.unwrap_or(base),
     }
 }
 

@@ -20,7 +20,7 @@ Parked `prototype/crates/peram-core` stays as historical Game-of-Peram WASM — 
 
 ## Compat aliases (one release)
 
-Cheap Cargo `[[bin]]` aliases, same source, `default-run` keeps `cargo run -p …` unambiguous. Cargo may warn that one file is present in multiple bin targets — expected, one-release only.
+Cheap Cargo `[[bin]]` aliases, same source: each alias is a one-line shim in `src/bin/` that includes the primary entry, so Cargo builds it without a duplicate-target warning. `default-run` keeps `cargo run -p …` unambiguous.
 
 | Primary | Alias |
 |---------|-------|
@@ -68,7 +68,7 @@ Existing `[mcp_servers.peram]` + `peram-mcp` still work via the alias.
 
 ### One-shot operator copy (then resync)
 
-Do this on the **canonical host** (Grok Bot computer / ops writer) when you want the new filenames. Copy, smoke, then pulse-pack resync. **Do not dual-write ops.**
+Do this on the **canonical host** (the single ops writer) when you want the new filenames. Copy, smoke, then pulse-pack resync. **Do not dual-write ops.**
 
 ```bash
 # Preview

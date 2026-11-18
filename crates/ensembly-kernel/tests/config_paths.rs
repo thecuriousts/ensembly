@@ -167,3 +167,34 @@ fn unset_home_means_no_config_not_error() {
     std::env::remove_var("XDG_CONFIG_HOME");
     assert_eq!(load_paths_data_dir().unwrap(), None);
 }
+
+fn version_with_lone_db(no_memory: bool) -> String {
+    let t = tempfile::tempdir().unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ensembly"));
+    if no_memory {
+        cmd.arg("--no-memory");
+    }
+    let o = cmd
+        .arg("--db")
+        .arg(t.path().join("scratch/ops.sqlite"))
+        .arg("version")
+        .current_dir(t.path())
+        .env("HOME", t.path().join("home"))
+        .env("XDG_CONFIG_HOME", t.path().join("home/.config"))
+        .output()
+        .unwrap();
+    assert_eq!(o.status.code(), Some(0), "{:?}", o);
+    String::from_utf8_lossy(&o.stderr).into_owned()
+}
+
+#[test]
+fn no_memory_suppresses_pairing_note() {
+    let stderr = version_with_lone_db(true);
+    assert!(!stderr.contains("pairs memory"), "{stderr}");
+}
+
+#[test]
+fn pairing_note_still_printed_with_memory() {
+    let stderr = version_with_lone_db(false);
+    assert!(stderr.contains("pairs memory"), "{stderr}");
+}

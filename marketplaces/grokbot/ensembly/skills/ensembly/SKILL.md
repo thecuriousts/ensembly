@@ -5,7 +5,7 @@ description: >
   dated rows, write intent then act then verify, idempotency keys, or
   verified retrieve. Load before writing a shared fact, reading memory for
   another agent, authorizing, claiming, completing, or pulsing. Not a second
-  bot. Complements pulse-memory and flowingstack.
+  bot. Optional companions: pulse-memory, flowingstack; neither is required.
 ---
 
 # ensembly
@@ -34,7 +34,7 @@ Harnesses propose. The record layer authorizes, claims, and completes. Memory be
 | Idempotency keys | Repeating the same request must not create a second fact. |
 | Verified retrieve | Give the next agent one dated, sourced pulse. Do not dump an archive. |
 
-Public rows use host aliases only: `laptop-1`, `laptop-2`, `mac-mini`. Call the Grok Bot computer the canonical host in prose. Never write a real hostname, username, home path, or machine id.
+Public rows use host aliases only: `laptop-1`, `laptop-2`, `mac-mini`. Call the host configured as the single ops writer the canonical host in prose. It may be any harness's machine (Grok Bot, Claude Code, Cursor, or a plain CLI); other hosts import. Never write a real hostname, username, home path, or machine id.
 
 ## Next skill
 

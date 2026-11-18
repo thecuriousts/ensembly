@@ -13,7 +13,7 @@ path = "src/main.rs"
 # One-release compat alias (same source; cargo warns, harmless). Prefer `ensembly`.
 [[bin]]
 name = "peram"
-path = "src/main.rs"
+path = "src/bin/peram.rs"
 
 [features]
 default = []
