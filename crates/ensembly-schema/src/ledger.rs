@@ -24,6 +24,10 @@ pub struct LedgerRow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apply_url: Option<String>,
     pub status: Status,
+    /// Absent, null, or blank on a row written before a sent status required a time.
+    /// Readers do not invent a timestamp. A new append still requires a time or
+    /// `submit_time_unknown: true`.
+    #[serde(default)]
     pub submit_time: Option<String>,
     /// `true` when the application was sent but the time was never recorded (then `submit_time` is null). Absent otherwise; never `false`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

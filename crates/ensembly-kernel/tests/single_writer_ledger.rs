@@ -328,3 +328,47 @@ fn writer_has_no_ledger_delete_and_never_shortens_the_file() {
         .unwrap();
     assert!(fs::read(&path).unwrap().len() > len);
 }
+
+#[test]
+fn legacy_rejected_row_allows_a_later_stage_and_the_same_stage_conflicts() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ledger.jsonl");
+    let legacy = r#"{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/1","status":"rejected","submit_time":null,"cv_version":"cv-sample-1"}"#;
+    let seed = format!("{legacy}\n");
+    let writer = open_sealed_ledger(&path, seed.as_bytes());
+    let withdrawn = LedgerRow {
+        company: "Pebble Sample".into(),
+        role: "Widget Engineer".into(),
+        link: "https://jobs.example.test/pebble/1".into(),
+        apply_url: None,
+        status: Status::Withdrawn,
+        submit_time: None,
+        submit_time_unknown: None,
+        cv_version: "cv-sample-1".into(),
+    };
+    assert!(writer.append_ledger(&withdrawn).unwrap().appended);
+    let after_stage = fs::read(&path).unwrap();
+    assert!(
+        after_stage.starts_with(seed.as_bytes()),
+        "legacy line was rewritten"
+    );
+    let text = String::from_utf8(after_stage.clone()).unwrap();
+    let rows = ensembly_kernel::application_ledger::parse_ledger(&text).unwrap();
+    let cur = ensembly_kernel::application_ledger::current_rows(&rows);
+    assert_eq!(cur.len(), 1);
+    assert_eq!(cur[0].status, Status::Withdrawn);
+
+    let same_stage = LedgerRow {
+        status: Status::Rejected,
+        submit_time: Some("2026-10-20T09:15:00+02:00".into()),
+        ..withdrawn
+    };
+    let err = writer.append_ledger(&same_stage).unwrap_err();
+    match err {
+        WriterError::Conflict { key, .. } => {
+            assert_eq!(key, "https://jobs.example.test/pebble/1\trejected");
+        }
+        other => panic!("expected conflict, got {other}"),
+    }
+    assert_eq!(fs::read(&path).unwrap(), after_stage);
+}
