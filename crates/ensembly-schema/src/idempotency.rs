@@ -18,10 +18,10 @@ pub fn same_idempotent_content<P: PartialEq>(a: &EventEnvelope<P>, b: &EventEnve
         && a.payload == b.payload
         && a.node == b.node
         && a.writer == b.writer
-        && a.cause == b.cause
-        && a.depth == b.depth
-        && a.rule == b.rule
-        && a.ext == b.ext
+        && a.v2_optional.cause == b.v2_optional.cause
+        && a.v2_optional.depth == b.v2_optional.depth
+        && a.v2_optional.rule == b.v2_optional.rule
+        && a.v2_optional.ext == b.v2_optional.ext
 }
 
 fn semantic_schema_v(v: u32) -> u32 {

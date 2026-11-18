@@ -212,6 +212,8 @@ pub enum EventTimePrec {
     Unknown,
 }
 
+/// Wall-clock sync metadata on a v2 line. `src` is an open string
+/// (`chrony`, `sntp`, `peer:<alias>`, `none`, `roughtime`, …).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -220,6 +222,25 @@ pub struct ClockInfo {
     pub err_us: u64,
     pub src: String,
     pub age_s: u32,
+}
+
+/// Optional v2 bus fields — extend **here** (with `EventEnvelope`) before ship.
+/// Fleet field list still open (`ingress`, `settle`, `supersedes`, …).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[serde(default)]
+pub struct EventEnvelopeV2Optional {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock: Option<ClockInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<EventId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub depth: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule: Option<String>,
+    #[cfg_attr(test, schemars(skip))]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext: Option<EnvelopeExt>,
 }
 
 /// Optional envelope extension bag; unknown keys are preserved and ignored on read.
@@ -246,6 +267,9 @@ mod ext_map {
 }
 
 /// Record event line (schema_v 1 legacy or schema_v 2 bus envelope).
+///
+/// Top-level `deny_unknown_fields` lives only on this struct so new v2 keys land in
+/// one place (`EventEnvelope` + `EventEnvelopeV2Optional`) without a schema_v 3.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -270,17 +294,8 @@ pub struct EventEnvelope<P> {
     pub hlc: Option<HlcWire>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub writer: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub clock: Option<ClockInfo>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cause: Option<EventId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub depth: Option<u8>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rule: Option<String>,
-    #[cfg_attr(test, schemars(skip))]
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ext: Option<EnvelopeExt>,
+    #[serde(flatten, default)]
+    pub v2_optional: EventEnvelopeV2Optional,
     pub payload: P,
 }
 
@@ -312,17 +327,22 @@ impl<P> EventEnvelope<P> {
             seq: None,
             hlc: None,
             writer: None,
-            clock: None,
-            cause: None,
-            depth: None,
-            rule: None,
-            ext: None,
+            v2_optional: EventEnvelopeV2Optional::default(),
         }
     }
 }
 
 pub fn is_host_alias(s: &str) -> bool {
     crate::identity::is_host_alias(s)
+}
+
+impl<P> crate::wire::WireDecode for EventEnvelope<P>
+where
+    P: Checked + for<'de> serde::Deserialize<'de>,
+{
+    fn max_wire_version() -> u32 {
+        crate::SCHEMA_VERSION
+    }
 }
 
 impl<P: Checked> Checked for EventEnvelope<P> {
@@ -361,7 +381,7 @@ impl<P: Checked> Checked for EventEnvelope<P> {
                 .as_deref()
                 .ok_or_else(|| "writer is required on schema_v 2".to_string())?;
             crate::identity::validate_writer_identity(writer)?;
-            self.depth.unwrap_or(0);
+            self.v2_optional.depth.unwrap_or(0);
         } else {
             url::check_submit_time(self.event_time.as_str())?;
             url::check_submit_time(self.record_time.as_str())?;

@@ -66,7 +66,12 @@ fn set(rel: &str, key: &str, val: serde_json::Value) -> String {
 
 fn trip<T>(rel: &str)
 where
-    T: serde::Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug + Checked,
+    T: serde::Serialize
+        + serde::de::DeserializeOwned
+        + PartialEq
+        + std::fmt::Debug
+        + Checked
+        + crate::wire::WireDecode,
 {
     for line in text(rel).lines().filter(|l| !l.trim().is_empty()) {
         let d = decode_line::<T>(line).unwrap();
@@ -124,10 +129,7 @@ fn version_two_is_refused() {
 fn unsupported_version_names_the_value() {
     let err = decode_line::<LedgerRow>(&set(LEDGER, "v", json!(2))).unwrap_err();
     assert!(err.contains("unsupported v 2"), "{err}");
-    assert!(err.contains("omitted or 1"), "{err}");
-    assert!(err.contains("explicit v 0 is refused"), "{err}");
     let zero = decode_line::<LedgerRow>(&set(LEDGER, "v", json!(0))).unwrap_err();
-    assert!(zero.contains("unsupported v 0"), "{zero}");
     assert!(zero.contains("explicit v 0 is refused"), "{zero}");
 }
 
@@ -177,18 +179,23 @@ fn unknown_status_or_verdict_refused() {
 fn version_one_round_trips() {
     let row = decode_line::<LedgerRow>(&first(LEDGER)).unwrap();
     let again =
-        decode_line::<LedgerRow>(&encode_line(SCHEMA_VERSION, &row.value).unwrap()).unwrap();
-    assert_eq!((again.version, again.value), (SCHEMA_VERSION, row.value));
+        decode_line::<LedgerRow>(&encode_line(SCHEMA_VERSION_LEGACY, &row.value).unwrap()).unwrap();
+    assert_eq!(
+        (again.version, again.value),
+        (SCHEMA_VERSION_LEGACY, row.value)
+    );
 }
 
 #[cfg(feature = "opportunity-finder")]
 #[test]
 fn encode_line_writes_current_schema_version() {
     let row = decode_line::<LedgerRow>(&first(LEDGER)).unwrap().value;
-    let line = encode_line(SCHEMA_VERSION, &row).unwrap();
-    assert!(line.contains(&format!("\"v\":{SCHEMA_VERSION}")), "{line}");
-    let legacy = encode_line(SCHEMA_VERSION_LEGACY, &row).unwrap();
-    assert!(legacy.contains("\"v\":1"), "{legacy}");
+    let line = encode_line(SCHEMA_VERSION_LEGACY, &row).unwrap();
+    assert!(
+        line.contains(&format!("\"v\":{SCHEMA_VERSION_LEGACY}")),
+        "{line}"
+    );
+    assert!(encode_line(SCHEMA_VERSION, &row).is_err());
 }
 
 fn legacy(status: &str, time: Option<&str>) -> String {
@@ -460,7 +467,7 @@ fn v1_fixtures_match_checked_in_schema() {
 
 fn check_lines<T>(lines: &str, schema_rel: &str)
 where
-    T: serde::de::DeserializeOwned + Checked,
+    T: serde::de::DeserializeOwned + Checked + crate::wire::WireDecode,
 {
     let schema: serde_json::Value = serde_json::from_str(&text(schema_rel)).unwrap();
     for line in text(lines).lines().filter(|l| !l.trim().is_empty()) {

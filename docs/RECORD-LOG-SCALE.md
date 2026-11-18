@@ -25,7 +25,7 @@ flowchart TB
 | **Snapshot** | At `max_version`, optional cached facts in the idx; otherwise indexed line reads + replay. |
 | **Feed** | Index scan for `version > since`, then seek/read only those lines. |
 
-**Envelope v2:** writers emit wire `"v":2` and `schema_v:2` with `event_time_prec`, `node`, `seq`, `hlc`, `writer`, and microsecond UTC `record_time`; optional `ext` keeps unknown keys inside the bag only. **Readers** accept omitted / `v`:1 / `v`:2 and `schema_v` 1 or 2 without rewriting old lines. `commit_json` stamps v2 under the lock; v1 projection in views uses `node=legacy`, line index `seq`, and synthetic HLC from `record_time`.
+**Envelope v2 (draft, field list pending):** writers emit wire `"v":2` and `schema_v:2` with required bus stamps (`event_time_prec`, `node`, `seq`, `hlc`, `writer`, microsecond UTC `record_time`). Optional bus keys are grouped on `EventEnvelopeV2Optional` (today: `clock`, `cause`, `depth`, `rule`, `ext`); Fleet may add `ingress`, `settle`, `supersedes`, etc. before ship — single `deny_unknown_fields` bump on `EventEnvelope` + optional struct, not a v3. `clock.src` is an open string (`roughtime` allowed). **Readers** accept omitted / `v`:1 / `v`:2 and `schema_v` 1 or 2 without rewriting old lines. v1 projection in views: `node=legacy`, line index `seq`, synthetic HLC from `record_time`.
 
 Scaling numbers: run `RECORD_SCALE_BENCH=1 cargo test -p ensembly-schema --test record_scale --release`.
 

@@ -50,6 +50,8 @@ impl LedgerRow {
     }
 }
 
+impl crate::wire::WireDecode for LedgerRow {}
+
 impl Checked for LedgerRow {
     /// Legacy rows: an empty or missing time on a sent status reads as unknown. No time is invented.
     fn normalize(mut self) -> Self {

@@ -63,7 +63,7 @@ where
 /// Materialize current aggregate rows from ordered events (idempotent on same key + payload).
 pub fn replay<P>(events: &[EventEnvelope<P>]) -> Result<Vec<MaterializedAggregate<P>>, ReplayError>
 where
-    P: Checked + Serialize + Clone,
+    P: Checked + Serialize + Clone + for<'de> serde::Deserialize<'de>,
 {
     let mut seen: BTreeMap<(String, String), String> = BTreeMap::new();
     let mut latest: BTreeMap<String, MaterializedAggregate<P>> = BTreeMap::new();

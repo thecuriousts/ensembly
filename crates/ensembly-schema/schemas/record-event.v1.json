@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "RecordEventLine",
-  "description": "Record event line (schema_v 1 legacy or schema_v 2 bus envelope).",
+  "description": "Record event line (schema_v 1 legacy or schema_v 2 bus envelope).\n\nTop-level `deny_unknown_fields` lives only on this struct so new v2 keys land in one place (`EventEnvelope` + `EventEnvelopeV2Optional`) without a schema_v 3.",
   "type": "object",
   "required": [
     "aggregate",
@@ -121,7 +121,7 @@
       "$ref": "#/definitions/Source"
     },
     "v": {
-      "const": 2
+      "const": 1
     },
     "version": {
       "type": "integer",
@@ -135,9 +135,9 @@
       ]
     }
   },
-  "additionalProperties": false,
   "definitions": {
     "ClockInfo": {
+      "description": "Wall-clock sync metadata on a v2 line. `src` is an open string (`chrony`, `sntp`, `peer:<alias>`, `none`, `roughtime`, …).",
       "type": "object",
       "required": [
         "age_s",

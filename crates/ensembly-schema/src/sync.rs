@@ -66,7 +66,7 @@ pub fn merge_offline<P>(
     config: &SyncConfig,
 ) -> Result<MergeOutcome<P>, SyncError>
 where
-    P: Checked + Serialize + Clone,
+    P: Checked + Serialize + Clone + for<'de> serde::Deserialize<'de>,
 {
     let mut index: BTreeMap<(String, String), String> = BTreeMap::new();
     for e in owner {

@@ -2,6 +2,13 @@ use crate::{Checked, SCHEMA_VERSION, SCHEMA_VERSION_LEGACY};
 use serde::{de::DeserializeOwned, Serialize};
 use std::collections::BTreeSet;
 
+/// Per-line-type wire `v` ceiling. Record events accept v2; pack formats stop at v1.
+pub trait WireDecode: Checked + DeserializeOwned {
+    fn max_wire_version() -> u32 {
+        SCHEMA_VERSION_LEGACY
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Decoded<T> {
     pub version: u32,
@@ -20,10 +27,13 @@ struct Envelope<'a, T: Serialize> {
 ///
 /// A missing `v` means the v0 shape. Present values `1` or `2` (and legacy `1`) are accepted on read.
 /// An explicit `v` of 0 is refused, as is any other value. Duplicate keys are refused.
-pub fn decode_line<T: DeserializeOwned + Checked>(line: &str) -> Result<Decoded<T>, String> {
+pub fn decode_line<T: WireDecode>(line: &str) -> Result<Decoded<T>, String> {
     reject_duplicate_keys(line)?;
     let mut value: serde_json::Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
     let version = take_version(value.as_object_mut())?;
+    if version > T::max_wire_version() {
+        return Err(unsupported_version(u64::from(version)));
+    }
     let value = T::normalize(serde_json::from_value(value).map_err(|e| e.to_string())?);
     value.check()?;
     Ok(Decoded { version, value })
@@ -60,7 +70,10 @@ fn unsupported_version_from_json(seen: &serde_json::Value) -> String {
     )
 }
 
-pub fn encode_line<T: Serialize>(wire_v: u32, value: &T) -> Result<String, String> {
+pub fn encode_line<T: Serialize + WireDecode>(wire_v: u32, value: &T) -> Result<String, String> {
+    if wire_v != 0 && wire_v > T::max_wire_version() {
+        return Err(unsupported_version(u64::from(wire_v)));
+    }
     let v = match wire_v {
         0 => None,
         SCHEMA_VERSION_LEGACY | SCHEMA_VERSION => Some(wire_v),

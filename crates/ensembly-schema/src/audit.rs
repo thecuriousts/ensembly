@@ -117,6 +117,8 @@ pub struct Audit {
     pub reused_from: Option<String>,
 }
 
+impl crate::wire::WireDecode for Audit {}
+
 impl Checked for Audit {}
 
 impl Audit {

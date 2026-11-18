@@ -100,7 +100,7 @@ pub use url::{check_submit_time, link_key};
 pub use view::{
     view_append, ChangeEvent, Fact, Feed, RecordView, Snapshot, ViewContract, ViewError,
 };
-pub use wire::{decode_line, encode_line, Decoded};
+pub use wire::{decode_line, encode_line, Decoded, WireDecode};
 
 /// Optional check applied by [`decode_line`] after serde accepts the object.
 pub trait Checked: Sized {
@@ -118,11 +118,11 @@ mod version_one {
     use schemars::schema::{Schema, SchemaObject};
     use schemars::{gen::SchemaGenerator, JsonSchema};
 
-    /// Schema const for [`crate::SCHEMA_VERSION`]. Not a runtime value.
+    /// Schema const for wire `v: 1` on pack lines (not record envelope v2).
     ///
     /// `"v": 1.0` passes this const because JSON Schema compares numbers by
     /// value. [`crate::decode_line`] refuses it; only an integer
-    /// [`crate::SCHEMA_VERSION`] is a supported `v`.
+    /// [`crate::SCHEMA_VERSION_LEGACY`] is a supported `v` for ledger/audit/pack.
     pub struct VersionOne;
 
     impl JsonSchema for VersionOne {
@@ -136,7 +136,7 @@ mod version_one {
 
         fn json_schema(_: &mut SchemaGenerator) -> Schema {
             SchemaObject {
-                const_value: Some(serde_json::json!(crate::SCHEMA_VERSION)),
+                const_value: Some(serde_json::json!(crate::SCHEMA_VERSION_LEGACY)),
                 ..Default::default()
             }
             .into()

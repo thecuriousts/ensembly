@@ -3,21 +3,22 @@
 use crate::commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult};
 use crate::hlc::{local_append, physical_time_us, HlcState};
 use crate::idempotency::same_idempotent_content;
-use crate::identity::{configured_node, configured_writer, require_configured_writer, validate_writer_identity};
-
-pub use crate::identity::{require_configured_writer, validate_writer_identity, WRITER_ENV};
+pub use crate::identity::{
+    configured_node, configured_writer, require_configured_writer, validate_writer_identity,
+    WRITER_ENV,
+};
 use crate::log_index::{
     ensure_snapshot_at_max, extend_index_lines, load_events_since_version,
     load_events_up_to_version, load_or_rebuild, lookup_aggregate_key_entry, read_line_at,
     rebuild_index, ring_doorbell, sidecar_header_state, LogIndexError,
 };
 use crate::record::{EventEnvelope, EventTimePrec, Rfc3339Time, Version};
-use crate::replay::{parse_event_log, replay, ReplayError};
+use crate::replay::ReplayError;
 use crate::view::{Feed, RecordView, Snapshot, ViewContract};
 use crate::{encode_line, Checked, UnitOfWork, SCHEMA_VERSION};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs::{File, OpenOptions};
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
@@ -146,7 +147,7 @@ fn stamp_unit_v2(
         event.hlc = Some(hlc);
         last_hlc = hlc;
         event.writer = Some(writer.clone());
-        event.depth.get_or_insert(0);
+        event.v2_optional.depth.get_or_insert(0);
     }
     Ok(last_hlc)
 }

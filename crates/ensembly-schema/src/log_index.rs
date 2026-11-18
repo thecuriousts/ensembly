@@ -171,7 +171,7 @@ fn snapshot_for_events<P>(
     max_version: u64,
 ) -> Result<Snapshot, LogIndexError>
 where
-    P: Checked + Serialize + Clone,
+    P: Checked + Serialize + Clone + for<'de> Deserialize<'de>,
 {
     let filtered: Vec<_> = events
         .into_iter()

@@ -233,7 +233,7 @@ impl Commit {
         fault: &CommitFault,
     ) -> Result<(), CommitError>
     where
-        P: Checked + Serialize,
+        P: Checked + Serialize + for<'de> serde::Deserialize<'de>,
     {
         self.cleanup_staging()?;
         let staging = self.staging_path();
@@ -304,7 +304,10 @@ fn wire_version_for_event<P>(event: &EventEnvelope<P>) -> u32 {
     }
 }
 
-fn encode_unit<P: Serialize>(events: &[EventEnvelope<P>]) -> Result<Vec<String>, CommitError> {
+fn encode_unit<P>(events: &[EventEnvelope<P>]) -> Result<Vec<String>, CommitError>
+where
+    P: Serialize + Checked + for<'de> serde::Deserialize<'de>,
+{
     events
         .iter()
         .map(|e| {

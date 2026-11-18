@@ -1,4 +1,6 @@
 //! Golden encode/decode for v1, v2, and mixed logs.
+//! v1 byte-identical round-trip is locked; v2/mixed goldens are provisional until Fleet
+//! publishes the final envelope field list.
 
 use ensembly_schema::{
     commit_json, decode_line, encode_line, parse_event_log, CommitFault, SCHEMA_VERSION,
