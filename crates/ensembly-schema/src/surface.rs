@@ -6,8 +6,8 @@ use crate::idempotency::same_idempotent_content;
 use crate::identity::{configured_node, configured_writer, validate_writer_identity};
 use crate::log_index::{
     ensure_snapshot_at_max, extend_index_lines, load_events_since_version,
-    load_events_up_to_version, load_or_rebuild, lookup_aggregate_key_entry, read_line_at,
-    rebuild_index, ring_doorbell, sidecar_header_state, LogIndexError,
+    load_events_up_to_version, load_or_rebuild, lookup_logged_key, read_line_at, rebuild_index,
+    ring_doorbell, sidecar_header_state, LogIndexError,
 };
 use crate::record::{EventEnvelope, EventTimePrec, Rfc3339Time, Version};
 use crate::replay::ReplayError;
@@ -367,11 +367,6 @@ fn check_known_keys(
     log: &Path,
     unit: &UnitOfWork<JsonPayload>,
 ) -> Result<KeyCheck, RecordSurfaceError> {
-    let idx = if log.is_file() {
-        Some(load_or_rebuild::<JsonPayload>(log).map_err(RecordSurfaceError::Index)?)
-    } else {
-        None
-    };
     let mut in_unit: BTreeSet<(String, String)> = BTreeSet::new();
     let mut known = 0usize;
     for event in &unit.events {
@@ -379,8 +374,10 @@ fn check_known_keys(
         if !in_unit.insert(id.clone()) {
             return Err(RecordSurfaceError::Idempotency { key: id.1 });
         }
-        if let Some(ref index) = idx {
-            if let Some(entry) = lookup_aggregate_key_entry(index, &event.aggregate.0, &event.key.0)
+        if log.is_file() {
+            if let Some(entry) =
+                lookup_logged_key::<JsonPayload>(log, &event.aggregate.0, &event.key.0)
+                    .map_err(RecordSurfaceError::Index)?
             {
                 let line = read_line_at(log, entry.offset, entry.len)
                     .map_err(RecordSurfaceError::Index)?;
@@ -402,9 +399,11 @@ fn check_known_keys(
                 .events
                 .iter()
                 .find(|e| {
-                    idx.as_ref().is_some_and(|index| {
-                        lookup_aggregate_key_entry(index, &e.aggregate.0, &e.key.0).is_some()
-                    })
+                    log.is_file()
+                        && lookup_logged_key::<JsonPayload>(log, &e.aggregate.0, &e.key.0)
+                            .ok()
+                            .flatten()
+                            .is_some()
                 })
                 .map(|e| e.key.0.clone())
                 .unwrap_or_default();

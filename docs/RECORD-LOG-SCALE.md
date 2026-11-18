@@ -28,7 +28,7 @@ flowchart TB
 | Piece | Rule |
 |-------|------|
 | **Append** | Staging, then `O_APPEND` into the log; never rewrite prior bytes. Torn final line → refuse; copy suffix to `events.jsonl.torn-fragment` (log unchanged). |
-| **Sidecar** | `events.jsonl.keys`: header (`log_len`, `last_line_sha256`, `last_seq`, `last_hlc`), `(aggregate,key)→offset`, empty `keys_by_idempotency` (reserved). Safe to delete; rebuilt when stale. |
+| **Sidecar** | `events.jsonl.keys`: header (`log_len`, `last_line_sha256`, `last_seq`, `last_hlc`), `(aggregate,key)→offset`, empty `keys_by_idempotency` (reserved). Safe to delete; rebuilt when stale. A live process keeps the index in memory and extends it on append (tail check reads the last line only). The keys file is rewritten on rebuild, not on every commit. |
 | **Snapshot** | At `max_version`, optional cached facts in the idx; otherwise indexed line reads + replay. |
 | **Feed** | Index scan for `version > since`, then seek/read only those lines. |
 | **Ratio gate** | Release CI: `commit_ms(100k) / commit_ms(1k) ≤ 30` (`RECORD_SCALE_BENCH=1`, `record_scale` test). |

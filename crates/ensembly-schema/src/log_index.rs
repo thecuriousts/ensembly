@@ -10,10 +10,11 @@ use crate::view::{facts_from_rows, Snapshot};
 use crate::{decode_line, Checked};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 pub const INDEX_SCHEMA_V: u32 = 1;
 
@@ -104,18 +105,92 @@ fn map_aggregate_key(aggregate: &str, key: &str) -> String {
     format!("{aggregate}\0{key}")
 }
 
+fn index_cache() -> &'static Mutex<HashMap<PathBuf, LogIndexSidecar>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, LogIndexSidecar>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn cache_get(log: &Path, log_len: u64) -> Option<LogIndexSidecar> {
+    let guard = index_cache().lock().ok()?;
+    let idx = guard.get(log)?;
+    if idx.header.log_len == log_len {
+        Some(idx.clone())
+    } else {
+        None
+    }
+}
+
+fn cache_put(log: &Path, idx: &LogIndexSidecar) {
+    if let Ok(mut guard) = index_cache().lock() {
+        guard.insert(log.to_path_buf(), idx.clone());
+    }
+}
+
+fn cache_header(log: &Path, log_len: u64) -> Option<(HlcState, u64)> {
+    let guard = index_cache().lock().ok()?;
+    let idx = guard.get(log)?;
+    if idx.header.log_len != log_len {
+        return None;
+    }
+    Some((
+        HlcState {
+            l: idx.header.last_hlc.l,
+            c: idx.header.last_hlc.c,
+        },
+        idx.header.last_seq,
+    ))
+}
+
+fn cache_key(log: &Path, log_len: u64, aggregate: &str, key: &str) -> Option<Option<KeyEntry>> {
+    let guard = index_cache().lock().ok()?;
+    let idx = guard.get(log)?;
+    if idx.header.log_len != log_len {
+        return None;
+    }
+    Some(
+        idx.keys_by_aggregate
+            .get(&map_aggregate_key(aggregate, key))
+            .cloned(),
+    )
+}
+
 pub fn load_or_rebuild<P>(log: &Path) -> Result<LogIndexSidecar, LogIndexError>
 where
     P: Checked + Serialize + for<'de> Deserialize<'de> + Clone,
 {
     let idx_path = sidecar_path(log);
     let (log_len, tail_sha256) = log_metadata(log)?;
+    if let Some(idx) = cache_get(log, log_len) {
+        return Ok(idx);
+    }
     if let Ok(idx) = read_sidecar(&idx_path) {
         if idx_matches_log(&idx, log_len, &tail_sha256) {
+            cache_put(log, &idx);
             return Ok(idx);
         }
     }
     rebuild_index::<P>(log)
+}
+
+/// Idempotency lookup that stays on the in-process index when it matches the log length.
+pub fn lookup_logged_key<P>(
+    log: &Path,
+    aggregate: &str,
+    key: &str,
+) -> Result<Option<KeyEntry>, LogIndexError>
+where
+    P: Checked + Serialize + for<'de> Deserialize<'de> + Clone,
+{
+    let log_len = match log.metadata() {
+        Ok(m) => m.len(),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(LogIndexError::Io(e.to_string())),
+    };
+    if let Some(found) = cache_key(log, log_len, aggregate, key) {
+        return Ok(found);
+    }
+    let idx = load_or_rebuild::<P>(log)?;
+    Ok(lookup_aggregate_key_entry(&idx, aggregate, key).cloned())
 }
 
 fn log_metadata(log: &Path) -> Result<(u64, String), LogIndexError> {
@@ -155,6 +230,7 @@ where
         )?);
     }
     write_sidecar(log, &idx)?;
+    cache_put(log, &idx);
     Ok(idx)
 }
 
@@ -255,6 +331,13 @@ where
     if !log.is_file() {
         return Ok((HlcState::default(), 0));
     }
+    let log_len = log
+        .metadata()
+        .map_err(|e| LogIndexError::Io(e.to_string()))?
+        .len();
+    if let Some(state) = cache_header(log, log_len) {
+        return Ok(state);
+    }
     let idx = load_or_rebuild::<P>(log)?;
     Ok((
         HlcState {
@@ -275,7 +358,37 @@ pub fn extend_index_lines<P>(
 where
     P: Checked + Serialize + for<'de> Deserialize<'de> + Clone,
 {
-    let mut idx = load_or_rebuild::<P>(log)?;
+    let file_len = match log.metadata() {
+        Ok(m) => m.len(),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => 0,
+        Err(e) => return Err(LogIndexError::Io(e.to_string())),
+    };
+    let add_len: u64 = new_lines.iter().map(|line| line.len() as u64).sum();
+    let cached_ready = index_cache().lock().ok().is_some_and(|guard| {
+        guard.get(log).is_some_and(|idx| {
+            idx.header.log_len == file_len || idx.header.log_len.saturating_add(add_len) == file_len
+        })
+    });
+    if !cached_ready {
+        // Cold index: one rebuild from the log, then the in-process copy stays warm.
+        let _ = load_or_rebuild::<P>(log)?;
+    }
+    let mut guard = index_cache()
+        .lock()
+        .map_err(|_| LogIndexError::Io("index cache poisoned".into()))?;
+    let idx = guard
+        .get_mut(log)
+        .ok_or_else(|| LogIndexError::Io("index cache missing after load".into()))?;
+    if idx.header.log_len == file_len {
+        idx.header.last_hlc = last_hlc;
+        idx.header.last_seq = last_seq;
+        return Ok(());
+    }
+    if idx.header.log_len.saturating_add(add_len) != file_len {
+        return Err(LogIndexError::Tail(
+            "index prefix does not match the appended log".into(),
+        ));
+    }
     let mut offset = idx.header.log_len;
     for (event, line) in new_events.iter().zip(new_lines) {
         let nbytes = line.as_bytes();
@@ -303,7 +416,8 @@ where
     idx.header.last_hlc = last_hlc;
     idx.header.last_seq = last_seq;
     idx.snapshot_at_max = None;
-    write_sidecar(log, &idx)
+    // The keys file is derived. Rewriting it on every append is O(n); rebuild when stale.
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -319,25 +433,45 @@ pub fn ring_doorbell(log: &Path) {
 pub fn ring_doorbell(_log: &Path) {}
 
 pub fn ensure_tail_intact(log: &Path, bytes: Option<&[u8]>) -> Result<(), LogIndexError> {
-    let data = match bytes {
-        Some(b) => b.to_vec(),
-        None => match fs::read(log) {
-            Ok(b) => b,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
-            Err(e) => return Err(LogIndexError::Io(e.to_string())),
-        },
-    };
+    if let Some(data) = bytes {
+        return check_tail_bytes(log, data);
+    }
+    match log.metadata() {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(LogIndexError::Io(e.to_string())),
+        Ok(m) if m.len() == 0 => return Ok(()),
+        Ok(_) => {}
+    }
+    match read_last_complete_line_bytes(log) {
+        Ok(line) => {
+            serde_json::from_slice::<serde_json::Value>(&line)
+                .map_err(|e| LogIndexError::Tail(format!("last line is not valid json: {e}")))?;
+            Ok(())
+        }
+        Err(LogIndexError::Tail(msg)) if msg.contains("without newline") => {
+            let suffix = read_torn_suffix(log)?;
+            write_torn_diagnostic(log, &suffix)?;
+            Err(LogIndexError::Tail(format!(
+                "log ends with a torn line; appended writes refused (diagnostic: {})",
+                torn_fragment_path(log).display()
+            )))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn check_tail_bytes(log: &Path, data: &[u8]) -> Result<(), LogIndexError> {
     if data.is_empty() {
         return Ok(());
     }
     if data.last() != Some(&b'\n') {
-        write_torn_diagnostic(log, &data)?;
+        write_torn_diagnostic(log, data)?;
         return Err(LogIndexError::Tail(format!(
             "log ends with a torn line; appended writes refused (diagnostic: {})",
             torn_fragment_path(log).display()
         )));
     }
-    let text = std::str::from_utf8(&data).map_err(|e| LogIndexError::Io(e.to_string()))?;
+    let text = std::str::from_utf8(data).map_err(|e| LogIndexError::Io(e.to_string()))?;
     if let Some(last) = text.lines().rev().find(|l| !l.trim().is_empty()) {
         serde_json::from_str::<serde_json::Value>(last)
             .map_err(|e| LogIndexError::Tail(format!("last line is not valid json: {e}")))?;
@@ -360,18 +494,57 @@ fn write_torn_diagnostic(log: &Path, data: &[u8]) -> Result<(), LogIndexError> {
 }
 
 fn read_last_complete_line_bytes(log: &Path) -> Result<Vec<u8>, LogIndexError> {
-    let data = fs::read(log).map_err(|e| LogIndexError::Io(e.to_string()))?;
-    if data.is_empty() {
+    let mut file = File::open(log).map_err(|e| LogIndexError::Io(e.to_string()))?;
+    let len = file
+        .metadata()
+        .map_err(|e| LogIndexError::Io(e.to_string()))?
+        .len();
+    if len == 0 {
         return Ok(Vec::new());
     }
-    if data.last() != Some(&b'\n') {
-        return Err(LogIndexError::Tail("log ends without newline".into()));
+    let mut window = 64 * 1024u64;
+    loop {
+        let start = len.saturating_sub(window);
+        file.seek(SeekFrom::Start(start))
+            .map_err(|e| LogIndexError::Io(e.to_string()))?;
+        let mut buf = Vec::new();
+        file.read_to_end(&mut buf)
+            .map_err(|e| LogIndexError::Io(e.to_string()))?;
+        if buf.last() != Some(&b'\n') {
+            return Err(LogIndexError::Tail("log ends without newline".into()));
+        }
+        let end = buf.len().saturating_sub(1);
+        let mut line_start = end;
+        while line_start > 0 && buf[line_start - 1] != b'\n' {
+            line_start -= 1;
+        }
+        if line_start > 0 || start == 0 {
+            return Ok(buf[line_start..end].to_vec());
+        }
+        if window >= len {
+            return Ok(buf[..end].to_vec());
+        }
+        window = window.saturating_mul(2).min(len);
     }
-    let mut end = data.len().saturating_sub(1);
-    while end > 0 && data[end - 1] != b'\n' {
-        end -= 1;
+}
+
+fn read_torn_suffix(log: &Path) -> Result<Vec<u8>, LogIndexError> {
+    let mut file = File::open(log).map_err(|e| LogIndexError::Io(e.to_string()))?;
+    let len = file
+        .metadata()
+        .map_err(|e| LogIndexError::Io(e.to_string()))?
+        .len();
+    let start = len.saturating_sub(64 * 1024);
+    file.seek(SeekFrom::Start(start))
+        .map_err(|e| LogIndexError::Io(e.to_string()))?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf)
+        .map_err(|e| LogIndexError::Io(e.to_string()))?;
+    if let Some(pos) = buf.iter().rposition(|b| *b == b'\n') {
+        Ok(buf[pos + 1..].to_vec())
+    } else {
+        Ok(buf)
     }
-    Ok(data[end..data.len().saturating_sub(1)].to_vec())
 }
 
 pub fn read_line_at(log: &Path, offset: u64, len: u32) -> Result<String, LogIndexError> {
@@ -462,7 +635,9 @@ where
     }
     let events = load_events_from_index::<P>(log, idx)?;
     idx.snapshot_at_max = Some(snapshot_for_events(events, idx.max_version)?);
-    write_sidecar(log, idx)
+    write_sidecar(log, idx)?;
+    cache_put(log, idx);
+    Ok(())
 }
 
 fn read_sidecar(path: &Path) -> Result<LogIndexSidecar, LogIndexError> {
@@ -583,7 +758,7 @@ mod tests {
         )
         .unwrap();
         let incremental = load_or_rebuild::<NotePayload>(&log).unwrap();
-        fs::remove_file(sidecar_path(&log)).unwrap();
+        let _ = fs::remove_file(sidecar_path(&log));
         let rebuilt = rebuild_index::<NotePayload>(&log).unwrap();
         assert_eq!(incremental.header.log_len, rebuilt.header.log_len);
         assert_eq!(incremental.event_count, rebuilt.event_count);
