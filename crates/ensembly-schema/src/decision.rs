@@ -182,6 +182,8 @@ impl LabelRow {
     }
 }
 
+impl crate::wire::WireDecode for LabelRow {}
+
 impl Checked for LabelRow {
     fn check(&self) -> Result<(), String> {
         if self.id.trim().is_empty() {
@@ -257,6 +259,14 @@ impl DecisionEventType {
             DecisionEventType::Expired => "expired",
             DecisionEventType::Skipped => "skipped",
         }
+    }
+}
+
+impl crate::wire::WireDecode for DecisionEvent {
+    /// Decision events have no v2 bus fields. Readers accept v1 and v2 so a line
+    /// written either way still loads. The decision store keeps writing v1.
+    fn max_wire_version() -> u32 {
+        crate::SCHEMA_VERSION
     }
 }
 

@@ -32,7 +32,9 @@ pub(crate) fn events_for<'a>(log: &'a [DecisionEvent], rid: &str) -> Vec<&'a Dec
 
 pub(crate) fn encode_event(ev: &DecisionEvent) -> anyhow::Result<String> {
     ev.check().map_err(|e| anyhow::anyhow!(e))?;
-    encode_line(ensembly_schema::SCHEMA_VERSION, ev).map_err(|e| anyhow::anyhow!(e))
+    // Decision events carry no v2 bus fields (ingress, supersedes, parsed, …).
+    // Keep the on-disk line at v1. Readers still accept v1 and v2.
+    encode_line(ensembly_schema::SCHEMA_VERSION_LEGACY, ev).map_err(|e| anyhow::anyhow!(e))
 }
 
 /// Append one event line. Returns false when the same (rid, event_type) is

@@ -18,7 +18,8 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # record log 100k ratio gate seeds ~100k commits in release (45m step budget).
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -42,6 +43,9 @@ jobs:
         run: cargo clippy --locked --workspace --all-targets --features opportunity-finder -- -D warnings
       - name: test
         run: cargo test --locked --workspace
+      - name: record log scale ratio gate (release)
+        run: RECORD_SCALE_BENCH=1 cargo test --locked -p ensembly-schema --test record_scale --release record_log_scaling_commit_and_feed -- --nocapture
+        timeout-minutes: 45
       - name: test opportunity-finder pack
         run: |
           cargo test --locked -p ensembly-opportunity-finder

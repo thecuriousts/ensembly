@@ -1,12 +1,21 @@
 //! Shared Commit and View entry for the kernel CLI and the MCP server.
 
-use crate::commit::{Commit, CommitError, CommitFault, CommitResult};
-use crate::record::{EventEnvelope, Version};
-use crate::replay::{parse_event_log, ReplayError};
+use crate::commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult};
+use crate::hlc::{local_append, physical_time_us, HlcState};
+use crate::idempotency::same_idempotent_content;
+use crate::identity::{configured_node, configured_writer, validate_writer_identity};
+use crate::log_index::{
+    ensure_snapshot_at_max, extend_index_lines, load_events_since_version,
+    load_events_up_to_version, load_or_rebuild, lookup_logged_key, read_line_at, rebuild_index,
+    ring_doorbell, sidecar_header_state, LogIndexError,
+};
+use crate::record::{EventEnvelope, EventTimePrec, Rfc3339Time, Version};
+use crate::replay::ReplayError;
 use crate::view::{Feed, RecordView, Snapshot, ViewContract};
-use crate::{Checked, UnitOfWork};
+use crate::{encode_line, Checked, UnitOfWork, SCHEMA_VERSION};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs::{File, OpenOptions};
 #[cfg(unix)]
 use std::os::unix::io::AsRawFd;
@@ -15,52 +24,6 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct JsonPayload(pub serde_json::Value);
-
-/// Environment variable that holds the operator's writer identity.
-pub const WRITER_ENV: &str = "ENSEMBLY_WRITER";
-
-const WRITER_MAX_CHARS: usize = 64;
-
-/// A writer identity is non-empty, trimmed, length-limited, and free of
-/// path, home, and mailbox markers. It is not checked against a list of
-/// machine names.
-pub fn validate_writer_identity(writer: &str) -> Result<String, String> {
-    let writer = writer.trim();
-    if writer.is_empty() || writer.chars().count() > WRITER_MAX_CHARS {
-        return Err("writer is required".into());
-    }
-    let lower = writer.to_ascii_lowercase();
-    if writer.contains('@')
-        || writer.contains('/')
-        || writer.contains('\\')
-        || writer.contains('~')
-        || lower.contains("/home/")
-        || lower.contains("/users/")
-        || !writer
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-    {
-        return Err("writer is not a safe identity".into());
-    }
-    Ok(writer.to_string())
-}
-
-/// The configured writer identity, from [`WRITER_ENV`].
-pub fn configured_writer() -> Result<String, String> {
-    let raw = std::env::var(WRITER_ENV).map_err(|_| format!("{WRITER_ENV} is not set"))?;
-    validate_writer_identity(&raw)
-}
-
-/// A new write must name the configured writer identity.
-pub fn require_configured_writer(writer: &str) -> Result<String, String> {
-    let writer = validate_writer_identity(writer)?;
-    let expected = configured_writer()?;
-    if writer != expected {
-        Err("writer does not match the configured identity".into())
-    } else {
-        Ok(writer)
-    }
-}
 
 impl Checked for JsonPayload {
     fn check(&self) -> Result<(), String> {
@@ -109,11 +72,17 @@ pub fn record_now_local() -> String {
     chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
+/// Wall clock inside the commit lock: UTC `Z` with exactly six fraction digits.
+pub fn record_now_micros_utc() -> String {
+    Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
+}
+
 #[derive(Debug)]
 pub enum RecordSurfaceError {
     Json(String),
     Commit(CommitError),
     Replay(ReplayError),
+    Index(LogIndexError),
     Idempotency { key: String },
     MissingLog(String),
 }
@@ -133,6 +102,7 @@ impl std::fmt::Display for RecordSurfaceError {
             RecordSurfaceError::Json(m) => write!(f, "{m}"),
             RecordSurfaceError::Commit(e) => write!(f, "{e}"),
             RecordSurfaceError::Replay(e) => write!(f, "{e}"),
+            RecordSurfaceError::Index(e) => write!(f, "{e}"),
             RecordSurfaceError::Idempotency { key } => {
                 write!(f, "idempotency conflict on key {key}: already logged with different content, or the unit is only partly logged")
             }
@@ -143,29 +113,102 @@ impl std::fmt::Display for RecordSurfaceError {
 
 impl std::error::Error for RecordSurfaceError {}
 
+fn stamp_unit_v2(
+    _log: &Path,
+    unit: &mut UnitOfWork<JsonPayload>,
+    hlc_state: &mut HlcState,
+    seq: &mut u64,
+) -> Result<crate::hlc::HlcWire, RecordSurfaceError> {
+    let node = configured_node().map_err(RecordSurfaceError::Json)?;
+    let writer = configured_writer().map_err(RecordSurfaceError::Json)?;
+    let pt = physical_time_us();
+    let mut last_hlc = crate::hlc::HlcWire { l: 0, c: 0 };
+    for event in &mut unit.events {
+        let pw = payload_writer(event).map_err(RecordSurfaceError::Json)?;
+        validate_writer_identity(&pw).map_err(RecordSurfaceError::Json)?;
+        *seq += 1;
+        let hlc = local_append(hlc_state, pt).map_err(RecordSurfaceError::Json)?;
+        event.schema_v = SCHEMA_VERSION;
+        event.record_time =
+            Rfc3339Time::new(record_now_micros_utc()).map_err(RecordSurfaceError::Json)?;
+        event.event_time = Rfc3339Time::new(
+            to_event_time_utc_z(event.event_time.as_str()).map_err(RecordSurfaceError::Json)?,
+        )
+        .map_err(RecordSurfaceError::Json)?;
+        event.event_time_prec = Some(infer_event_time_prec(event.event_time.as_str()));
+        if matches!(event.event_time_prec, Some(EventTimePrec::Unknown)) {
+            event.event_time_prec = Some(EventTimePrec::S);
+        }
+        event.node = Some(node.clone());
+        event.seq = Some(*seq);
+        event.hlc = Some(hlc);
+        last_hlc = hlc;
+        event.writer = Some(writer.clone());
+        event.v2_optional.depth.get_or_insert(0);
+    }
+    Ok(last_hlc)
+}
+
+fn payload_writer(event: &EventEnvelope<JsonPayload>) -> Result<String, String> {
+    match event.payload.0.get("writer") {
+        Some(serde_json::Value::String(writer)) => validate_writer_identity(writer),
+        _ => Err("writer is required".into()),
+    }
+}
+
+fn to_event_time_utc_z(raw: &str) -> Result<String, String> {
+    let dt = chrono::DateTime::parse_from_rfc3339(raw).map_err(|e| format!("event_time: {e}"))?;
+    Ok(dt
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true))
+}
+
+fn infer_event_time_prec(t: &str) -> EventTimePrec {
+    match t.split('.').nth(1).map(|s| s.trim_end_matches('Z').len()) {
+        Some(6) => EventTimePrec::Us,
+        Some(3) => EventTimePrec::Ms,
+        Some(0) => EventTimePrec::S,
+        None => EventTimePrec::S,
+        Some(_) => EventTimePrec::Unknown,
+    }
+}
+
 pub fn commit_json(
     log: &Path,
     unit_json: &str,
     fault: &CommitFault,
 ) -> Result<CommitResult, RecordSurfaceError> {
     let _lock = ExclusiveLogLock::acquire(log)?;
-    let unit = parse_unit(unit_json)?;
+    let mut unit = parse_unit(unit_json)?;
+    let (mut hlc_state, mut last_seq) =
+        sidecar_header_state::<JsonPayload>(log).map_err(RecordSurfaceError::Index)?;
+    let last_hlc_wire = stamp_unit_v2(log, &mut unit, &mut hlc_state, &mut last_seq)?;
     if check_known_keys(log, &unit)? == KeyCheck::Duplicate {
-        // A retry of a unit that already landed: the same fact, not a new one.
         return Ok(CommitResult::duplicate());
     }
     #[cfg(test)]
     test_hold();
-    Commit::new(log)
-        .run(unit, fault)
-        .map_err(RecordSurfaceError::Commit)
+    let result = Commit::new(log)
+        .run(unit.clone(), fault)
+        .map_err(RecordSurfaceError::Commit)?;
+    if result.phase == CommitPhase::Done && !result.duplicate {
+        let lines = encode_unit_lines(&unit.events)?;
+        extend_index_lines(log, &lines, &unit.events, last_hlc_wire, last_seq)
+            .map_err(RecordSurfaceError::Index)?;
+        ring_doorbell(log);
+    }
+    Ok(result)
 }
 
 pub fn recover_json(log: &Path, fault: &CommitFault) -> Result<CommitResult, RecordSurfaceError> {
     let _lock = ExclusiveLogLock::acquire(log)?;
-    Commit::new(log)
+    let result = Commit::new(log)
         .recover::<JsonPayload>(fault)
-        .map_err(RecordSurfaceError::Commit)
+        .map_err(RecordSurfaceError::Commit)?;
+    if result.phase == CommitPhase::Done {
+        let _ = rebuild_index::<JsonPayload>(log);
+    }
+    Ok(result)
 }
 
 struct ExclusiveLogLock {
@@ -239,15 +282,32 @@ fn unlock_exclusive(file: &File) {
 fn unlock_exclusive(_file: &File) {}
 
 pub fn snapshot_json(log: &Path, at: Option<u64>) -> Result<Snapshot, RecordSurfaceError> {
-    let events = load_events(log)?;
-    let at = at.unwrap_or_else(|| events.iter().map(|e| e.version.0).max().unwrap_or(0));
+    if !log.is_file() {
+        return Err(RecordSurfaceError::MissingLog(log.display().to_string()));
+    }
+    let mut idx = load_or_rebuild::<JsonPayload>(log).map_err(RecordSurfaceError::Index)?;
+    let at_v = at.unwrap_or(idx.max_version);
+    if at_v == idx.max_version && idx.event_count > 0 {
+        ensure_snapshot_at_max::<JsonPayload>(log, &mut idx).map_err(RecordSurfaceError::Index)?;
+        if let Some(ref snap) = idx.snapshot_at_max {
+            if snap.at.0 == at_v {
+                return Ok(snap.clone());
+            }
+        }
+    }
+    let events =
+        load_events_up_to_version::<JsonPayload>(log, at_v).map_err(RecordSurfaceError::Index)?;
     RecordView::from_events(events)
-        .snapshot_at(Version(at))
+        .snapshot_at(Version(at_v))
         .map_err(RecordSurfaceError::Replay)
 }
 
 pub fn feed_json(log: &Path, since: u64) -> Result<Feed<JsonPayload>, RecordSurfaceError> {
-    let events = load_events(log)?;
+    if !log.is_file() {
+        return Err(RecordSurfaceError::MissingLog(log.display().to_string()));
+    }
+    let events =
+        load_events_since_version::<JsonPayload>(log, since).map_err(RecordSurfaceError::Index)?;
     Ok(RecordView::from_events(events).change_feed(Version(since)))
 }
 
@@ -274,15 +334,16 @@ fn parse_unit(json: &str) -> Result<UnitOfWork<JsonPayload>, RecordSurfaceError>
     }
 }
 
-fn load_events(log: &Path) -> Result<Vec<EventEnvelope<JsonPayload>>, RecordSurfaceError> {
-    let text = std::fs::read_to_string(log).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            RecordSurfaceError::MissingLog(log.display().to_string())
-        } else {
-            RecordSurfaceError::Replay(ReplayError::Io(e.to_string()))
-        }
-    })?;
-    parse_event_log(&text).map_err(RecordSurfaceError::Replay)
+fn encode_unit_lines(
+    events: &[EventEnvelope<JsonPayload>],
+) -> Result<Vec<String>, RecordSurfaceError> {
+    events
+        .iter()
+        .map(|event| {
+            let line = encode_line(SCHEMA_VERSION, event).map_err(RecordSurfaceError::Json)?;
+            Ok(format!("{line}\n"))
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -306,15 +367,6 @@ fn check_known_keys(
     log: &Path,
     unit: &UnitOfWork<JsonPayload>,
 ) -> Result<KeyCheck, RecordSurfaceError> {
-    let existing = if log.is_file() {
-        load_events(log)?
-    } else {
-        Vec::new()
-    };
-    let logged: BTreeMap<(String, String), EventEnvelope<JsonPayload>> = existing
-        .into_iter()
-        .map(|event| ((event.aggregate.0.clone(), event.key.0.clone()), event))
-        .collect();
     let mut in_unit: BTreeSet<(String, String)> = BTreeSet::new();
     let mut known = 0usize;
     for event in &unit.events {
@@ -322,11 +374,21 @@ fn check_known_keys(
         if !in_unit.insert(id.clone()) {
             return Err(RecordSurfaceError::Idempotency { key: id.1 });
         }
-        if let Some(prior) = logged.get(&id) {
-            if !same_except_record_time(prior, event) {
-                return Err(RecordSurfaceError::Idempotency { key: id.1 });
+        if log.is_file() {
+            if let Some(entry) =
+                lookup_logged_key::<JsonPayload>(log, &event.aggregate.0, &event.key.0)
+                    .map_err(RecordSurfaceError::Index)?
+            {
+                let line = read_line_at(log, entry.offset, entry.len)
+                    .map_err(RecordSurfaceError::Index)?;
+                let prior = crate::decode_line::<EventEnvelope<JsonPayload>>(&line)
+                    .map_err(RecordSurfaceError::Json)?
+                    .value;
+                if !same_idempotent_content(&prior, event) {
+                    return Err(RecordSurfaceError::Idempotency { key: id.1 });
+                }
+                known += 1;
             }
-            known += 1;
         }
     }
     match known {
@@ -336,18 +398,18 @@ fn check_known_keys(
             let key = unit
                 .events
                 .iter()
-                .find(|e| logged.contains_key(&(e.aggregate.0.clone(), e.key.0.clone())))
+                .find(|e| {
+                    log.is_file()
+                        && lookup_logged_key::<JsonPayload>(log, &e.aggregate.0, &e.key.0)
+                            .ok()
+                            .flatten()
+                            .is_some()
+                })
                 .map(|e| e.key.0.clone())
                 .unwrap_or_default();
             Err(RecordSurfaceError::Idempotency { key })
         }
     }
-}
-
-fn same_except_record_time(a: &EventEnvelope<JsonPayload>, b: &EventEnvelope<JsonPayload>) -> bool {
-    let mut b = b.clone();
-    b.record_time = a.record_time.clone();
-    *a == b
 }
 
 #[cfg(test)]

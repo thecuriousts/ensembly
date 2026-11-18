@@ -1,7 +1,8 @@
 //! Domain-agnostic commit boundary: validate → append → fsync → verify.
 
+use crate::log_index::{append_bytes_to_log, ensure_tail_intact, LogIndexError};
 use crate::record::EventEnvelope;
-use crate::{encode_line, Checked, Decoded, SCHEMA_VERSION};
+use crate::{encode_line, Checked, Decoded, SCHEMA_VERSION, SCHEMA_VERSION_LEGACY};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -232,7 +233,7 @@ impl Commit {
         fault: &CommitFault,
     ) -> Result<(), CommitError>
     where
-        P: Checked + Serialize,
+        P: Checked + Serialize + for<'de> serde::Deserialize<'de>,
     {
         self.cleanup_staging()?;
         let staging = self.staging_path();
@@ -245,7 +246,8 @@ impl Commit {
             .open(&staging)
             .map_err(|e| CommitError::Io(e.to_string()))?;
         for event in &unit.events {
-            let line = encode_line(SCHEMA_VERSION, event)
+            let wire_v = wire_version_for_event(event);
+            let line = encode_line(wire_v, event)
                 .map_err(|e| CommitError::Phase(CommitPhase::Append, e))?;
             let bytes = format!("{line}\n");
             if let Some(n) = fault.append_abort_after_bytes {
@@ -270,17 +272,10 @@ impl Commit {
 
     fn fsync_unit(&self, _lines: &[String]) -> Result<(), CommitError> {
         let staging = self.staging_path();
-        let staging_body = std::fs::read_to_string(&staging)
+        let staging_body = std::fs::read(&staging)
             .map_err(|e| CommitError::Phase(CommitPhase::Fsync, e.to_string()))?;
-        let mut combined = read_log(&self.log_path)?;
-        if !combined.is_empty() && !combined.ends_with('\n') {
-            return Err(CommitError::Phase(
-                CommitPhase::Fsync,
-                "log ends with partial line".into(),
-            ));
-        }
-        combined.push_str(&staging_body);
-        write_atomic(&self.log_path, combined.as_bytes()).map_err(CommitError::Io)?;
+        ensure_tail_intact(&self.log_path, None).map_err(map_log_index)?;
+        append_bytes_to_log(&self.log_path, &staging_body).map_err(map_log_index)?;
         self.cleanup_staging()?;
         Ok(())
     }
@@ -301,11 +296,23 @@ impl Commit {
     }
 }
 
-fn encode_unit<P: Serialize>(events: &[EventEnvelope<P>]) -> Result<Vec<String>, CommitError> {
+fn wire_version_for_event<P>(event: &EventEnvelope<P>) -> u32 {
+    if event.schema_v == SCHEMA_VERSION {
+        SCHEMA_VERSION
+    } else {
+        SCHEMA_VERSION_LEGACY
+    }
+}
+
+fn encode_unit<P>(events: &[EventEnvelope<P>]) -> Result<Vec<String>, CommitError>
+where
+    P: Serialize + Checked + for<'de> serde::Deserialize<'de>,
+{
     events
         .iter()
         .map(|e| {
-            encode_line(SCHEMA_VERSION, e).map_err(|e| CommitError::Phase(CommitPhase::Validate, e))
+            encode_line(wire_version_for_event(e), e)
+                .map_err(|e| CommitError::Phase(CommitPhase::Validate, e))
         })
         .collect()
 }
@@ -346,18 +353,27 @@ where
     P: Checked + for<'de> serde::Deserialize<'de> + PartialEq + std::fmt::Debug,
 {
     use crate::decode_line;
-    let body = read_log(path)?;
-    let mut lines: Vec<&str> = body.lines().filter(|l| !l.trim().is_empty()).collect();
-    if lines.len() < expected.len() {
-        return Err(CommitError::Phase(
-            CommitPhase::Verify,
-            "log shorter than unit".into(),
-        ));
+    use crate::log_index::read_line_at;
+
+    let meta = std::fs::metadata(path).map_err(|e| CommitError::Io(e.to_string()))?;
+    let mut offset = meta.len();
+    let mut tail: Vec<String> = Vec::with_capacity(expected.len());
+    for line in expected.iter().rev() {
+        let line_len = u64::try_from(line.len().saturating_add(1))
+            .map_err(|_| CommitError::Phase(CommitPhase::Verify, "line too long".into()))?;
+        if offset < line_len {
+            return Err(CommitError::Phase(
+                CommitPhase::Verify,
+                "log shorter than unit".into(),
+            ));
+        }
+        offset -= line_len;
+        tail.push(
+            read_line_at(path, offset, line_len as u32)
+                .map_err(|e| CommitError::Phase(CommitPhase::Verify, e.to_string()))?,
+        );
     }
-    let tail: Vec<String> = lines
-        .drain(lines.len() - expected.len()..)
-        .map(|s| s.to_string())
-        .collect();
+    tail.reverse();
     if tail != expected {
         return Err(CommitError::Phase(
             CommitPhase::Verify,
@@ -371,11 +387,11 @@ where
     Ok(())
 }
 
-fn read_log(path: &Path) -> Result<String, CommitError> {
-    match std::fs::read_to_string(path) {
-        Ok(s) => Ok(s),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
-        Err(e) => Err(CommitError::Io(e.to_string())),
+fn map_log_index(err: LogIndexError) -> CommitError {
+    match err {
+        LogIndexError::Io(m) => CommitError::Io(m),
+        LogIndexError::Replay(e) => CommitError::Phase(CommitPhase::Fsync, e.to_string()),
+        LogIndexError::Tail(m) => CommitError::Phase(CommitPhase::Fsync, m),
     }
 }
 
@@ -467,21 +483,20 @@ mod tests {
             11 => "01JCV1Q8Z30000000000000000",
             _ => "01JCV1Q8Z40000000000000000",
         };
-        EventEnvelope {
-            id: EventId(id.parse().unwrap()),
-            aggregate: AggregateId(format!("agg://example.test/acme-north/{n}")),
-            key: IdempotencyKey(key.into()),
-            version: Version(n),
-            event_time: t("2026-10-26T18:59:00+01:00"),
-            record_time: t("2026-10-26T19:00:00+01:00"),
-            source: Source::Owner,
-            prev_hash: None,
-            schema_v: SCHEMA_VERSION,
-            payload: ScenarioPayload {
+        EventEnvelope::with_payload(
+            EventId(id.parse().unwrap()),
+            AggregateId(format!("agg://example.test/acme-north/{n}")),
+            IdempotencyKey(key.into()),
+            Version(n),
+            t("2026-10-26T18:59:00+01:00"),
+            t("2026-10-26T19:00:00+01:00"),
+            Source::Owner,
+            SCHEMA_VERSION_LEGACY,
+            ScenarioPayload {
                 writer: writer.into(),
                 note: "scenario-d".into(),
             },
-        }
+        )
     }
 
     fn temp_log() -> PathBuf {

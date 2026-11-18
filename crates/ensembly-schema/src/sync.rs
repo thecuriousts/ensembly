@@ -66,7 +66,7 @@ pub fn merge_offline<P>(
     config: &SyncConfig,
 ) -> Result<MergeOutcome<P>, SyncError>
 where
-    P: Checked + Serialize + Clone,
+    P: Checked + Serialize + Clone + for<'de> serde::Deserialize<'de>,
 {
     let mut index: BTreeMap<(String, String), String> = BTreeMap::new();
     for e in owner {
@@ -172,21 +172,20 @@ mod tests {
         event_time: &str,
         record_time: &str,
     ) -> EventEnvelope<ScenarioPayload> {
-        EventEnvelope {
-            id: EventId(ulid::Ulid::from_parts(1_700_000_000 + n, n as u128)),
-            aggregate: AggregateId(aggregate.into()),
-            key: IdempotencyKey(key.into()),
-            version: Version(n),
-            event_time: t(event_time),
-            record_time: t(record_time),
-            source: Source::Owner,
-            prev_hash: None,
-            schema_v: SCHEMA_VERSION,
-            payload: ScenarioPayload {
+        EventEnvelope::with_payload(
+            EventId(ulid::Ulid::from_parts(1_700_000_000 + n, n as u128)),
+            AggregateId(aggregate.into()),
+            IdempotencyKey(key.into()),
+            Version(n),
+            t(event_time),
+            t(record_time),
+            Source::Owner,
+            crate::SCHEMA_VERSION_LEGACY,
+            ScenarioPayload {
                 writer: writer.into(),
                 note: "sync".into(),
             },
-        }
+        )
     }
 
     #[test]
