@@ -443,3 +443,197 @@ fn legacy_audited_by_warns_strict_fails_and_append_rejects() {
     );
     assert!(stdout_of(&clean_status).contains("\"status\":\"flag\""));
 }
+
+#[test]
+fn adopt_seal_then_append_refuses_the_wrong_hash_an_existing_seal_and_invalid_bytes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let body = slurp("ledger-legacy-submit-time.jsonl");
+    let ledger_path = dir.join("ledger.jsonl");
+    fs::write(&ledger_path, &body).unwrap();
+    let ledger = ledger_path.to_str().unwrap();
+    let hex = ensembly_schema::content_sha256(body.as_bytes());
+    let wrong = "ab".repeat(32);
+
+    let mismatch = call(
+        dir,
+        &[
+            "apps",
+            "adopt-seal",
+            "--ledger",
+            ledger,
+            "--sha256",
+            &wrong,
+            "--reason",
+            "reviewed on laptop-1",
+        ],
+    );
+    see(&mismatch, false, "sha256 does not match");
+    assert!(!ensembly_schema::seal_path(&ledger_path).exists());
+
+    let still = call(
+        dir,
+        &[
+            "apps",
+            "--ledger",
+            ledger,
+            "append",
+            "--company",
+            "Quarry Sample",
+            "--role",
+            "Widget Engineer",
+            "--link",
+            "https://jobs.example.test/quarry/9",
+            "--status",
+            "prepared",
+            "--cv-version",
+            "cv-sample-1",
+        ],
+    );
+    see(&still, false, "seal is missing");
+    assert_eq!(fs::read(&ledger_path).unwrap(), body.as_bytes());
+
+    let bad_path = dir.join("bad.jsonl");
+    fs::write(&bad_path, b"{").unwrap();
+    let bad = bad_path.to_str().unwrap();
+    let bad_hex = ensembly_schema::content_sha256(b"{");
+    let invalid = call(
+        dir,
+        &[
+            "apps",
+            "adopt-seal",
+            "--ledger",
+            bad,
+            "--sha256",
+            &bad_hex,
+            "--reason",
+            "reviewed on laptop-1",
+        ],
+    );
+    see(&invalid, false, "adopt refused");
+    assert!(!ensembly_schema::seal_path(&bad_path).exists());
+
+    let adopted = call(
+        dir,
+        &[
+            "apps",
+            "adopt-seal",
+            "--ledger",
+            ledger,
+            "--sha256",
+            &hex,
+            "--reason",
+            "reviewed on laptop-1",
+        ],
+    );
+    see(
+        &adopted,
+        true,
+        &format!("adopted path={ledger} sha256={hex} rows=2"),
+    );
+    let warned = stderr_of(&adopted);
+    assert!(
+        warned.contains("warning: line 1: legacy: submit_time missing"),
+        "{warned}"
+    );
+    assert_eq!(fs::read(&ledger_path).unwrap(), body.as_bytes());
+    let log = fs::read_to_string(ensembly_schema::adoption_log_path(&ledger_path)).unwrap();
+    assert!(
+        log.contains(&hex) && log.contains("reviewed on laptop-1"),
+        "{log}"
+    );
+
+    let again = call(
+        dir,
+        &[
+            "apps",
+            "adopt-seal",
+            "--ledger",
+            ledger,
+            "--sha256",
+            &hex,
+            "--reason",
+            "reviewed on laptop-1",
+        ],
+    );
+    see(&again, false, "seal already exists");
+
+    see(
+        &call(
+            dir,
+            &[
+                "apps",
+                "--ledger",
+                ledger,
+                "append",
+                "--company",
+                "Quarry Sample",
+                "--role",
+                "Widget Engineer",
+                "--link",
+                "https://jobs.example.test/quarry/9",
+                "--status",
+                "prepared",
+                "--cv-version",
+                "cv-sample-1",
+            ],
+        ),
+        true,
+        "appended: https://jobs.example.test/quarry/9",
+    );
+
+    let audit_body = slurp("audit-legacy-rules.jsonl");
+    let audit_path = dir.join("audits.jsonl");
+    fs::write(&audit_path, &audit_body).unwrap();
+    let audit = audit_path.to_str().unwrap();
+    let ok = call(dir, &["apps", "audit", "validate", audit]);
+    see(&ok, true, "ok:");
+    let audit_warn = stderr_of(&ok);
+    assert!(
+        audit_warn
+            .contains("legacy: check duplicate_ghost: result pass needs at least one https source"),
+        "{audit_warn}"
+    );
+    assert!(audit_warn.contains("warning: line "), "{audit_warn}");
+    let strict = call(dir, &["apps", "audit", "validate", "--strict", audit]);
+    see(&strict, false, "needs at least one https source");
+    assert_eq!(strict.status.code(), Some(1));
+    assert!(
+        !stdout_of(&strict).contains("ok:"),
+        "{}",
+        stdout_of(&strict)
+    );
+
+    let audit_hex = ensembly_schema::content_sha256(audit_body.as_bytes());
+    see(
+        &call(
+            dir,
+            &[
+                "apps",
+                "adopt-seal",
+                "--store",
+                audit,
+                "--sha256",
+                &audit_hex,
+                "--reason",
+                "reviewed on laptop-1",
+            ],
+        ),
+        true,
+        &format!("adopted path={audit} sha256={audit_hex} rows="),
+    );
+    let second = call(
+        dir,
+        &[
+            "apps",
+            "adopt-seal",
+            "--store",
+            audit,
+            "--sha256",
+            &audit_hex,
+            "--reason",
+            "reviewed on laptop-1",
+        ],
+    );
+    see(&second, false, "seal already exists");
+}

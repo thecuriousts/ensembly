@@ -51,9 +51,19 @@ pub fn seal_path(data: &Path) -> PathBuf {
     data.with_file_name(name)
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub fn content_sha256(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     hex::encode(Sha256::digest(bytes))
+}
+
+/// One JSON line per adoption, beside the data file: `ledger.jsonl.adoptions`.
+pub fn adoption_log_path(data: &Path) -> PathBuf {
+    let mut name = data
+        .file_name()
+        .unwrap_or_else(|| std::ffi::OsStr::new("data.jsonl"))
+        .to_os_string();
+    name.push(".adoptions");
+    data.with_file_name(name)
 }
 
 pub fn check_seal(path: &Path, bytes: &[u8]) -> Result<(), SealedIoError> {
@@ -63,7 +73,7 @@ pub fn check_seal(path: &Path, bytes: &[u8]) -> Result<(), SealedIoError> {
             "seal is missing; the writer will not adopt current bytes",
         )),
         Ok(expected) => {
-            if expected.trim() == sha256_hex(bytes) {
+            if expected.trim() == content_sha256(bytes) {
                 Ok(())
             } else {
                 Err(SealedIoError::refused(
@@ -85,7 +95,7 @@ pub fn write_seal(path: &Path, bytes: &[u8]) -> Result<(), SealedIoError> {
         format!(
             "{}
 ",
-            sha256_hex(bytes)
+            content_sha256(bytes)
         ),
     )
     .map_err(|err| SealedIoError::Io(format!("write {}: {err}", seal.display())))?;

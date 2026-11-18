@@ -14,6 +14,7 @@ pub mod ledger_writer;
 pub mod application_ledger;
 pub mod apps_record;
 pub mod company_audit;
+pub mod seal_adopt;
 pub mod tracker;
 
 pub use application_ledger::{LedgerRow, Row, Status, LEGACY_UNKNOWN_CV};

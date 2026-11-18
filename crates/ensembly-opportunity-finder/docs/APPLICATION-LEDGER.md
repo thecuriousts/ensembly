@@ -82,8 +82,17 @@ and exits 0. `ensembly apps validate --strict` prints the same warning and
 exits 1. The ledger has no `status` subcommand; validate is the check.
 Export, append, `record apps import`, and `record apps compare` use the same
 read. They warn and do not fail on these lines. Invalid JSON, unknown fields,
-and the other row rules stay errors. Append still refuses a new sent row that
-omits the time, and it does not write that row.
+duplicate keys, and a bad version stay errors. Every other per-row rule on a
+stored line is the same kind of warning (`legacy: <rule>`, with the line
+number): a blank company, role, or CV, an ad-hoc CV marker, a non-https link
+or `apply_url`, a timestamp that is not RFC 3339, and an illegal
+`submit_time_unknown`. `apps validate` still exits 0. `--strict` exits 1 and
+names each rule. A new append is still checked strictly and writes nothing
+when the new row breaks a rule.
+
+A ledger that predates the writer seal is not adopted by append. The operator
+runs `ensembly apps adopt-seal --ledger PATH --sha256 HEX --reason TEXT`
+after checking the bytes. See the no-assistant runbook.
 
 There is no later-row kind that replaces the same `link_key` and the same
 stage. That pair is the idempotency key. The same key with a different
@@ -99,6 +108,7 @@ row kind.
 | Exports | `data/local/applications/exports/applications.{csv,md}` | local-only |
 | Fictional sample | `crates/ensembly-opportunity-finder/fixtures/application-ledger-sample.jsonl` | committed |
 | Fictional legacy submit time | `crates/ensembly-opportunity-finder/fixtures/ledger-legacy-submit-time.jsonl` | committed |
+| Fictional legacy row rules | `crates/ensembly-opportunity-finder/fixtures/ledger-legacy-rules.jsonl` | committed |
 
 ## CLI
 

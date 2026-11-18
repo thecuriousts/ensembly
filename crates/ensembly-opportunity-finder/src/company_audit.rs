@@ -67,21 +67,23 @@ pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
     check_stated_verdict(a, derive_verdict(&a.checks))
 }
 
-/// Check for rows already in the store: as strict, except a stated `pass`
-/// that was right under the earlier rule still reads (as flag, see
-/// `effective_verdict`), and a missing `audited_by` still reads (`None`).
-/// A blank `audited_by` is still an error. An append-only store never
-/// turns unreadable and is never rewritten to fill the field in.
+/// A stored row is readable when it decodes and `audited_by` is not blank.
+/// Rules added after a row was written are [`stored_legacy_rules`], not errors.
 pub fn validate_stored_audit(a: &Audit) -> anyhow::Result<()> {
-    validate_audit_body(a)?;
+    stored_legacy_rules(a).map(|_| ())
+}
+
+/// Newer per-row rules this stored audit breaks. `Err` only for a blank
+/// `audited_by` (that is not a missing field). The caller does not rewrite the row.
+pub fn stored_legacy_rules(a: &Audit) -> anyhow::Result<Vec<String>> {
     reject_blank_audited_by(a)?;
-    let derived = derive_verdict(&a.checks);
-    let legacy_pass = a.verdict == Verdict::Pass
-        && ensembly_schema::derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
-    if legacy_pass {
-        return Ok(());
+    let mut rules = Vec::new();
+    if a.audited_by.is_none() {
+        rules.push("audited_by missing".into());
     }
-    check_stated_verdict(a, derived)
+    rules.extend(audit_problem_list(a));
+    rules.extend(verdict_problems(a));
+    Ok(rules)
 }
 
 fn check_stated_verdict(a: &Audit, derived: Verdict) -> anyhow::Result<()> {
@@ -111,55 +113,99 @@ fn reject_blank_audited_by(a: &Audit) -> anyhow::Result<()> {
 }
 
 fn validate_audit_body(a: &Audit) -> anyhow::Result<()> {
+    if let Some(msg) = audit_problem_list(a).into_iter().next() {
+        anyhow::bail!("{msg}");
+    }
+    Ok(())
+}
+
+fn push_result(out: &mut Vec<String>, result: anyhow::Result<()>) {
+    if let Err(err) = result {
+        out.push(err.to_string());
+    }
+}
+
+/// Every per-row rule, not only the first. New appends still fail on the first.
+fn audit_problem_list(a: &Audit) -> Vec<String> {
+    let mut out = Vec::new();
     if a.company.trim().is_empty() {
-        anyhow::bail!("company must not be blank");
+        out.push("company must not be blank".into());
     }
     let dom = canonical_domain(&a.domain);
     let dom_re = regex::Regex::new(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$").unwrap();
     if dom != a.domain || !dom_re.is_match(&dom) {
-        anyhow::bail!(
+        out.push(format!(
             "domain {:?} must be a canonical host like {:?}",
-            a.domain,
-            dom
-        );
+            a.domain, dom
+        ));
     }
-    validate_optional_fields(a)?;
-    crate::application_ledger::check_submit_time(&a.audited_at)
-        .map_err(|e| anyhow::anyhow!("audited_at: {e}"))?;
+    push_result(&mut out, validate_optional_fields(a));
+    push_result(
+        &mut out,
+        crate::application_ledger::check_submit_time(&a.audited_at)
+            .map_err(|e| anyhow::anyhow!("audited_at: {e}")),
+    );
     for id in CheckId::ALL {
         let n = a.checks.iter().filter(|c| c.id == id).count();
         if n != 1 {
-            anyhow::bail!("check {} must appear exactly once (found {n})", id.as_str());
+            out.push(format!(
+                "check {} must appear exactly once (found {n})",
+                id.as_str()
+            ));
         }
     }
     if a.checks.len() != CheckId::ALL.len() {
-        anyhow::bail!(
+        out.push(format!(
             "expected {} checks, found {}",
             CheckId::ALL.len(),
             a.checks.len()
-        );
+        ));
     }
     for c in &a.checks {
         let id = c.id.as_str();
         if c.note.trim().is_empty() {
-            anyhow::bail!("check {id}: note must not be blank");
+            out.push(format!("check {id}: note must not be blank"));
         }
         if email_re().is_match(&c.note) || looks_like_phone(&c.note) {
-            anyhow::bail!(
+            out.push(format!(
                 "check {id}: note looks like it contains personal data (email or phone number)"
-            );
+            ));
         }
         if let Some(bad) = c.sources.iter().find(|u| !is_https(u)) {
-            anyhow::bail!("check {id}: source {bad:?} is not an https URL");
+            out.push(format!("check {id}: source {bad:?} is not an https URL"));
         }
         if c.result != CheckResult::Unknown && c.sources.is_empty() {
-            anyhow::bail!(
+            out.push(format!(
                 "check {id}: result {} needs at least one https source",
                 c.result.as_str()
-            );
+            ));
         }
     }
-    Ok(())
+    out
+}
+
+fn verdict_problems(a: &Audit) -> Vec<String> {
+    let derived = derive_verdict(&a.checks);
+    let legacy_pass = a.verdict == Verdict::Pass
+        && ensembly_schema::derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
+    if legacy_pass && derived != a.verdict {
+        return vec!["stated verdict pass predates the size rule".into()];
+    }
+    if derived != a.verdict {
+        return vec![format!(
+            "stated verdict {} disagrees with the checks (derived: {})",
+            a.verdict.as_str(),
+            derived.as_str()
+        )];
+    }
+    Vec::new()
+}
+
+/// One newer rule a stored row breaks. The line is not rewritten.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyNote {
+    pub line: usize,
+    pub rule: String,
 }
 
 /// One read of an append-only audit file.
@@ -168,11 +214,32 @@ pub struct AuditStore {
     pub rows: Vec<Audit>,
     /// 1-based file line numbers of rows that omit `audited_by`.
     pub legacy_audited_by: Vec<usize>,
+    /// Every newer per-row rule, including a missing `audited_by`.
+    pub legacy: Vec<LegacyNote>,
+}
+
+/// `warning: line N: legacy: <rule>`
+pub fn legacy_rule_warning(line: usize, rule: &str) -> String {
+    format!("warning: line {line}: legacy: {rule}")
 }
 
 /// `warning: line N: legacy: audited_by missing`
 pub fn legacy_audited_by_warning(line: usize) -> String {
-    format!("warning: line {line}: {LEGACY_AUDITED_BY}")
+    legacy_rule_warning(line, "audited_by missing")
+}
+
+/// Error text when `--strict` refuses any stored legacy rule. `None` when there are none.
+pub fn legacy_rules_failure(notes: &[LegacyNote]) -> Option<String> {
+    if notes.is_empty() {
+        return None;
+    }
+    Some(
+        notes
+            .iter()
+            .map(|n| format!("legacy: {} on line {}", n.rule, n.line))
+            .collect::<Vec<_>>()
+            .join("; "),
+    )
 }
 
 /// Error text when `--strict` refuses legacy rows. `None` when there are none.
@@ -192,7 +259,33 @@ pub fn legacy_audited_by_failure(lines: &[usize]) -> Option<String> {
 /// Rows that omit `audited_by` are kept, with their line numbers in
 /// [`AuditStore::legacy_audited_by`].
 pub fn parse_audit_store(text: &str) -> anyhow::Result<AuditStore> {
-    parse_with(text, validate_stored_audit)
+    let mut rows = Vec::new();
+    let mut legacy_audited_by = Vec::new();
+    let mut legacy = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let a = ensembly_schema::decode_line(line)
+            .map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?
+            .value;
+        let line_no = i + 1;
+        for rule in stored_legacy_rules(&a).map_err(|e| anyhow::anyhow!("line {line_no}: {e}"))? {
+            if rule == "audited_by missing" {
+                legacy_audited_by.push(line_no);
+            }
+            legacy.push(LegacyNote {
+                line: line_no,
+                rule,
+            });
+        }
+        rows.push(a);
+    }
+    Ok(AuditStore {
+        rows,
+        legacy_audited_by,
+        legacy,
+    })
 }
 
 /// Parse a stored JSONL store (blank lines ignored). Errors name the 1-based line.
@@ -224,6 +317,7 @@ fn parse_with(text: &str, check: fn(&Audit) -> anyhow::Result<()>) -> anyhow::Re
     Ok(AuditStore {
         rows,
         legacy_audited_by,
+        legacy: Vec::new(),
     })
 }
 
@@ -746,12 +840,69 @@ mod tests {
             "row without reused_from still validates"
         );
         let bad = base.replacen("{", r#"{"reused_from":"yesterday","#, 1);
+        let read = parse_audit_store(&bad).unwrap();
         assert!(
-            parse_audits(&bad).is_err(),
-            "reused_from must be a timestamp"
+            read.legacy.iter().any(|n| n.rule.contains("reused_from")),
+            "stored reused_from is a warning: {:?}",
+            read.legacy
         );
+        let stored: Audit = serde_json::from_str(&bad).unwrap();
+        assert!(validate_audit(&stored).is_err());
         let extra = base.replacen("{", r#"{"reused_by":"x","#, 1);
         assert!(parse_audits(&extra).is_err(), "unknown fields stay refused");
+    }
+
+    #[test]
+    fn stored_rule_fixture_warns_every_rule_and_a_valid_append_still_writes() {
+        let text = include_str!("../fixtures/audit-legacy-rules.jsonl");
+        let read = parse_audit_store(text).unwrap();
+        for needle in [
+            "company must not be blank",
+            "canonical host",
+            "apply_url must be an https URL",
+            "reused_from",
+            "audited_at",
+            "must appear exactly once",
+            "expected 8 checks",
+            "note must not be blank",
+            "personal data",
+            "is not an https URL",
+            "needs at least one https source",
+            "disagrees with the checks",
+            "predates the size rule",
+            "audited_by missing",
+        ] {
+            assert!(
+                read.legacy.iter().any(|n| n.rule.contains(needle)),
+                "{needle}: {:?}",
+                read.legacy
+            );
+        }
+        assert!(read.legacy.iter().any(|n| {
+            n.rule.contains("duplicate_ghost") && n.rule.contains("needs at least one https source")
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("audits.jsonl");
+        std::fs::write(&p, text).unwrap();
+        let before = std::fs::read(&p).unwrap();
+        let mut bad = first();
+        bad.domain = "quarry.example.test".into();
+        bad.company = "Quarry Sample".into();
+        for c in &mut bad.checks {
+            if c.id == CheckId::DuplicateGhost {
+                c.sources.clear();
+            }
+        }
+        let bad_line = serde_json::to_string(&bad).unwrap();
+        assert!(append_audits(&p, &bad_line).is_err());
+        assert_eq!(std::fs::read(&p).unwrap(), before);
+        let mut good = first();
+        good.domain = "quarry.example.test".into();
+        good.company = "Quarry Sample".into();
+        append_audit(&p, &good).unwrap();
+        let after = std::fs::read_to_string(&p).unwrap();
+        assert!(after.starts_with(text));
+        assert!(after.contains("quarry.example.test"));
     }
 
     fn reuse_of(a: &Audit, from: &str, at: &str) -> Audit {

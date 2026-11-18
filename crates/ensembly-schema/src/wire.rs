@@ -21,12 +21,23 @@ struct Envelope<'a, T: Serialize> {
 /// A missing `v` means the v0 shape. The only accepted present value is [`SCHEMA_VERSION`].
 /// An explicit `v` of 0 is refused, as is any other value. Duplicate keys are refused.
 pub fn decode_line<T: DeserializeOwned + Checked>(line: &str) -> Result<Decoded<T>, String> {
+    let (decoded, check) = decode_line_without_check(line)?;
+    check?;
+    Ok(decoded)
+}
+
+/// Decode one JSON object line and return the value even when [`Checked::check`] fails.
+/// The check result is the second value. Parse failures (invalid JSON, duplicate keys,
+/// an unknown field, a bad version) are still errors.
+pub fn decode_line_without_check<T: DeserializeOwned + Checked>(
+    line: &str,
+) -> Result<(Decoded<T>, Result<(), String>), String> {
     reject_duplicate_keys(line)?;
     let mut value: serde_json::Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
     let version = take_version(value.as_object_mut())?;
     let value = T::normalize(serde_json::from_value(value).map_err(|e| e.to_string())?);
-    value.check()?;
-    Ok(Decoded { version, value })
+    let check = value.check();
+    Ok((Decoded { version, value }, check))
 }
 
 fn take_version(

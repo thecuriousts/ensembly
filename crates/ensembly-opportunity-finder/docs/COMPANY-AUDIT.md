@@ -58,18 +58,28 @@ ensembly apps audit status [--strict] <company-or-domain> [--now RFC3339]
 domain or URL (anything with a dot) or a company name (case-insensitive; with
 several domains, the most recent audit wins).
 
-`validate` and `status` print one stderr warning per stored row that omits
-`audited_by`, including rows that are not the company just queried:
+`validate` and `status` print one stderr warning per newer rule a stored row
+breaks, including rows that are not the company just queried:
 
 ```text
 warning: line 73: legacy: audited_by missing
+warning: line 73: legacy: check duplicate_ghost: result pass needs at least one https source
 ```
 
-Exit stays 0 (or the status gate code) unless the file has a real error.
-`--strict` prints the same warning and then exits 1, and `status --strict`
-does not print the JSON object. `append` always requires `audited_by` on
-each new row; `--strict` is not an append flag. Export leaves the auditor
-cell blank for a legacy row and does not rewrite the store.
+The same shape covers every other per-row rule: blank company, a domain that
+is not canonical, a non-https `apply_url` or source, a `reused_from` or
+`audited_at` that is not RFC 3339, a check list that is not one of each id,
+a blank note, a note that looks like an email or phone number, a stated
+verdict that disagrees with the checks, and a stated `pass` that predates the
+size rule. Exit stays 0 (or the status gate code) unless the file has a real
+error. Invalid JSON, unknown fields, duplicate keys, a bad version, and a
+blank `audited_by` stay errors. `--strict` prints the warnings and then exits
+1, and `status --strict` does not print the JSON object. `append` still
+refuses a new row that breaks any of these rules and writes nothing;
+`--strict` is not an append flag. Export leaves the auditor cell blank for a
+legacy row and does not rewrite the store. A store that predates the writer
+seal can be sealed with `ensembly apps adopt-seal --store PATH --sha256 HEX
+--reason TEXT`. The audit writer does not consult that seal on append.
 
 ### Exit-code contract (`status`)
 
@@ -82,7 +92,7 @@ cell blank for a legacy row and does not rewrite the store.
 | `stale` | Latest audit is older than 30 days: re-audit | 5 |
 | `stale` | Latest `audited_at` is more than 5 minutes in the future: fix the stamp | 5 |
 | (error) | Store unreadable or invalid, bad arguments | 1 / 2 |
-| (strict) | `--strict` and any row omits `audited_by` (no status JSON) | 1 |
+| (strict) | `--strict` and any stored row breaks a newer per-row rule (no status JSON) | 1 |
 
 `status` prints one JSON object: `query`, `status`, `company`, `domain`,
 `verdict`, `audited_at`, `stale_after_days`.
