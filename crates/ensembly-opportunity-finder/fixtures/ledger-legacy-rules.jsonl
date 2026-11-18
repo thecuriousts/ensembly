@@ -1,0 +1,11 @@
+{"company":" ","role":"Widget Engineer","link":"https://jobs.example.test/pebble/rule","status":"prepared","submit_time":null,"cv_version":"cv-sample-1"}
+{"company":"Pebble Sample","role":" ","link":"https://jobs.example.test/pebble/rule","status":"prepared","submit_time":null,"cv_version":"cv-sample-1"}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/rule","status":"prepared","submit_time":null,"cv_version":" "}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/rule","status":"rejected","submit_time":"2026-09-04T17:12:00+02:00","cv_version":"unknown"}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"http://jobs.example.test/pebble/rule","status":"prepared","submit_time":null,"cv_version":"cv-sample-1"}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/rule","status":"prepared","submit_time":null,"cv_version":"cv-sample-1","apply_url":"http://jobs.example.test/pebble/rule/application"}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/rule","status":"submitted","submit_time":"2026-10-26T18:59:00","cv_version":"cv-sample-1"}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/rule","status":"rejected","submit_time":null,"cv_version":"cv-sample-1","submit_time_unknown":false}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/rule","status":"rejected","submit_time":"2026-09-04T17:12:00+02:00","cv_version":"cv-sample-1","submit_time_unknown":true}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/rule","status":"prepared","submit_time":null,"cv_version":"cv-sample-1","submit_time_unknown":true}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/rule","status":"rejected","submit_time":null,"cv_version":"cv-sample-1"}

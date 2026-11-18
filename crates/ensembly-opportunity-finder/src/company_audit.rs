@@ -67,21 +67,23 @@ pub fn validate_audit(a: &Audit) -> anyhow::Result<()> {
     check_stated_verdict(a, derive_verdict(&a.checks))
 }
 
-/// Check for rows already in the store: as strict, except a stated `pass`
-/// that was right under the earlier rule still reads (as flag, see
-/// `effective_verdict`), and a missing `audited_by` still reads (`None`).
-/// A blank `audited_by` is still an error. An append-only store never
-/// turns unreadable and is never rewritten to fill the field in.
+/// A stored row is readable when it decodes and `audited_by` is not blank.
+/// Rules added after a row was written are [`stored_legacy_rules`], not errors.
 pub fn validate_stored_audit(a: &Audit) -> anyhow::Result<()> {
-    validate_audit_body(a)?;
+    stored_legacy_rules(a).map(|_| ())
+}
+
+/// Newer per-row rules this stored audit breaks. `Err` only for a blank
+/// `audited_by` (that is not a missing field). The caller does not rewrite the row.
+pub fn stored_legacy_rules(a: &Audit) -> anyhow::Result<Vec<String>> {
     reject_blank_audited_by(a)?;
-    let derived = derive_verdict(&a.checks);
-    let legacy_pass = a.verdict == Verdict::Pass
-        && ensembly_schema::derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
-    if legacy_pass {
-        return Ok(());
+    let mut rules = Vec::new();
+    if a.audited_by.is_none() {
+        rules.push("audited_by missing".into());
     }
-    check_stated_verdict(a, derived)
+    rules.extend(audit_problem_list(a));
+    rules.extend(verdict_problems(a));
+    Ok(rules)
 }
 
 fn check_stated_verdict(a: &Audit, derived: Verdict) -> anyhow::Result<()> {
@@ -111,55 +113,99 @@ fn reject_blank_audited_by(a: &Audit) -> anyhow::Result<()> {
 }
 
 fn validate_audit_body(a: &Audit) -> anyhow::Result<()> {
+    if let Some(msg) = audit_problem_list(a).into_iter().next() {
+        anyhow::bail!("{msg}");
+    }
+    Ok(())
+}
+
+fn push_result(out: &mut Vec<String>, result: anyhow::Result<()>) {
+    if let Err(err) = result {
+        out.push(err.to_string());
+    }
+}
+
+/// Every per-row rule, not only the first. New appends still fail on the first.
+fn audit_problem_list(a: &Audit) -> Vec<String> {
+    let mut out = Vec::new();
     if a.company.trim().is_empty() {
-        anyhow::bail!("company must not be blank");
+        out.push("company must not be blank".into());
     }
     let dom = canonical_domain(&a.domain);
     let dom_re = regex::Regex::new(r"^[a-z0-9-]+(\.[a-z0-9-]+)+$").unwrap();
     if dom != a.domain || !dom_re.is_match(&dom) {
-        anyhow::bail!(
+        out.push(format!(
             "domain {:?} must be a canonical host like {:?}",
-            a.domain,
-            dom
-        );
+            a.domain, dom
+        ));
     }
-    validate_optional_fields(a)?;
-    crate::application_ledger::check_submit_time(&a.audited_at)
-        .map_err(|e| anyhow::anyhow!("audited_at: {e}"))?;
+    push_result(&mut out, validate_optional_fields(a));
+    push_result(
+        &mut out,
+        crate::application_ledger::check_submit_time(&a.audited_at)
+            .map_err(|e| anyhow::anyhow!("audited_at: {e}")),
+    );
     for id in CheckId::ALL {
         let n = a.checks.iter().filter(|c| c.id == id).count();
         if n != 1 {
-            anyhow::bail!("check {} must appear exactly once (found {n})", id.as_str());
+            out.push(format!(
+                "check {} must appear exactly once (found {n})",
+                id.as_str()
+            ));
         }
     }
     if a.checks.len() != CheckId::ALL.len() {
-        anyhow::bail!(
+        out.push(format!(
             "expected {} checks, found {}",
             CheckId::ALL.len(),
             a.checks.len()
-        );
+        ));
     }
     for c in &a.checks {
         let id = c.id.as_str();
         if c.note.trim().is_empty() {
-            anyhow::bail!("check {id}: note must not be blank");
+            out.push(format!("check {id}: note must not be blank"));
         }
         if email_re().is_match(&c.note) || looks_like_phone(&c.note) {
-            anyhow::bail!(
+            out.push(format!(
                 "check {id}: note looks like it contains personal data (email or phone number)"
-            );
+            ));
         }
         if let Some(bad) = c.sources.iter().find(|u| !is_https(u)) {
-            anyhow::bail!("check {id}: source {bad:?} is not an https URL");
+            out.push(format!("check {id}: source {bad:?} is not an https URL"));
         }
         if c.result != CheckResult::Unknown && c.sources.is_empty() {
-            anyhow::bail!(
+            out.push(format!(
                 "check {id}: result {} needs at least one https source",
                 c.result.as_str()
-            );
+            ));
         }
     }
-    Ok(())
+    out
+}
+
+fn verdict_problems(a: &Audit) -> Vec<String> {
+    let derived = derive_verdict(&a.checks);
+    let legacy_pass = a.verdict == Verdict::Pass
+        && ensembly_schema::derive_verdict_before_size_rule(&a.checks) == Verdict::Pass;
+    if legacy_pass && derived != a.verdict {
+        return vec!["stated verdict pass predates the size rule".into()];
+    }
+    if derived != a.verdict {
+        return vec![format!(
+            "stated verdict {} disagrees with the checks (derived: {})",
+            a.verdict.as_str(),
+            derived.as_str()
+        )];
+    }
+    Vec::new()
+}
+
+/// One newer rule a stored row breaks. The line is not rewritten.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyNote {
+    pub line: usize,
+    pub rule: String,
 }
 
 /// One read of an append-only audit file.
@@ -168,11 +214,32 @@ pub struct AuditStore {
     pub rows: Vec<Audit>,
     /// 1-based file line numbers of rows that omit `audited_by`.
     pub legacy_audited_by: Vec<usize>,
+    /// Every newer per-row rule, including a missing `audited_by`.
+    pub legacy: Vec<LegacyNote>,
+}
+
+/// `warning: line N: legacy: <rule>`
+pub fn legacy_rule_warning(line: usize, rule: &str) -> String {
+    format!("warning: line {line}: legacy: {rule}")
 }
 
 /// `warning: line N: legacy: audited_by missing`
 pub fn legacy_audited_by_warning(line: usize) -> String {
-    format!("warning: line {line}: {LEGACY_AUDITED_BY}")
+    legacy_rule_warning(line, "audited_by missing")
+}
+
+/// Error text when `--strict` refuses any stored legacy rule. `None` when there are none.
+pub fn legacy_rules_failure(notes: &[LegacyNote]) -> Option<String> {
+    if notes.is_empty() {
+        return None;
+    }
+    Some(
+        notes
+            .iter()
+            .map(|n| format!("legacy: {} on line {}", n.rule, n.line))
+            .collect::<Vec<_>>()
+            .join("; "),
+    )
 }
 
 /// Error text when `--strict` refuses legacy rows. `None` when there are none.
@@ -192,7 +259,33 @@ pub fn legacy_audited_by_failure(lines: &[usize]) -> Option<String> {
 /// Rows that omit `audited_by` are kept, with their line numbers in
 /// [`AuditStore::legacy_audited_by`].
 pub fn parse_audit_store(text: &str) -> anyhow::Result<AuditStore> {
-    parse_with(text, validate_stored_audit)
+    let mut rows = Vec::new();
+    let mut legacy_audited_by = Vec::new();
+    let mut legacy = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let a = ensembly_schema::decode_line(line)
+            .map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?
+            .value;
+        let line_no = i + 1;
+        for rule in stored_legacy_rules(&a).map_err(|e| anyhow::anyhow!("line {line_no}: {e}"))? {
+            if rule == "audited_by missing" {
+                legacy_audited_by.push(line_no);
+            }
+            legacy.push(LegacyNote {
+                line: line_no,
+                rule,
+            });
+        }
+        rows.push(a);
+    }
+    Ok(AuditStore {
+        rows,
+        legacy_audited_by,
+        legacy,
+    })
 }
 
 /// Parse a stored JSONL store (blank lines ignored). Errors name the 1-based line.
@@ -224,6 +317,7 @@ fn parse_with(text: &str, check: fn(&Audit) -> anyhow::Result<()>) -> anyhow::Re
     Ok(AuditStore {
         rows,
         legacy_audited_by,
+        legacy: Vec::new(),
     })
 }
 
@@ -353,31 +447,23 @@ pub fn export_markdown(rows: &[Audit]) -> String {
 }
 
 /// Append one validated audit; an identical row (after trimming) is refused (exit 1).
+/// A missing writer seal is refused. A successful append updates the seal.
 pub fn append_audit(path: &Path, a: &Audit) -> anyhow::Result<()> {
-    use std::io::Write;
     validate_audit(a)?;
-    let existing = match std::fs::read_to_string(path) {
-        Ok(t) => parse_audits(&t)?,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
-        Err(e) => return Err(e.into()),
-    };
+    let existing = read_existing_audits(path)?;
     if existing.iter().any(|x| x == a) {
         anyhow::bail!("identical audit already in store for {}", a.domain);
     }
     check_reuse(&existing, a)?;
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let mut f = crate::application_ledger::open_jsonl_append(path)?;
-    writeln!(f, "{}", serde_json::to_string(a)?)?;
-    Ok(())
+    let mut line = serde_json::to_string(a)?;
+    line.push('\n');
+    append_sealed(path, line.as_bytes())
 }
 
 /// Batch append from JSONL text: every line is validated first (any error
 /// writes nothing); rows already in the store are skipped. Returns
 /// (appended, skipped). Re-running the same batch appends nothing.
 pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> {
-    use std::io::Write;
     let incoming = parse_new_audits(text)?;
     let mut existing = match std::fs::read_to_string(path) {
         Ok(t) => parse_audits(&t)?,
@@ -398,13 +484,53 @@ pub fn append_audits(path: &Path, text: &str) -> anyhow::Result<(usize, usize)> 
         appended += 1;
     }
     if appended > 0 {
+        append_sealed(path, lines.as_bytes())?;
+    }
+    Ok((appended, skipped))
+}
+
+fn read_existing_audits(path: &Path) -> anyhow::Result<Vec<Audit>> {
+    match std::fs::read_to_string(path) {
+        Ok(t) => parse_audits(&t),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Same seal protocol as the ledger writer: refuse a missing or mismatched
+/// seal, then publish the hash of the bytes just written.
+fn append_sealed(path: &Path, extra: &[u8]) -> anyhow::Result<()> {
+    use std::io::Write;
+    let before = ensembly_schema::read_bytes(path).map_err(map_sealed)?;
+    ensembly_schema::check_seal(path, &before).map_err(map_sealed)?;
+    ensembly_schema::unlock(path).map_err(map_sealed)?;
+    let written = (|| -> anyhow::Result<()> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        let mut f = crate::application_ledger::open_jsonl_append(path)?;
-        f.write_all(lines.as_bytes())?;
-    }
-    Ok((appended, skipped))
+        let mut file = crate::application_ledger::open_jsonl_append(path)?;
+        file.write_all(extra)?;
+        file.flush()?;
+        let after = ensembly_schema::read_bytes(path).map_err(map_sealed)?;
+        if !ensembly_schema::grew_without_rewrite(&before, &after) {
+            anyhow::bail!("history was rewritten; the writer will not append");
+        }
+        ensembly_schema::write_seal(path, &after).map_err(map_sealed)?;
+        Ok(())
+    })();
+    let locked = ensembly_schema::lock(path).map_err(map_sealed);
+    written?;
+    locked?;
+    Ok(())
+}
+
+fn map_sealed(err: ensembly_schema::SealedIoError) -> anyhow::Error {
+    let msg = match err {
+        ensembly_schema::SealedIoError::Io(msg) | ensembly_schema::SealedIoError::Refused(msg) => {
+            msg
+        }
+    };
+    anyhow::anyhow!("{msg}")
 }
 
 fn instant(t: &str) -> Option<i64> {
@@ -467,6 +593,17 @@ mod tests {
     fn sample() -> Vec<Audit> {
         parse_audits(SAMPLE).expect("sample valid")
     }
+    fn seal_store(path: &std::path::Path) {
+        if !path.exists() {
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir).unwrap();
+            }
+            std::fs::write(path, b"").unwrap();
+        }
+        let bytes = std::fs::read(path).unwrap();
+        ensembly_schema::write_seal(path, &bytes).unwrap();
+    }
+
     fn first() -> Audit {
         sample()
             .into_iter()
@@ -590,6 +727,7 @@ mod tests {
         let p = dir.path().join("a.jsonl");
         let body = format!("{legacy}\n");
         std::fs::write(&p, &body).unwrap();
+        seal_store(&p);
         assert_eq!(append_audits(&p, fresh).unwrap(), (1, 0));
         let after = std::fs::read_to_string(&p).unwrap();
         assert!(after.starts_with(&body), "old row was rewritten:\n{after}");
@@ -607,6 +745,7 @@ mod tests {
         let p = dir.path().join("a.jsonl");
         let body = format!("{legacy_line}\n");
         std::fs::write(&p, &body).unwrap();
+        seal_store(&p);
         append_audit(&p, &later).unwrap();
         let after = std::fs::read_to_string(&p).unwrap();
         assert!(after.starts_with(&body), "old row was rewritten:\n{after}");
@@ -746,12 +885,70 @@ mod tests {
             "row without reused_from still validates"
         );
         let bad = base.replacen("{", r#"{"reused_from":"yesterday","#, 1);
+        let read = parse_audit_store(&bad).unwrap();
         assert!(
-            parse_audits(&bad).is_err(),
-            "reused_from must be a timestamp"
+            read.legacy.iter().any(|n| n.rule.contains("reused_from")),
+            "stored reused_from is a warning: {:?}",
+            read.legacy
         );
+        let stored: Audit = serde_json::from_str(&bad).unwrap();
+        assert!(validate_audit(&stored).is_err());
         let extra = base.replacen("{", r#"{"reused_by":"x","#, 1);
         assert!(parse_audits(&extra).is_err(), "unknown fields stay refused");
+    }
+
+    #[test]
+    fn stored_rule_fixture_warns_every_rule_and_a_valid_append_still_writes() {
+        let text = include_str!("../fixtures/audit-legacy-rules.jsonl");
+        let read = parse_audit_store(text).unwrap();
+        for needle in [
+            "company must not be blank",
+            "canonical host",
+            "apply_url must be an https URL",
+            "reused_from",
+            "audited_at",
+            "must appear exactly once",
+            "expected 8 checks",
+            "note must not be blank",
+            "personal data",
+            "is not an https URL",
+            "needs at least one https source",
+            "disagrees with the checks",
+            "predates the size rule",
+            "audited_by missing",
+        ] {
+            assert!(
+                read.legacy.iter().any(|n| n.rule.contains(needle)),
+                "{needle}: {:?}",
+                read.legacy
+            );
+        }
+        assert!(read.legacy.iter().any(|n| {
+            n.rule.contains("duplicate_ghost") && n.rule.contains("needs at least one https source")
+        }));
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("audits.jsonl");
+        std::fs::write(&p, text).unwrap();
+        let before = std::fs::read(&p).unwrap();
+        let mut bad = first();
+        bad.domain = "quarry.example.test".into();
+        bad.company = "Quarry Sample".into();
+        for c in &mut bad.checks {
+            if c.id == CheckId::DuplicateGhost {
+                c.sources.clear();
+            }
+        }
+        let bad_line = serde_json::to_string(&bad).unwrap();
+        assert!(append_audits(&p, &bad_line).is_err());
+        assert_eq!(std::fs::read(&p).unwrap(), before);
+        seal_store(&p);
+        let mut good = first();
+        good.domain = "quarry.example.test".into();
+        good.company = "Quarry Sample".into();
+        append_audit(&p, &good).unwrap();
+        let after = std::fs::read_to_string(&p).unwrap();
+        assert!(after.starts_with(text));
+        assert!(after.contains("quarry.example.test"));
     }
 
     fn reuse_of(a: &Audit, from: &str, at: &str) -> Audit {
@@ -776,6 +973,7 @@ mod tests {
         assert!(append_audits(&p, &line(&dangling)).is_err());
         assert!(append_audit(&p, &dangling).is_err());
         assert!(!p.exists(), "nothing written");
+        seal_store(&p);
         append_audits(&p, SAMPLE).unwrap();
         // contoso's stamp exists, but for another domain
         let other = reuse_of(
@@ -1017,6 +1215,7 @@ mod tests {
         let rest: Vec<&str> = lines.collect();
         let p = dir.path().join("a.jsonl");
         std::fs::write(&p, rest.join("\n")).unwrap();
+        seal_store(&p);
         append_audit(&p, &serde_json::from_str(first_line).unwrap()).unwrap();
         let n = parse_audits(&std::fs::read_to_string(&p).unwrap())
             .unwrap()
@@ -1024,6 +1223,7 @@ mod tests {
         assert_eq!(n, rest.len() + 1);
         let q = dir.path().join("b.jsonl");
         std::fs::write(&q, rest.join("\n")).unwrap();
+        seal_store(&q);
         assert_eq!(append_audits(&q, first_line).unwrap(), (1, 0));
         let n = parse_audits(&std::fs::read_to_string(&q).unwrap())
             .unwrap()
@@ -1035,6 +1235,7 @@ mod tests {
     fn append_validates_and_refuses_duplicates() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("a.jsonl");
+        seal_store(&p);
         let a = first();
         append_audit(&p, &a).unwrap();
         assert!(append_audit(&p, &a).is_err());
@@ -1051,6 +1252,7 @@ mod tests {
     fn batch_append_is_all_or_nothing_and_rerun_is_a_noop() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("a.jsonl");
+        seal_store(&p);
         assert_eq!(append_audits(&p, SAMPLE).unwrap(), (3, 0));
         assert_eq!(append_audits(&p, SAMPLE).unwrap(), (0, 3));
         let bad = format!("{}\nnot json\n", SAMPLE.lines().next().unwrap());
@@ -1058,6 +1260,43 @@ mod tests {
         assert!(append_audits(&q, &bad).is_err());
         assert!(!q.exists(), "nothing written when any line is invalid");
         assert_eq!(std::fs::read_to_string(&p).unwrap().lines().count(), 3);
+    }
+
+    #[test]
+    fn audit_append_with_missing_seal_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        let row = first();
+        let err = append_audit(&p, &row).unwrap_err();
+        assert!(err.to_string().contains("seal is missing"), "{err}");
+        assert!(!p.exists(), "a missing seal writes nothing");
+        let err = append_audits(&p, &serde_json::to_string(&row).unwrap()).unwrap_err();
+        assert!(err.to_string().contains("seal is missing"), "{err}");
+        assert!(!p.exists());
+    }
+
+    #[test]
+    fn audit_append_after_adopt_keeps_the_seal_valid() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("a.jsonl");
+        let legacy = without_audited_by(SAMPLE.lines().next().unwrap());
+        std::fs::write(&p, format!("{legacy}\n")).unwrap();
+        let bytes = std::fs::read(&p).unwrap();
+        let hex = ensembly_schema::content_sha256(&bytes);
+        crate::seal_adopt::adopt_seal(&p, &hex, "reviewed on laptop-1", |text| {
+            Ok(parse_audit_store(text)?.rows.len())
+        })
+        .unwrap();
+        let mut row = first();
+        row.domain = "quarry.example.test".into();
+        row.company = "Quarry Sample".into();
+        append_audit(&p, &row).unwrap();
+        let after = std::fs::read(&p).unwrap();
+        ensembly_schema::check_seal(&p, &after).unwrap();
+        assert!(after.starts_with(&bytes));
+        assert!(std::str::from_utf8(&after)
+            .unwrap()
+            .contains("quarry.example.test"));
     }
 
     #[test]

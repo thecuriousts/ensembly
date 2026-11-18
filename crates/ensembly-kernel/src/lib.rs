@@ -110,8 +110,8 @@ pub use writer_decision::DecisionWriteReceipt;
 
 #[cfg(feature = "opportunity-finder")]
 pub use ensembly_opportunity_finder::{
-    self, application_ledger, apps_record, company_audit, compare_files, import_ledger, tracker,
-    Audit, GateStatus, ImportReceipt, LedgerRow, Status,
+    self, application_ledger, apps_record, company_audit, compare_files, import_ledger, seal_adopt,
+    tracker, Audit, GateStatus, ImportReceipt, LedgerRow, Status,
 };
 #[cfg(feature = "opportunity-finder")]
 pub use writer_ledger::{idempotency_key, LedgerWriteReceipt};

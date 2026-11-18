@@ -70,6 +70,22 @@ pub enum AppsCmd {
         #[arg(long)]
         cv_version: String,
     },
+    /// Seal a pre-existing ledger or audit file after the operator names its sha256.
+    /// A missing seal stays refused on append. This does not replace a seal that exists.
+    AdoptSeal {
+        /// Ledger JSONL to seal. Mutually exclusive with --store.
+        #[arg(long, conflicts_with = "store")]
+        ledger: Option<PathBuf>,
+        /// Company-audit JSONL to seal. Mutually exclusive with --ledger.
+        #[arg(long, conflicts_with = "ledger")]
+        store: Option<PathBuf>,
+        /// sha256 of the current file bytes, 64 hex characters.
+        #[arg(long)]
+        sha256: String,
+        /// Why these bytes are being adopted. Required. One line.
+        #[arg(long)]
+        reason: String,
+    },
     /// Write applications.csv + applications.md (byte-identical on re-run), or TRACKER.md with --tracker
     Export {
         /// Output dir (default data/local/applications/exports)
@@ -93,11 +109,11 @@ pub enum AppsCmd {
 #[derive(Subcommand)]
 pub enum AuditCmd {
     /// Validate every line (or a FILE instead of the store); print counts.
-    /// A row that omits audited_by warns and still exits 0.
+    /// A stored row that breaks a newer rule warns and still exits 0.
     Validate {
         /// Validate this JSONL file instead of the store
         file: Option<PathBuf>,
-        /// Exit 1 when any row omits audited_by
+        /// Exit 1 when any stored row breaks a newer per-row rule
         #[arg(long)]
         strict: bool,
     },
@@ -110,13 +126,13 @@ pub enum AuditCmd {
         out_dir: Option<PathBuf>,
     },
     /// Print JSON status for a company name or domain; exit 0 pass, 3 = flag (not approvable), 4 block, 5 unaudited or stale.
-    /// A stored row that omits audited_by warns on stderr and does not change that exit code.
+    /// A stored row that breaks a newer rule warns on stderr and does not change that exit code.
     Status {
         query: String,
         /// Evaluate staleness at this RFC 3339 time instead of now (tests/replays)
         #[arg(long)]
         now: Option<String>,
-        /// Exit 1 when any stored row omits audited_by (no status JSON)
+        /// Exit 1 when any stored row breaks a newer per-row rule (no status JSON)
         #[arg(long)]
         strict: bool,
     },
@@ -161,16 +177,30 @@ fn read_file(p: &PathBuf) -> Result<String> {
     std::fs::read_to_string(p).map_err(|e| anyhow::anyhow!("read {}: {e}", p.display()))
 }
 
-fn report_ledger_legacy(lines: &[usize], strict: bool) -> Result<()> {
+fn report_ledger_legacy(
+    read: &ensembly_kernel::application_ledger::LedgerRead,
+    strict: bool,
+) -> Result<()> {
     use ensembly_kernel::application_ledger as al;
-    for &line in lines {
-        eprintln!("{}", al::legacy_submit_time_warning(line));
+    for note in &read.legacy {
+        eprintln!("{}", al::legacy_rule_warning(note.line, &note.rule));
     }
-    if let Some(msg) = strict
-        .then(|| al::legacy_submit_time_failure(lines))
-        .flatten()
+    if !strict {
+        return Ok(());
+    }
+    let mut parts = Vec::new();
+    if let Some(msg) = al::legacy_submit_time_failure(&read.legacy_submit_time) {
+        parts.push(msg);
+    }
+    for note in read
+        .legacy
+        .iter()
+        .filter(|n| n.rule != "submit_time missing")
     {
-        anyhow::bail!("{msg}");
+        parts.push(format!("legacy: {} on line {}", note.rule, note.line));
+    }
+    if !parts.is_empty() {
+        anyhow::bail!("{}", parts.join("; "));
     }
     Ok(())
 }
@@ -185,7 +215,7 @@ fn note_ledger_legacy(path: &Path) -> Result<()> {
     let Ok(read) = al::read_ledger(&text) else {
         return Ok(());
     };
-    report_ledger_legacy(&read.legacy_submit_time, false)
+    report_ledger_legacy(&read, false)
 }
 
 fn read_ledger_rows(
@@ -195,7 +225,7 @@ fn read_ledger_rows(
     use ensembly_kernel::application_ledger as al;
     let text = read_file(&path.to_path_buf())?;
     let read = al::read_ledger(&text)?;
-    report_ledger_legacy(&read.legacy_submit_time, strict)?;
+    report_ledger_legacy(&read, strict)?;
     Ok(read.rows)
 }
 
@@ -249,6 +279,12 @@ pub fn cmd_apps(ledger: Option<PathBuf>, sub: AppsCmd) -> Result<()> {
             }
             Ok(())
         }
+        AppsCmd::AdoptSeal {
+            ledger,
+            store,
+            sha256,
+            reason,
+        } => adopt_seal_cmd(ledger, store, &sha256, &reason),
         AppsCmd::Export {
             out_dir,
             tracker: true,
@@ -283,16 +319,47 @@ fn read_audit_store(store: &PathBuf) -> Result<ensembly_kernel::company_audit::A
     }
 }
 
-fn report_legacy(lines: &[usize], strict: bool) -> Result<()> {
+fn report_legacy(notes: &[ensembly_kernel::company_audit::LegacyNote], strict: bool) -> Result<()> {
     use ensembly_kernel::company_audit as ca;
-    for &line in lines {
-        eprintln!("{}", ca::legacy_audited_by_warning(line));
+    for note in notes {
+        eprintln!("{}", ca::legacy_rule_warning(note.line, &note.rule));
     }
     if strict {
-        if let Some(msg) = ca::legacy_audited_by_failure(lines) {
+        if let Some(msg) = ca::legacy_rules_failure(notes) {
             anyhow::bail!("{msg}");
         }
     }
+    Ok(())
+}
+
+fn adopt_seal_cmd(
+    ledger: Option<PathBuf>,
+    store: Option<PathBuf>,
+    sha256: &str,
+    reason: &str,
+) -> Result<()> {
+    use ensembly_kernel::application_ledger as al;
+    use ensembly_kernel::company_audit as ca;
+    use ensembly_kernel::seal_adopt::{adopt_seal, adoption_line};
+    let (path, count): (PathBuf, fn(&str) -> anyhow::Result<usize>) = match (ledger, store) {
+        (Some(path), None) => (path, |text| {
+            let read = al::read_ledger(text)?;
+            for note in &read.legacy {
+                eprintln!("{}", al::legacy_rule_warning(note.line, &note.rule));
+            }
+            Ok(read.rows.len())
+        }),
+        (None, Some(path)) => (path, |text| {
+            let read = ca::parse_audit_store(text)?;
+            for note in &read.legacy {
+                eprintln!("{}", ca::legacy_rule_warning(note.line, &note.rule));
+            }
+            Ok(read.rows.len())
+        }),
+        _ => anyhow::bail!("pass exactly one of --ledger or --store"),
+    };
+    let adoption = adopt_seal(&path, sha256, reason, count)?;
+    println!("{}", adoption_line(&adoption));
     Ok(())
 }
 
@@ -303,6 +370,13 @@ fn cmd_audit(store: Option<PathBuf>, sub: AuditCmd) -> Result<()> {
     match sub {
         AuditCmd::Validate { file, strict } => audit_validate(&store, file, strict),
         AuditCmd::Append { file } => {
+            if store.is_file() {
+                if let Ok(text) = std::fs::read_to_string(&store) {
+                    if let Ok(parsed) = ca::parse_audit_store(&text) {
+                        report_legacy(&parsed.legacy, false)?;
+                    }
+                }
+            }
             let text = if file.as_os_str() == "-" {
                 let mut t = String::new();
                 std::io::Read::read_to_string(&mut std::io::stdin(), &mut t)?;
@@ -316,6 +390,7 @@ fn cmd_audit(store: Option<PathBuf>, sub: AuditCmd) -> Result<()> {
         }
         AuditCmd::Export { out_dir } => {
             let parsed = read_audit_store(&store)?;
+            report_legacy(&parsed.legacy, false)?;
             let dir = out_dir.unwrap_or_else(|| PathBuf::from(al::DEFAULT_EXPORT_DIR));
             ca::write_exports(&parsed.rows, &dir)?;
             println!(
@@ -335,7 +410,7 @@ fn audit_validate(store: &PathBuf, file: Option<PathBuf>, strict: bool) -> Resul
         Some(f) => ca::parse_audit_store(&read_file(&f)?)?,
         None => read_audit_store(store)?,
     };
-    report_legacy(&parsed.legacy_audited_by, strict)?;
+    report_legacy(&parsed.legacy, strict)?;
     println!(
         "ok: {} audits, {} companies",
         parsed.rows.len(),
@@ -350,7 +425,7 @@ fn audit_validate(store: &PathBuf, file: Option<PathBuf>, strict: bool) -> Resul
 fn audit_status(store: &PathBuf, query: &str, now: Option<String>, strict: bool) -> Result<()> {
     use ensembly_kernel::company_audit as ca;
     let parsed = read_audit_store(store)?;
-    report_legacy(&parsed.legacy_audited_by, strict)?;
+    report_legacy(&parsed.legacy, strict)?;
     let rows = parsed.rows;
     let now = match now {
         Some(t) => {

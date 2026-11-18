@@ -69,3 +69,29 @@ ensembly sealed-backup --out /tmp/sealed.pack --unlock '…'
 ```
 
 See [portable-bundle.md](portable-bundle.md) for layout and config.
+
+## Adopt a writer seal
+
+The application ledger writer refuses to append when `{file}.writer-hash` is missing (`seal is missing; the writer will not adopt current bytes`). It does not create that seal from bytes it did not write. Deleting a seal and appending again stays refused.
+
+When a file was written before the seal existed, the operator adopts it explicitly:
+
+```bash
+sha256sum data/local/applications/ledger.jsonl
+ensembly apps adopt-seal \
+  --ledger data/local/applications/ledger.jsonl \
+  --sha256 <64 hex characters from sha256sum> \
+  --reason "reviewed on laptop-1"
+```
+
+The same command seals a company-audit file with `--store` instead of `--ledger`. Pass exactly one of those paths. `--reason` is required and is one line.
+
+Adoption writes the seal only when all of these hold:
+
+- no seal file exists yet (a second run is refused; a hash mismatch on append stays `history was rewritten`)
+- the file's current sha256 equals `--sha256` (the operator has looked at these exact bytes)
+- a full validate of the file has no errors
+
+Stored rows that only break a newer per-row rule warn `legacy: <rule>` and do not block adoption. Invalid JSON, unknown fields, and a blank `audited_by` do. The command prints `adopted path=… sha256=… rows=…` and appends one JSON line (path, sha256, rows, timestamp, reason) to `{file}.adoptions`. It does not rewrite the data file.
+
+`adopt-seal` locks the file, re-reads those bytes, and writes `{file}.adoptions` before it publishes the seal. A symlink at the seal or the adoption log is refused. The ledger writer and the audit writer both consult the seal: a missing seal blocks `ensembly apps append` and `ensembly apps audit append`, and a successful append updates the seal. After `adopt-seal`, either append can write a new row. Deleting a seal does not let append recreate it.

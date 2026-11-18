@@ -25,9 +25,22 @@ struct Envelope<'a, T: Serialize> {
 
 /// Decode one JSON object line.
 ///
-/// A missing `v` means the v0 shape. Present values `1` or `2` (and legacy `1`) are accepted on read.
-/// An explicit `v` of 0 is refused, as is any other value. Duplicate keys are refused.
+/// A missing `v` means the v0 shape. Present values up to [`WireDecode::max_wire_version`]
+/// are accepted on read. An explicit `v` of 0 is refused, as is any other value.
+/// Duplicate keys are refused. [`Checked::check`] must also pass.
 pub fn decode_line<T: WireDecode>(line: &str) -> Result<Decoded<T>, String> {
+    let (decoded, check) = decode_line_without_check(line)?;
+    check?;
+    Ok(decoded)
+}
+
+/// Decode one JSON object line and return the value even when [`Checked::check`] fails.
+/// The check result is the second value. Parse failures (invalid JSON, duplicate keys,
+/// an unknown field, a bad version) are still errors. The version ceiling is the same
+/// as [`decode_line`].
+pub fn decode_line_without_check<T: WireDecode>(
+    line: &str,
+) -> Result<(Decoded<T>, Result<(), String>), String> {
     reject_duplicate_keys(line)?;
     let mut value: serde_json::Value = serde_json::from_str(line).map_err(|e| e.to_string())?;
     let version = take_version(value.as_object_mut())?;
@@ -35,8 +48,8 @@ pub fn decode_line<T: WireDecode>(line: &str) -> Result<Decoded<T>, String> {
         return Err(unsupported_version(u64::from(version)));
     }
     let value = T::normalize(serde_json::from_value(value).map_err(|e| e.to_string())?);
-    value.check()?;
-    Ok(Decoded { version, value })
+    let check = value.check();
+    Ok((Decoded { version, value }, check))
 }
 
 fn take_version(

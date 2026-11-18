@@ -37,34 +37,49 @@ pub fn validate_row(r: &Row) -> anyhow::Result<()> {
 /// Body checks for stored rows and for new rows.
 /// The submit-time requirement for sent statuses is not one of them.
 fn validate_stored_row(r: &Row) -> anyhow::Result<()> {
+    if let Some(msg) = ledger_body_problems(r).into_iter().next() {
+        anyhow::bail!("{msg}");
+    }
+    if let Some(t) = r.submit_time.as_deref() {
+        check_submit_time(t)?;
+    }
+    Ok(())
+}
+
+fn ledger_body_problems(r: &Row) -> Vec<String> {
+    let mut out = Vec::new();
     for (name, v) in [
         ("company", &r.company),
         ("role", &r.role),
         ("cv_version", &r.cv_version),
     ] {
         if v.trim().is_empty() {
-            anyhow::bail!("{name} must not be blank");
+            out.push(format!("{name} must not be blank"));
         }
     }
     const AD_HOC_UNKNOWN: [&str; 8] = ["unknown", "n/a", "na", "none", "?", "-", "legacy", "tbd"];
     if AD_HOC_UNKNOWN.contains(&r.cv_version.trim().to_lowercase().as_str()) {
-        anyhow::bail!(
+        out.push(format!(
             "cv_version {:?}: use the explicit marker \"{LEGACY_UNKNOWN_CV}\" when the CV is not recorded",
             r.cv_version
-        );
+        ));
     }
     if !r.link.starts_with("https://") || r.link.len() <= "https://".len() {
-        anyhow::bail!("link must be an https URL");
+        out.push("link must be an https URL".into());
     }
     if let Some(u) = &r.apply_url {
         if !u.starts_with("https://") || u.len() <= "https://".len() {
-            anyhow::bail!("apply_url must be an https URL");
+            out.push("apply_url must be an https URL".into());
         }
     }
-    if let Some(t) = r.submit_time.as_deref() {
-        check_submit_time(t)?;
-    }
-    Ok(())
+    out
+}
+
+/// One newer rule a stored row breaks. The line is not rewritten.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyNote {
+    pub line: usize,
+    pub rule: String,
 }
 
 /// One read of an append-only ledger.
@@ -74,11 +89,32 @@ pub struct LedgerRead {
     /// 1-based file lines of sent rows that omit `submit_time` and do not set
     /// `submit_time_unknown`. The bytes are left as written.
     pub legacy_submit_time: Vec<usize>,
+    /// Every newer per-row rule, including a missing `submit_time`.
+    pub legacy: Vec<LegacyNote>,
+}
+
+/// `warning: line N: legacy: <rule>`
+pub fn legacy_rule_warning(line: usize, rule: &str) -> String {
+    format!("warning: line {line}: legacy: {rule}")
 }
 
 /// `warning: line N: legacy: submit_time missing`
 pub fn legacy_submit_time_warning(line: usize) -> String {
-    format!("warning: line {line}: {LEGACY_SUBMIT_TIME}")
+    legacy_rule_warning(line, "submit_time missing")
+}
+
+/// Error text when `--strict` refuses any stored legacy rule. `None` when there are none.
+pub fn legacy_rules_failure(notes: &[LegacyNote]) -> Option<String> {
+    if notes.is_empty() {
+        return None;
+    }
+    Some(
+        notes
+            .iter()
+            .map(|n| format!("legacy: {} on line {}", n.rule, n.line))
+            .collect::<Vec<_>>()
+            .join("; "),
+    )
 }
 
 /// Error text when `--strict` refuses legacy rows. `None` when there are none.
@@ -103,6 +139,10 @@ fn sent_status_name(status: &str) -> bool {
 
 /// True when the stored JSON is a sent row whose time was never recorded.
 /// A real timestamp, or an explicit `submit_time_unknown: true`, is not legacy.
+fn is_missing_submit_time_check(err: &str) -> bool {
+    err.contains("submit_time is required when status is")
+}
+
 fn raw_legacy_submit_time(line: &str) -> bool {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
         return false;
@@ -128,33 +168,50 @@ fn raw_legacy_submit_time(line: &str) -> bool {
 }
 
 /// Parse JSONL (blank lines ignored). Errors name the 1-based line.
-/// A sent row that omits `submit_time` is kept, and its line number is listed
-/// in [`LedgerRead::legacy_submit_time`]. Invalid JSON, unknown fields, and
-/// other rule failures stay errors.
+/// A stored row that breaks a newer per-row rule is kept. Its rule text is
+/// listed in [`LedgerRead::legacy`]. Invalid JSON, unknown fields, duplicate
+/// keys, and a bad version stay errors. New appends still use [`validate_row`].
 pub fn read_ledger(text: &str) -> anyhow::Result<LedgerRead> {
     let mut rows = Vec::new();
     let mut legacy_submit_time = Vec::new();
+    let mut legacy = Vec::new();
     for (i, line) in text.lines().enumerate() {
         if line.trim().is_empty() {
             continue;
         }
-        let legacy = raw_legacy_submit_time(line);
-        let r = ensembly_schema::decode_line(line)
-            .map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?
-            .value;
-        if legacy {
-            // The time was never recorded. Do not apply the later "time required"
-            // rule to this stored line. New appends still go through `validate_row`.
-            validate_stored_row(&r).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
-            legacy_submit_time.push(i + 1);
-        } else {
-            validate_row(&r).map_err(|e| anyhow::anyhow!("line {}: {e}", i + 1))?;
+        let line_no = i + 1;
+        let omitted_time = raw_legacy_submit_time(line);
+        let (decoded, check) = ensembly_schema::decode_line_without_check::<Row>(line)
+            .map_err(|e| anyhow::anyhow!("line {line_no}: {e}"))?;
+        if omitted_time {
+            legacy_submit_time.push(line_no);
+            legacy.push(LegacyNote {
+                line: line_no,
+                rule: "submit_time missing".into(),
+            });
         }
-        rows.push(r);
+        if let Err(err) = check {
+            // A missing submit_time on a sent row is the legacy warning above.
+            // Any other check failure on that same line is still reported.
+            if !(omitted_time && is_missing_submit_time_check(&err)) {
+                legacy.push(LegacyNote {
+                    line: line_no,
+                    rule: err,
+                });
+            }
+        }
+        for rule in ledger_body_problems(&decoded.value) {
+            legacy.push(LegacyNote {
+                line: line_no,
+                rule,
+            });
+        }
+        rows.push(decoded.value);
     }
     Ok(LedgerRead {
         rows,
         legacy_submit_time,
+        legacy,
     })
 }
 
@@ -388,12 +445,21 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_missing_offset_and_accepts_rfc3339_offsets() {
-        assert!(parse_ledger(&row(
+        let bare = row(
             "https://example.test/j/1",
             "submitted",
-            Some("2026-10-26T18:59:00")
-        ))
-        .is_err());
+            Some("2026-10-26T18:59:00"),
+        );
+        let read = read_ledger(&bare).unwrap();
+        assert!(
+            read.legacy
+                .iter()
+                .any(|n| n.line == 1 && n.rule.contains("RFC 3339")),
+            "{:?}",
+            read.legacy
+        );
+        let stored: Row = serde_json::from_str(&bare).unwrap();
+        assert!(validate_row(&stored).is_err());
         for t in [
             "2026-07-01T10:00:00+02:00",
             "2026-10-26T18:59:00+05:30",
@@ -420,9 +486,26 @@ pub(crate) mod tests {
     fn rejects_unknown_fields_and_non_https_link() {
         let extra = r#"{"company":"A","role":"R","link":"https://x.test/1","status":"prepared","submit_time":null,"cv_version":"v","phone":"000"}"#;
         assert!(parse_ledger(extra).is_err());
-        assert!(parse_ledger(&row("http://example.test/j/1", "prepared", None)).is_err());
+        let http = row("http://example.test/j/1", "prepared", None);
+        let read = read_ledger(&http).unwrap();
+        assert!(
+            read.legacy.iter().any(|n| n.rule.contains("https URL")),
+            "{:?}",
+            read.legacy
+        );
+        let stored: Row = serde_json::from_str(&http).unwrap();
+        assert!(validate_row(&stored).is_err());
         let blank = r#"{"company":"A","role":" ","link":"https://x.test/1","status":"prepared","submit_time":null,"cv_version":"v"}"#;
-        assert!(parse_ledger(blank).is_err());
+        let read = read_ledger(blank).unwrap();
+        assert!(
+            read.legacy
+                .iter()
+                .any(|n| n.rule == "role must not be blank"),
+            "{:?}",
+            read.legacy
+        );
+        let stored: Row = serde_json::from_str(blank).unwrap();
+        assert!(validate_row(&stored).is_err());
     }
 
     #[test]
@@ -474,7 +557,16 @@ pub(crate) mod tests {
             Some("https://x.test/j/1/application")
         );
         let bad = with.replace("\"apply_url\":\"https://", "\"apply_url\":\"http://");
-        assert!(parse_ledger(&bad).is_err());
+        let read = read_ledger(&bad).unwrap();
+        assert!(
+            read.legacy
+                .iter()
+                .any(|n| n.rule.contains("apply_url must be an https URL")),
+            "{:?}",
+            read.legacy
+        );
+        let stored: Row = serde_json::from_str(&bad).unwrap();
+        assert!(validate_row(&stored).is_err());
         // absent apply_url is not serialised, so pre-apply_url rows round-trip byte-for-byte
         let line = row("https://example.test/j/1", "prepared", None);
         let r = &parse_ledger(&line).unwrap()[0];
@@ -539,11 +631,16 @@ pub(crate) mod tests {
         for ad_hoc in [
             "unknown", "Unknown", "n/a", "none", "?", "-", "legacy", "tbd",
         ] {
-            let err = parse_ledger(&mk(ad_hoc)).unwrap_err();
+            let read = read_ledger(&mk(ad_hoc)).unwrap();
             assert!(
-                err.to_string().contains("legacy-unknown"),
-                "{ad_hoc}: {err}"
+                read.legacy
+                    .iter()
+                    .any(|n| n.rule.contains("legacy-unknown")),
+                "{ad_hoc}: {:?}",
+                read.legacy
             );
+            let stored: Row = serde_json::from_str(&mk(ad_hoc)).unwrap();
+            assert!(validate_row(&stored).is_err(), "{ad_hoc}");
         }
     }
 
@@ -712,16 +809,124 @@ pub(crate) mod tests {
 
     #[test]
     fn submit_time_unknown_is_strict() {
-        // flag with a time, flag on statuses that already allow null, and explicit false are refused
-        assert!(parse_ledger(&unknown_time_row(
-            "rejected",
-            "\"2026-09-04T17:12:00+02:00\"",
-            "true"
+        // flag with a time, flag on statuses that already allow null, and explicit false are refused on write
+        for (line, needle) in [
+            (
+                unknown_time_row("rejected", "\"2026-09-04T17:12:00+02:00\"", "true"),
+                "needs submit_time null",
+            ),
+            (
+                unknown_time_row("prepared", "null", "true"),
+                "only for sent statuses",
+            ),
+            (
+                unknown_time_row("withdrawn", "null", "true"),
+                "only for sent statuses",
+            ),
+            (
+                unknown_time_row("rejected", "null", "false"),
+                "either true or absent",
+            ),
+        ] {
+            let read = read_ledger(&line).unwrap();
+            assert!(
+                read.legacy.iter().any(|n| n.rule.contains(needle)),
+                "{needle}: {:?}",
+                read.legacy
+            );
+            let stored: Row = serde_json::from_str(&line).unwrap();
+            assert!(validate_row(&stored).is_err(), "{needle}");
+        }
+    }
+
+    #[test]
+    fn stored_rule_fixture_warns_every_rule_and_a_valid_append_still_writes() {
+        let text = include_str!("../fixtures/ledger-legacy-rules.jsonl");
+        let read = read_ledger(text).unwrap();
+        for needle in [
+            "company must not be blank",
+            "role must not be blank",
+            "cv_version must not be blank",
+            "legacy-unknown",
+            "link must be an https URL",
+            "apply_url must be an https URL",
+            "RFC 3339",
+            "either true or absent",
+            "needs submit_time null",
+            "only for sent statuses",
+            "submit_time missing",
+        ] {
+            assert!(
+                read.legacy.iter().any(|n| n.rule.contains(needle)),
+                "{needle}: {:?}",
+                read.legacy
+            );
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("ledger.jsonl");
+        std::fs::write(&p, text).unwrap();
+        let before = std::fs::read(&p).unwrap();
+        let bad: Row =
+            serde_json::from_str(&row("http://jobs.example.test/new", "prepared", None)).unwrap();
+        assert!(append_row(&p, &bad).is_err());
+        assert_eq!(std::fs::read(&p).unwrap(), before);
+        let good: Row = serde_json::from_str(&row(
+            "https://jobs.example.test/quarry/9",
+            "submitted",
+            Some("2026-10-26T18:59:00+01:00"),
         ))
-        .is_err());
-        assert!(parse_ledger(&unknown_time_row("prepared", "null", "true")).is_err());
-        assert!(parse_ledger(&unknown_time_row("withdrawn", "null", "true")).is_err());
-        assert!(parse_ledger(&unknown_time_row("rejected", "null", "false")).is_err());
+        .unwrap();
+        append_row(&p, &good).unwrap();
+        let after = std::fs::read_to_string(&p).unwrap();
+        assert!(after.starts_with(text));
+        assert!(after.contains("quarry/9"));
+    }
+
+    #[test]
+    fn legacy_submit_time_still_reports_other_check_errors() {
+        let missing = r#"{"company":"Pebble Sample","role":"Widget Engineer","link":"http://jobs.example.test/pebble/1","status":"rejected","submit_time":null,"cv_version":"unknown"}"#;
+        let read = read_ledger(missing).unwrap();
+        assert!(
+            read.legacy
+                .iter()
+                .any(|n| n.line == 1 && n.rule == "submit_time missing"),
+            "{:?}",
+            read.legacy
+        );
+        assert!(
+            read.legacy.iter().any(|n| n.rule.contains("https URL")),
+            "{:?}",
+            read.legacy
+        );
+        assert!(
+            read.legacy
+                .iter()
+                .any(|n| n.rule.contains("legacy-unknown")),
+            "{:?}",
+            read.legacy
+        );
+        let bad_time = row(
+            "https://jobs.example.test/pebble/2",
+            "submitted",
+            Some("2026-10-26T18:59:00"),
+        );
+        let read = read_ledger(&bad_time).unwrap();
+        assert!(
+            read.legacy.iter().any(|n| n.rule.contains("RFC 3339")),
+            "{:?}",
+            read.legacy
+        );
+        assert!(
+            !read.legacy.iter().any(|n| n.rule == "submit_time missing"),
+            "a bad timestamp is not the missing-time rule: {:?}",
+            read.legacy
+        );
+        assert!(is_missing_submit_time_check(
+            "submit_time is required when status is rejected (if it was never recorded, set submit_time_unknown: true)"
+        ));
+        assert!(!is_missing_submit_time_check(
+            "submit_time_unknown is either true or absent"
+        ));
     }
 
     #[test]

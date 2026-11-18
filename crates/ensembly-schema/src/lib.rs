@@ -94,8 +94,8 @@ pub use replay::{
     MaterializedAggregate, ReplayError,
 };
 pub use sealed_io::{
-    check_seal, grew_without_rewrite, lock, read_bytes, seal_path, unlock, write_seal,
-    SealedIoError,
+    adoption_log_path, check_seal, content_sha256, grew_without_rewrite, lock, read_bytes,
+    seal_path, unlock, write_seal, SealedIoError,
 };
 pub use surface::{
     commit_json, feed_json, record_now_local, record_now_micros_utc, recover_json, snapshot_json,
@@ -106,7 +106,7 @@ pub use url::{check_submit_time, link_key};
 pub use view::{
     view_append, ChangeEvent, Fact, Feed, RecordView, Snapshot, ViewContract, ViewError,
 };
-pub use wire::{decode_line, encode_line, Decoded, WireDecode};
+pub use wire::{decode_line, decode_line_without_check, encode_line, Decoded, WireDecode};
 
 /// Optional check applied by [`decode_line`] after serde accepts the object.
 pub trait Checked: Sized {
