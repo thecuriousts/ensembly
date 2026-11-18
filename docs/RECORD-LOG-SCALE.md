@@ -57,10 +57,10 @@ Scaling: `RECORD_SCALE_BENCH=1 cargo test -p ensembly-schema --test record_scale
 
 `commit_ms` for append into a log with N−1 prior lines:
 
-| Events | `origin/master` at merge (pre–slice-2 path) | slice 2 (`cursor/record-log-scale-slice2-3a97`) |
-|--------|---------------------------------------------|--------------------------------------------------|
-| 1k | 4.59 | 33.36 |
-| 10k | 49.68 | 315.00 |
-| 100k | run `RECORD_SCALE_BENCH=1` on `origin/master` baseline harness | same on branch (CI rust job) |
+| Events | `origin/master` baseline (pre–slice-2 commit) | slice 2 after tail-only append + in-memory index |
+|--------|-----------------------------------------------|--------------------------------------------------|
+| 1k | 4.59–4.85 | 0.55 |
+| 10k | 43.55–49.68 | 0.54 |
+| 100k | not finished on this VM (per-commit cost grew with the log) | 0.53 |
 
-Ratio gate: `commit_ms(100k) / commit_ms(1k) ≤ 30` (`COMMIT_RATIO_MAX` in `tests/record_scale.rs`).
+Ratio on this VM: `commit_ms(100k) / commit_ms(1k) = 0.96` (gate ≤ 30). Machine: Intel Xeon, cloud agent VM, `--release`.
