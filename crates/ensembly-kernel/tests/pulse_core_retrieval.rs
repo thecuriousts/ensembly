@@ -21,7 +21,7 @@ CREATE VIRTUAL TABLE memory_fts USING fts5(nat_key, snippet, source, content='me
 INSERT INTO schema_migrations VALUES (1, '2026-01-01T00:00:00+00:00');
 ";
 
-#[allow(clippy::invalid_utf8_in_unchecked)]
+#[allow(invalid_from_utf8_unchecked)]
 fn bytes_key(raw: &[u8]) -> String {
     unsafe { String::from_utf8_unchecked(raw.to_vec()) }
 }
