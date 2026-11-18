@@ -280,16 +280,14 @@ where
     let mut offset = idx.header.log_len;
     for (event, line) in new_events.iter().zip(new_lines) {
         let nbytes = line.as_bytes();
-        let line_len = u32::try_from(nbytes.len())
-            .map_err(|_| LogIndexError::Tail("line too long".into()))?;
+        let line_len =
+            u32::try_from(nbytes.len()).map_err(|_| LogIndexError::Tail("line too long".into()))?;
         let entry = KeyEntry {
             offset,
             len: line_len,
         };
-        idx.keys_by_aggregate.insert(
-            map_aggregate_key(&event.aggregate.0, &event.key.0),
-            entry,
-        );
+        idx.keys_by_aggregate
+            .insert(map_aggregate_key(&event.aggregate.0, &event.key.0), entry);
         idx.events.push(EventEntry {
             offset,
             len: line_len,
@@ -396,7 +394,10 @@ where
     load_events_from_index::<P>(log, &idx)
 }
 
-pub fn load_events_up_to_version<P>(log: &Path, at: u64) -> Result<Vec<EventEnvelope<P>>, LogIndexError>
+pub fn load_events_up_to_version<P>(
+    log: &Path,
+    at: u64,
+) -> Result<Vec<EventEnvelope<P>>, LogIndexError>
 where
     P: Checked + Serialize + for<'de> Deserialize<'de> + Clone,
 {
@@ -509,8 +510,8 @@ mod tests {
     use crate::record::{
         AggregateId, EventId, IdempotencyKey, Rfc3339Time, Source, Version as RecordVersion,
     };
-    use crate::surface::JsonPayload;
     use crate::replay::{parse_event_log, replay};
+    use crate::surface::JsonPayload;
     use crate::view::{RecordView, ViewContract};
     use crate::{encode_line, SCHEMA_VERSION, SCHEMA_VERSION_LEGACY};
 
@@ -565,13 +566,13 @@ mod tests {
         let unit = UnitOfWork {
             events: vec![event(1, "k1"), event(2, "k2")],
         };
-        Commit::new(&log).run(unit, &CommitFault::default()).unwrap();
-        let lines = vec![
-            format!(
-                "{}\n",
-                encode_line(SCHEMA_VERSION, &event(3, "k3")).unwrap()
-            ),
-        ];
+        Commit::new(&log)
+            .run(unit, &CommitFault::default())
+            .unwrap();
+        let lines = vec![format!(
+            "{}\n",
+            encode_line(SCHEMA_VERSION, &event(3, "k3")).unwrap()
+        )];
         append_bytes_to_log(&log, lines[0].as_bytes()).unwrap();
         let ev = event(3, "k3");
         extend_index_lines(
@@ -605,7 +606,9 @@ mod tests {
         let unit = UnitOfWork {
             events: vec![event(1, "a"), event(2, "b")],
         };
-        Commit::new(&log).run(unit, &CommitFault::default()).unwrap();
+        Commit::new(&log)
+            .run(unit, &CommitFault::default())
+            .unwrap();
         let mut idx = rebuild_index::<NotePayload>(&log).unwrap();
         ensure_snapshot_at_max::<NotePayload>(&log, &mut idx).unwrap();
         let cached = idx.snapshot_at_max.clone().unwrap();

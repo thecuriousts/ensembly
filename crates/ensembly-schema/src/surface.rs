@@ -3,13 +3,13 @@
 use crate::commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult};
 use crate::hlc::{local_append, physical_time_us, HlcState};
 use crate::idempotency::same_idempotent_content;
-use crate::identity::{
-    configured_node, configured_writer, require_configured_writer, validate_writer_identity,
-};
+use crate::identity::{configured_node, configured_writer, require_configured_writer, validate_writer_identity};
+
+pub use crate::identity::{require_configured_writer, validate_writer_identity, WRITER_ENV};
 use crate::log_index::{
-    ensure_snapshot_at_max, extend_index_lines, load_events_since_version, load_events_up_to_version,
-    load_or_rebuild, lookup_aggregate_key_entry, read_line_at, rebuild_index, ring_doorbell,
-    sidecar_header_state, LogIndexError,
+    ensure_snapshot_at_max, extend_index_lines, load_events_since_version,
+    load_events_up_to_version, load_or_rebuild, lookup_aggregate_key_entry, read_line_at,
+    rebuild_index, ring_doorbell, sidecar_header_state, LogIndexError,
 };
 use crate::record::{EventEnvelope, EventTimePrec, Rfc3339Time, Version};
 use crate::replay::{parse_event_log, replay, ReplayError};
@@ -160,7 +160,9 @@ fn payload_writer(event: &EventEnvelope<JsonPayload>) -> Result<String, String> 
 
 fn to_event_time_utc_z(raw: &str) -> Result<String, String> {
     let dt = chrono::DateTime::parse_from_rfc3339(raw).map_err(|e| format!("event_time: {e}"))?;
-    Ok(dt.with_timezone(&Utc).to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true))
+    Ok(dt
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true))
 }
 
 fn infer_event_time_prec(t: &str) -> EventTimePrec {
@@ -306,8 +308,8 @@ pub fn feed_json(log: &Path, since: u64) -> Result<Feed<JsonPayload>, RecordSurf
     if !log.is_file() {
         return Err(RecordSurfaceError::MissingLog(log.display().to_string()));
     }
-    let events = load_events_since_version::<JsonPayload>(log, since)
-        .map_err(RecordSurfaceError::Index)?;
+    let events =
+        load_events_since_version::<JsonPayload>(log, since).map_err(RecordSurfaceError::Index)?;
     Ok(RecordView::from_events(events).change_feed(Version(since)))
 }
 
@@ -380,8 +382,7 @@ fn check_known_keys(
             return Err(RecordSurfaceError::Idempotency { key: id.1 });
         }
         if let Some(ref index) = idx {
-            if let Some(entry) =
-                lookup_aggregate_key_entry(index, &event.aggregate.0, &event.key.0)
+            if let Some(entry) = lookup_aggregate_key_entry(index, &event.aggregate.0, &event.key.0)
             {
                 let line = read_line_at(log, entry.offset, entry.len)
                     .map_err(RecordSurfaceError::Index)?;

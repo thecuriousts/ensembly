@@ -21,12 +21,10 @@ fn temp_log() -> PathBuf {
 
 #[test]
 fn v1_fixture_line_round_trips_byte_identical() {
-    let text = std::fs::read_to_string(
-        format!(
-            "{}/fixtures/record-events-v1.jsonl",
-            env!("CARGO_MANIFEST_DIR")
-        ),
-    )
+    let text = std::fs::read_to_string(format!(
+        "{}/fixtures/record-events-v1.jsonl",
+        env!("CARGO_MANIFEST_DIR")
+    ))
     .unwrap();
     let line = text.lines().find(|l| !l.trim().is_empty()).unwrap();
     let decoded = decode_line::<EventEnvelope<RecordEventPayload>>(line).unwrap();

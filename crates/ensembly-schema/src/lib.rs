@@ -14,13 +14,13 @@ pub const SCHEMA_VERSION: u32 = 2;
 pub const SCHEMA_VERSION_LEGACY: u32 = 1;
 
 mod commit;
+#[cfg(feature = "opportunity-finder")]
+mod decision;
+mod exit;
 mod hlc;
 mod idempotency;
 mod identity;
 mod log_index;
-#[cfg(feature = "opportunity-finder")]
-mod decision;
-mod exit;
 #[cfg(feature = "opportunity-finder")]
 mod pack;
 mod reconcile;
@@ -49,15 +49,6 @@ pub use apps_record::{
 #[cfg(feature = "opportunity-finder")]
 pub use audit::*;
 pub use commit::{Commit, CommitError, CommitFault, CommitPhase, CommitResult, UnitOfWork};
-pub use hlc::{HlcState, HlcWire, local_append, physical_time_us, receive_merge};
-pub use idempotency::{
-    clamp_key, deterministic_key, same_idempotent_content, source_key,
-};
-pub use log_index::{
-    append_bytes_to_log, ensure_tail_intact, extend_index_lines, load_events_since_version,
-    load_events_up_to_version, load_or_rebuild, rebuild_index, sidecar_path, torn_fragment_path,
-    LogIndexError, LogIndexSidecar,
-};
 #[cfg(feature = "opportunity-finder")]
 pub use decision::{
     assign_split, proposal_rid, snapshot_hash, DecisionEvent, DecisionEventType, FitLabel,
@@ -68,8 +59,19 @@ pub use exit::{
     EXIT_BLOCK, EXIT_ERROR, EXIT_FLAG, EXIT_PASS, EXIT_PULSE_REFUSED_WRITE,
     EXIT_UNAUDITED_OR_STALE, EXIT_USAGE,
 };
+pub use hlc::{local_append, physical_time_us, receive_merge, HlcState, HlcWire};
+pub use idempotency::{clamp_key, deterministic_key, same_idempotent_content, source_key};
+pub use identity::{
+    configured_node, configured_writer, require_configured_writer, validate_writer_identity,
+    NODE_ENV, WRITER_ENV,
+};
 #[cfg(feature = "opportunity-finder")]
 pub use ledger::*;
+pub use log_index::{
+    append_bytes_to_log, ensure_tail_intact, extend_index_lines, load_events_since_version,
+    load_events_up_to_version, load_or_rebuild, rebuild_index, sidecar_path, torn_fragment_path,
+    LogIndexError, LogIndexSidecar,
+};
 #[cfg(feature = "opportunity-finder")]
 pub use pack::*;
 pub use reconcile::{
@@ -89,12 +91,8 @@ pub use sealed_io::{
     check_seal, grew_without_rewrite, lock, read_bytes, seal_path, unlock, write_seal,
     SealedIoError,
 };
-pub use identity::{
-    configured_node, configured_writer, require_configured_writer, validate_writer_identity,
-    NODE_ENV, WRITER_ENV,
-};
 pub use surface::{
-    commit_json, feed_json, record_now_micros_utc, record_now_local, recover_json, snapshot_json,
+    commit_json, feed_json, record_now_local, record_now_micros_utc, recover_json, snapshot_json,
     JsonPayload, RecordSurfaceError,
 };
 pub use sync::{expire_if_stale, merge_offline, MergeOutcome, SyncConfig, SyncError};

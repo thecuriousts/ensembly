@@ -19,7 +19,7 @@ const C_MAX: u16 = u16::MAX;
 
 /// Physical time in microseconds since Unix epoch (`CLOCK_REALTIME`).
 pub fn physical_time_us() -> u64 {
-  u64::try_from(
+    u64::try_from(
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -34,9 +34,10 @@ pub fn local_append(state: &mut HlcState, pt_us: u64) -> Result<HlcWire, String>
         let l_prime = state.l;
         state.l = state.l.max(pt);
         state.c = if state.l == l_prime {
-            state.c.checked_add(1).ok_or_else(|| {
-                "hlc counter overflow".to_string()
-            })?
+            state
+                .c
+                .checked_add(1)
+                .ok_or_else(|| "hlc counter overflow".to_string())?
         } else {
             0
         };
@@ -51,11 +52,7 @@ pub fn local_append(state: &mut HlcState, pt_us: u64) -> Result<HlcWire, String>
     }
 }
 
-pub fn receive_merge(
-    state: &mut HlcState,
-    pt_us: u64,
-    remote: HlcWire,
-) -> Result<HlcWire, String> {
+pub fn receive_merge(state: &mut HlcState, pt_us: u64, remote: HlcWire) -> Result<HlcWire, String> {
     let mut pt = pt_us;
     loop {
         let l_prime = state.l;

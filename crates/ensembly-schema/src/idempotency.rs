@@ -25,7 +25,11 @@ pub fn same_idempotent_content<P: PartialEq>(a: &EventEnvelope<P>, b: &EventEnve
 }
 
 fn semantic_schema_v(v: u32) -> u32 {
-    if v == 0 { 1 } else { v }
+    if v == 0 {
+        1
+    } else {
+        v
+    }
 }
 
 pub fn clamp_key(key: &str) -> Result<String, String> {
@@ -48,8 +52,7 @@ pub fn deterministic_key(
     payload: &serde_json::Value,
     event_time: &str,
 ) -> String {
-    let payload_canon =
-        serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
+    let payload_canon = serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
     let blob = format!("{node}\t{writer}\t{aggregate}\t{kind}\t{payload_canon}\t{event_time}");
     let hash = Sha256::digest(blob.as_bytes());
     format!("d:{}", hex::encode(&hash[..16]))

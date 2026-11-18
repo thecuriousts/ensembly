@@ -285,7 +285,7 @@ pub struct EventEnvelope<P> {
 }
 
 impl<P> EventEnvelope<P> {
-  pub fn with_payload(
+    pub fn with_payload(
         id: EventId,
         aggregate: AggregateId,
         key: IdempotencyKey,
@@ -352,8 +352,10 @@ impl<P: Checked> Checked for EventEnvelope<P> {
             if !is_host_alias(node) {
                 return Err("node is not a host alias".into());
             }
-            self.seq.ok_or_else(|| "seq is required on schema_v 2".to_string())?;
-            self.hlc.ok_or_else(|| "hlc is required on schema_v 2".to_string())?;
+            self.seq
+                .ok_or_else(|| "seq is required on schema_v 2".to_string())?;
+            self.hlc
+                .ok_or_else(|| "hlc is required on schema_v 2".to_string())?;
             let writer = self
                 .writer
                 .as_deref()
