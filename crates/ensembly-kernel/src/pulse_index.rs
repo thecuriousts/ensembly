@@ -33,11 +33,20 @@ const ENSURE_AUDIT: &str = "CREATE TABLE IF NOT EXISTS ensembly_audit (
     outcome TEXT NOT NULL
 )";
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct ApplyOptions {
     pub dry_run: bool,
     /// Run `ANALYZE memory_traces` after indexes (writes `sqlite_stat*`; not undone by revert).
     pub analyze: bool,
+}
+
+impl Default for ApplyOptions {
+    fn default() -> Self {
+        Self {
+            dry_run: false,
+            analyze: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
