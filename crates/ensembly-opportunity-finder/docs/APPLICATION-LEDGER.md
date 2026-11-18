@@ -16,7 +16,7 @@ Code: `crates/ensembly-opportunity-finder/src/application_ledger.rs` (kernel fea
 | `link` | `https://` canonical posting URL. Identity key of an application; a trailing `/application` is ignored when matching, and `append` refuses a link that ends in it. |
 | `apply_url` | Optional `https://` application-form URL (for example the posting URL plus `/application`). Omitted from the JSON when absent. |
 | `status` | `prepared`, `submitted`, `interview`, `rejected`, `withdrawn`, `silent-closed`. |
-| `submit_time` | RFC 3339 / ISO 8601 with any numeric offset or `Z`/`z` (UTC). `null` only for `prepared`, and for `withdrawn` when the application was dropped before sending (operator decision, 26 Oct 2026). Exports show it empty (CSV) or `—` (markdown) and list such rows after timed rows. |
+| `submit_time` | RFC 3339 / ISO 8601 with any numeric offset or `Z`/`z` (UTC). `null` for `prepared`, and for `withdrawn` when the application was dropped before sending (operator decision, 26 Oct 2026). A stored `submitted`, `interview`, `rejected`, or `silent-closed` row may omit the key, or use `null` or a blank string, when the time was never recorded. Readers keep that line, do not invent a timestamp, and warn. A new append still requires a time or `submit_time_unknown: true`. Exports show a missing sent time as `unknown`. |
 | `submit_time_unknown` | Optional, only `true`. Says the application was sent but its time was never recorded (legacy records); `submit_time` is then null. Allowed only for `submitted`, `interview`, `rejected`, `silent-closed`, the statuses that otherwise need a time, so no one has to invent one. `prepared` and `withdrawn` already accept a null time. Exports show `unknown`. |
 | `cv_version` | Non-blank label of the CV that was sent. `legacy-unknown` is the one explicit marker for rows migrated from records that never noted the CV (operator decision, 26 Oct 2026); ad-hoc markers such as `unknown`, `n/a`, `tbd` are refused. |
 
@@ -63,10 +63,33 @@ the writer will not adopt current bytes.
 
 ### Correcting a row
 
-Append a new row; never edit. Because matching uses the canonical link, a row
+Append a new row; never edit. Current state is the last line per canonical
+`link` (`link_key`). A later stage for that link supersedes the earlier line.
+Old bytes stay in the file. Because matching uses the canonical link, a row
 stored with an `…/application` form link is superseded by a later row whose
-`link` is the posting URL and whose `apply_url` carries the form URL. Old
-lines stay valid, so history is kept and exports show only the corrected row.
+`link` is the posting URL and whose `apply_url` carries the form URL.
+
+A stored rejected row that never recorded a time, then a later `withdrawn`
+row for the same posting:
+
+```json
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/1","status":"rejected","submit_time":null,"cv_version":"cv-sample-1"}
+{"company":"Pebble Sample","role":"Widget Engineer","link":"https://jobs.example.test/pebble/1","status":"withdrawn","submit_time":null,"cv_version":"cv-sample-1"}
+```
+
+`ensembly apps validate` prints `warning: line 1: legacy: submit_time missing`
+and exits 0. `ensembly apps validate --strict` prints the same warning and
+exits 1. The ledger has no `status` subcommand; validate is the check.
+Export, append, `record apps import`, and `record apps compare` use the same
+read. They warn and do not fail on these lines. Invalid JSON, unknown fields,
+and the other row rules stay errors. Append still refuses a new sent row that
+omits the time, and it does not write that row.
+
+There is no later-row kind that replaces the same `link_key` and the same
+stage. That pair is the idempotency key. The same key with a different
+payload (for example a second `rejected` line that only adds `submit_time`)
+is a conflict: `ensembly apps append` writes nothing. There is no correction
+row kind.
 
 ## Where data lives
 
@@ -75,11 +98,13 @@ lines stay valid, so history is kept and exports show only the corrected row.
 | Real rows | `data/local/applications/ledger.jsonl` | local-only (`data/` is gitignored) |
 | Exports | `data/local/applications/exports/applications.{csv,md}` | local-only |
 | Fictional sample | `crates/ensembly-opportunity-finder/fixtures/application-ledger-sample.jsonl` | committed |
+| Fictional legacy submit time | `crates/ensembly-opportunity-finder/fixtures/ledger-legacy-submit-time.jsonl` | committed |
 
 ## CLI
 
 ```bash
 cargo run -p ensembly-kernel -- apps validate
+cargo run -p ensembly-kernel -- apps validate --strict
 cargo run -p ensembly-kernel -- apps append --company "Example" --role "Engineer" \
   --link https://jobs.example.test/1 --apply-url https://jobs.example.test/1/application --status submitted \
   --submit-time 2026-10-26T18:59:00+01:00 --cv-version cv-sample-1

@@ -34,6 +34,8 @@
       "$ref": "#/definitions/Status"
     },
     "submit_time": {
+      "description": "Absent, null, or blank on a row written before a sent status required a time. Readers do not invent a timestamp. A new append still requires a time or `submit_time_unknown: true`.",
+      "default": null,
       "type": [
         "string",
         "null"
