@@ -111,7 +111,11 @@ pub struct Audit {
     pub verdict: Verdict,
     pub checks: Vec<Check>,
     pub audited_at: String,
-    pub audited_by: String,
+    /// Who recorded the audit. Absent when the field was omitted (a row written
+    /// before it existed) or JSON null. Readers must not fill in a label.
+    /// A new append still requires a non-blank value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audited_by: Option<String>,
     /// Optional `audited_at` of the earlier audit whose result this row reuses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reused_from: Option<String>,
