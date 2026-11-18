@@ -39,12 +39,20 @@ pub struct SizeReport {
 #[derive(Debug, Clone, Serialize)]
 pub struct PulseIndexLatency {
     pub machine: String,
+    /// Fraction of rows matching `pulse list` (kind=memory, not superseded).
+    pub live_memory_fraction: f64,
+    pub explain_pulse_list_no_index: Vec<String>,
+    pub explain_pulse_list_with_index: Vec<String>,
     pub pulse_list_no_index: LatencyMs,
     pub pulse_list_with_index: LatencyMs,
     pub dangling_legacy_no_index: LatencyMs,
     pub dangling_new_no_index: LatencyMs,
     pub dangling_legacy_with_index: LatencyMs,
     pub dangling_new_with_index: LatencyMs,
+    /// Synthetic store: ~5% live rows (supersede the rest on a DB copy).
+    pub sparse_live_fraction: f64,
+    pub sparse_pulse_list_no_index: LatencyMs,
+    pub sparse_pulse_list_with_index: LatencyMs,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -71,10 +79,16 @@ pub struct ExplainPlans {
 pub fn run_size(work: &Path, size: usize, seed: u64) -> Result<SizeReport> {
     std::env::set_var(ensembly_schema::WRITER_ENV, "laptop-1");
     let gen = GeneratedBench::generate(work, size, seed)?;
+    let live_memory_fraction = live_memory_fraction(&gen.pulse_db)?;
+    let probe_db = gen.pulse_db.with_file_name("pulse_index_probe.sqlite");
+    if probe_db.exists() {
+        std::fs::remove_file(&probe_db)?;
+    }
+    std::fs::copy(&gen.pulse_db, &probe_db)?;
+    let pulse_index = measure_pulse_index_latencies(&probe_db, live_memory_fraction)?;
     let conn = pc::open_ro(&gen.pulse_db)?;
     let quality = score_quality(&conn, &gen.queries)?;
     let latency_ms = measure_latencies(&gen, &conn)?;
-    let pulse_index = measure_pulse_index_latencies(&gen.pulse_db)?;
     let explain_query_plan = collect_explains(&gen.pulse_db)?;
     Ok(SizeReport {
         size,
@@ -87,7 +101,13 @@ pub fn run_size(work: &Path, size: usize, seed: u64) -> Result<SizeReport> {
     })
 }
 
-fn measure_pulse_index_latencies(db_path: &Path) -> Result<PulseIndexLatency> {
+fn measure_pulse_index_latencies(
+    db_path: &Path,
+    live_memory_fraction: f64,
+) -> Result<PulseIndexLatency> {
+    let (sparse_live_fraction, sparse_pulse_list_no_index, sparse_pulse_list_with_index) =
+        measure_sparse_pulse_list(db_path)?;
+    let explain_pulse_list_no_index = explain_pulse_list(db_path)?;
     let conn = pc::open_ro(db_path)?;
     let pulse_list_no_index = bench(|| {
         let _ = ps::list_live(&conn, LIST_LIVE_LIMIT)?;
@@ -112,6 +132,7 @@ fn measure_pulse_index_latencies(db_path: &Path) -> Result<PulseIndexLatency> {
         },
     )?;
 
+    let explain_pulse_list_with_index = explain_pulse_list(db_path)?;
     let conn = pc::open_ro(db_path)?;
     let pulse_list_with_index = bench(|| {
         let _ = ps::list_live(&conn, LIST_LIVE_LIMIT)?;
@@ -125,31 +146,86 @@ fn measure_pulse_index_latencies(db_path: &Path) -> Result<PulseIndexLatency> {
         let _ = pc::dangling_superseded_keys(&conn)?;
         Ok(())
     });
-
     Ok(PulseIndexLatency {
         machine: machine_label(),
+        live_memory_fraction,
+        explain_pulse_list_no_index,
+        explain_pulse_list_with_index,
         pulse_list_no_index,
         pulse_list_with_index,
         dangling_legacy_no_index,
         dangling_new_no_index,
         dangling_legacy_with_index,
         dangling_new_with_index,
+        sparse_live_fraction,
+        sparse_pulse_list_no_index,
+        sparse_pulse_list_with_index,
     })
 }
 
-fn machine_label() -> String {
+fn live_memory_fraction(db_path: &Path) -> Result<f64> {
+    let conn = Connection::open(db_path)?;
+    conn.query_row(
+        "SELECT (SELECT COUNT(*) FROM memory_traces WHERE kind = 'memory' AND (superseded_by IS NULL OR superseded_by = '')) * 1.0 / COUNT(*) FROM memory_traces",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(Into::into)
+}
+
+const PULSE_LIST_EXPLAIN_SQL: &str =
+    "SELECT nat_key, snippet, source, status, kind, lock, seen_count, superseded_by, first_seen, last_seen \
+     FROM memory_traces WHERE kind = 'memory' AND (superseded_by IS NULL OR superseded_by = '') \
+     ORDER BY time DESC, nat_key ASC LIMIT ?1";
+
+fn explain_pulse_list(db_path: &Path) -> Result<Vec<String>> {
+    let conn = Connection::open(db_path)?;
+    explain(&conn, PULSE_LIST_EXPLAIN_SQL, params![LIST_LIVE_LIMIT])
+}
+
+fn measure_sparse_pulse_list(pristine: &Path) -> Result<(f64, LatencyMs, LatencyMs)> {
+    let sparse_path = pristine.with_file_name("pulse_index_sparse.sqlite");
+    if sparse_path.exists() {
+        std::fs::remove_file(&sparse_path)?;
+    }
+    std::fs::copy(pristine, &sparse_path)?;
+    {
+        let conn = Connection::open(&sparse_path)?;
+        conn.execute_batch(
+            "UPDATE memory_traces SET superseded_by = 'bench/missing/' || (id % 97) \
+             WHERE id % 20 != 0 AND (superseded_by IS NULL OR superseded_by = '')",
+        )?;
+    }
+    let sparse_live_fraction = live_memory_fraction(&sparse_path)?;
+    let conn = pc::open_ro(&sparse_path)?;
+    let sparse_no = bench(|| {
+        let _ = ps::list_live(&conn, LIST_LIVE_LIMIT)?;
+        Ok(())
+    });
+    drop(conn);
+    pulse_index::apply(
+        &sparse_path,
+        "laptop-1",
+        ApplyOptions {
+            dry_run: false,
+            analyze: false,
+        },
+    )?;
+    let conn = pc::open_ro(&sparse_path)?;
+    let sparse_with = bench(|| {
+        let _ = ps::list_live(&conn, LIST_LIVE_LIMIT)?;
+        Ok(())
+    });
+    Ok((sparse_live_fraction, sparse_no, sparse_with))
+}
+
+/// Label for benchmark reports: explicit `RETRIEVAL_BENCH_MACHINE` or `unspecified`.
+pub fn machine_label() -> String {
     std::env::var("RETRIEVAL_BENCH_MACHINE")
         .ok()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| {
-            std::process::Command::new("hostname")
-                .output()
-                .ok()
-                .and_then(|o| String::from_utf8(o.stdout).ok())
-                .map(|h| h.trim().to_string())
-                .filter(|h| !h.is_empty())
-                .unwrap_or_else(|| "unknown-host".into())
-        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unspecified".into())
 }
 
 fn measure_latencies(gen: &GeneratedBench, conn: &Connection) -> Result<OperationLatencies> {
