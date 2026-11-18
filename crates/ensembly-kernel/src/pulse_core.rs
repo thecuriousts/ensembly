@@ -362,62 +362,228 @@ fn trace_row(r: &rusqlite::Row) -> rusqlite::Result<TraceRow> {
     })
 }
 
+/// Weight of [`parse_ts`]-parseable `last_seen` in [`read_search`] ranking (0..=1).
+/// Score = `RECENCY_WEIGHT * unixepoch(last_seen, 'subsec') + (1 - RECENCY_WEIGHT) * (-bm25(memory_fts))`;
+/// higher is better. Spec: `docs/spec/PULSE-READ.md`.
+pub const PULSE_SEARCH_RECENCY_WEIGHT: f64 = 0.35;
+
+/// Exclusive upper bound for a byte-wise `nat_key` prefix range (`>= prefix AND < upper`).
+/// `None` when the prefix is empty (no upper) or when no finite exclusive upper exists
+/// (prefix is all `0xFF` bytes); callers use a lower bound only in that case.
+pub fn nat_key_prefix_upper_bound(prefix: &str) -> Option<String> {
+    if prefix.is_empty() {
+        return None;
+    }
+    let mut bytes = prefix.as_bytes().to_vec();
+    while let Some(last) = bytes.last_mut() {
+        if *last < 0xFF {
+            *last += 1;
+            return Some(String::from_utf8_lossy(&bytes).into_owned());
+        }
+        bytes.pop();
+    }
+    None
+}
+
 /// Traces whose `nat_key` starts with `prefix` (literal match, no wildcards).
 pub fn read_prefix(conn: &Connection, prefix: &str, limit: usize) -> Result<Vec<TraceRow>> {
+    let upper = nat_key_prefix_upper_bound(prefix);
+    let sql = match (&prefix.is_empty(), &upper) {
+        (true, _) => {
+            format!("SELECT {TRACE_COLS} FROM memory_traces ORDER BY nat_key LIMIT ?1")
+        }
+        (false, Some(_)) => format!(
+            "SELECT {TRACE_COLS} FROM memory_traces WHERE nat_key >= ?1 AND nat_key < ?2 \
+             ORDER BY nat_key LIMIT ?3"
+        ),
+        (false, None) => format!(
+            "SELECT {TRACE_COLS} FROM memory_traces WHERE nat_key >= ?1 ORDER BY nat_key LIMIT ?2"
+        ),
+    };
+    let mut st = conn.prepare(&sql)?;
+    let rows = match (&prefix.is_empty(), &upper) {
+        (true, _) => st
+            .query_map(params![limit as i64], trace_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?,
+        (false, Some(ub)) => st
+            .query_map(params![prefix, ub, limit as i64], trace_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?,
+        (false, None) => st
+            .query_map(params![prefix, limit as i64], trace_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?,
+    };
+    Ok(rows)
+}
+
+/// Small fixed English list; stripped from FTS (and LIKE) when at least one other token remains.
+pub const FTS_STOPWORDS: &[&str] = &[
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "did", "do", "for", "from", "had",
+    "has", "have", "he", "her", "him", "his", "how", "i", "if", "in", "into", "is", "it", "its",
+    "me", "my", "of", "on", "or", "she", "that", "the", "their", "them", "there", "they", "this",
+    "to", "was", "we", "were", "what", "when", "where", "which", "who", "why", "will", "with",
+    "you", "your",
+];
+
+fn normalize_search_token(word: &str) -> String {
+    word.chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect::<String>()
+        .to_lowercase()
+}
+
+/// Tokens used for FTS/LIKE: drop [`FTS_STOPWORDS`] when at least one content token remains.
+pub fn search_content_tokens(text: &str) -> Vec<String> {
+    let raw: Vec<String> = text
+        .split_whitespace()
+        .map(normalize_search_token)
+        .filter(|w| !w.is_empty())
+        .collect();
+    let content: Vec<String> = raw
+        .iter()
+        .filter(|w| !FTS_STOPWORDS.contains(&w.as_str()))
+        .cloned()
+        .collect();
+    if content.is_empty() { raw } else { content }
+}
+
+fn fts_quote_tokens(tokens: &[String]) -> String {
+    tokens
+        .iter()
+        .map(|w| format!("\"{}\"", w.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn fts_and_query(tokens: &[String]) -> String {
+    fts_quote_tokens(tokens)
+}
+
+fn fts_or_query(tokens: &[String]) -> String {
+    tokens
+        .iter()
+        .map(|w| format!("\"{}\"", w.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
+fn last_seen_instant_sql() -> &'static str {
+    // Pulse-memory mixes Z / +00:00 / +02:00 / +05:30; unixepoch parses real instants (no DB write).
+    "COALESCE(unixepoch(t.last_seen, 'subsec'), 0)"
+}
+
+fn search_score_sql() -> String {
+    format!(
+        "ORDER BY (?2 * {inst}) + (1.0 - ?2) * (-bm25(memory_fts)) DESC LIMIT ?3",
+        inst = last_seen_instant_sql()
+    )
+}
+
+fn read_search_fts(
+    conn: &Connection,
+    fts_q: &str,
+    limit: usize,
+    recency_weight: f64,
+) -> Result<Vec<TraceRow>> {
+    let cols = TRACE_COLS
+        .split(", ")
+        .map(|c| format!("t.{c}"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let sql = format!(
-        "SELECT {TRACE_COLS} FROM memory_traces WHERE substr(nat_key, 1, length(?1)) = ?1 \
-         ORDER BY nat_key LIMIT ?2"
+        "SELECT {cols} FROM memory_traces t JOIN memory_fts f ON f.rowid = t.id \
+         WHERE memory_fts MATCH ?1 {}",
+        search_score_sql()
     );
     let mut st = conn.prepare(&sql)?;
     let rows = st
-        .query_map(params![prefix, limit as i64], trace_row)?
+        .query_map(
+            params![fts_q, recency_weight, limit as i64],
+            trace_row,
+        )?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     Ok(rows)
 }
 
-/// Full-text search (FTS5, every word must match), falling back to a literal
-/// substring match when the FTS query is rejected or the index is missing.
-pub fn read_search(conn: &Connection, text: &str, limit: usize) -> Result<Vec<TraceRow>> {
-    let fts_q: String = text
-        .split_whitespace()
-        .map(|w| format!("\"{}\"", w.replace('"', "")))
-        .collect::<Vec<_>>()
-        .join(" ");
-    if !fts_q.is_empty() {
-        let sql = format!(
-            "SELECT {} FROM memory_traces t JOIN memory_fts f ON f.rowid = t.id \
-             WHERE memory_fts MATCH ?1 ORDER BY t.last_seen DESC LIMIT ?2",
-            TRACE_COLS
-                .split(", ")
-                .map(|c| format!("t.{c}"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        let attempt = (|| -> rusqlite::Result<Vec<TraceRow>> {
-            let mut st = conn.prepare(&sql)?;
-            let v = st
-                .query_map(params![fts_q, limit as i64], trace_row)?
-                .collect::<std::result::Result<Vec<_>, _>>()?;
-            Ok(v)
-        })();
-        if let Ok(v) = attempt {
-            return Ok(v);
+fn merge_traces(primary: Vec<TraceRow>, extra: Vec<TraceRow>, limit: usize) -> Vec<TraceRow> {
+    let mut seen: std::collections::BTreeSet<String> = primary.iter().map(|r| r.nat_key.clone()).collect();
+    let mut out = primary;
+    for row in extra {
+        if out.len() >= limit {
+            break;
+        }
+        if seen.insert(row.nat_key.clone()) {
+            out.push(row);
         }
     }
-    let like = format!(
-        "%{}%",
-        text.replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
-    );
+    out
+}
+
+fn escape_like(term: &str) -> String {
+    term.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+fn read_search_like(conn: &Connection, tokens: &[String], limit: usize) -> Result<Vec<TraceRow>> {
+    if tokens.is_empty() {
+        return Ok(Vec::new());
+    }
+    let preds: Vec<String> = tokens
+        .iter()
+        .map(|_| "(nat_key LIKE ? ESCAPE '\\' OR snippet LIKE ? ESCAPE '\\')".to_string())
+        .collect();
     let sql = format!(
-        "SELECT {TRACE_COLS} FROM memory_traces WHERE nat_key LIKE ?1 ESCAPE '\\' OR snippet LIKE ?1 ESCAPE '\\' \
-         ORDER BY last_seen DESC LIMIT ?2"
+        "SELECT {TRACE_COLS} FROM memory_traces WHERE {} ORDER BY COALESCE(unixepoch(last_seen, 'subsec'), 0) DESC LIMIT ?",
+        preds.join(" AND ")
     );
     let mut st = conn.prepare(&sql)?;
+    let mut values: Vec<rusqlite::types::Value> = Vec::new();
+    for t in tokens {
+        let like = format!("%{}%", escape_like(t));
+        values.push(like.clone().into());
+        values.push(like.into());
+    }
+    values.push((limit as i64).into());
     let rows = st
-        .query_map(params![like, limit as i64], trace_row)?
+        .query_map(rusqlite::params_from_iter(values), trace_row)?
         .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+/// Full-text search: FTS5 AND on content tokens (stopwords dropped when possible), ranked by
+/// bm25 blended with [`last_seen_instant_sql`]. If fewer than `limit` AND hits, OR (bm25 ranks
+/// more matching terms higher), then token AND-LIKE as last resort.
+pub fn read_search(conn: &Connection, text: &str, limit: usize) -> Result<Vec<TraceRow>> {
+    let tokens = search_content_tokens(text);
+    if tokens.is_empty() {
+        return Ok(Vec::new());
+    }
+    let and_q = fts_and_query(&tokens);
+    let mut rows = match read_search_fts(conn, &and_q, limit, PULSE_SEARCH_RECENCY_WEIGHT) {
+        Ok(v) => v,
+        Err(_) if tokens.len() == 1 => Vec::new(),
+        Err(_) => {
+            let or_q = fts_or_query(&tokens);
+            return match read_search_fts(conn, &or_q, limit, PULSE_SEARCH_RECENCY_WEIGHT) {
+                Ok(v) if v.len() >= limit => Ok(v),
+                Ok(v) => {
+                    let like = read_search_like(conn, &tokens, limit)?;
+                    Ok(merge_traces(v, like, limit))
+                }
+                Err(_) => read_search_like(conn, &tokens, limit),
+            };
+        }
+    };
+    if rows.len() < limit && tokens.len() > 1 {
+        let or_q = fts_or_query(&tokens);
+        if let Ok(or_rows) = read_search_fts(conn, &or_q, limit, PULSE_SEARCH_RECENCY_WEIGHT) {
+            rows = merge_traces(rows, or_rows, limit);
+        }
+    }
+    if rows.len() < limit {
+        let like = read_search_like(conn, &tokens, limit)?;
+        rows = merge_traces(rows, like, limit);
+    }
     Ok(rows)
 }
 
