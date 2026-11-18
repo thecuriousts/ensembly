@@ -1,0 +1,69 @@
+# Pulse read path (slice 1b)
+
+Read-only retrieval over the live pulse-memory SQLite store (`memory_traces`, `memory_fts`). Ensembly never writes this DB.
+
+## Query flow
+
+```mermaid
+flowchart TD
+  subgraph prefix [Prefix read]
+    P0[prefix empty?] -->|yes| P1[ORDER BY nat_key LIMIT k]
+    P0 -->|no| P2[upper = nat_key_prefix_upper_bound]
+    P2 -->|Some| P3["nat_key >= p AND nat_key < upper"]
+    P2 -->|None| P4["nat_key >= p"]
+  end
+  subgraph search [Search read]
+    S1[FTS AND all terms] -->|"< k hits"| S2[FTS OR any term]
+    S1 -->|syntax error multi| S2
+    S2 -->|"< k hits"| S3[LIKE on nat_key OR snippet]
+    S1 -->|syntax error single| S3
+  end
+```
+
+## Prefix range
+
+`substr(nat_key,1,len(p)) = p` scanned the table. Hot path uses the **UNIQUE** index on `nat_key`:
+
+| Case | SQL |
+|------|-----|
+| `prefix == ""` | `SELECT … ORDER BY nat_key LIMIT ?` |
+| normal | `WHERE nat_key >= ? AND nat_key < upper(?)` |
+| all-`0xFF` tail | `WHERE nat_key >= ?` (no finite exclusive upper) |
+
+`nat_key_prefix_upper_bound(prefix)` increments the last byte of the UTF-8 encoding; trailing `0xFF` bytes are stripped until an increment succeeds or the bound is omitted.
+
+## Search tokens
+
+Fixed English stopword list (`FTS_STOPWORDS` in `pulse_core.rs`). Tokens are lowercased alphanumerics; stopwords drop **only when at least one content token remains** (so `"what is what"` still searches `what`).
+
+## Search score
+
+Constants: `PULSE_SEARCH_RECENCY_WEIGHT` (**0.35**), `PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS` (**7**), `PULSE_SEARCH_RELEVANCE_TIE_EPSILON` (**0.2**).
+
+**Tokenize** query text on non-alphanumerics, lowercase; then drop [`FTS_STOPWORDS`](../../crates/ensembly-kernel/src/pulse_core.rs) when any content token remains. Query token boundaries follow Rust `is_alphanumeric` (underscores stay inside a token); FTS5 **unicode61** on indexed text is the same except `_` may split differently.
+
+**Tiers** (strict order): FTS **AND** → FTS **OR** widen → **LIKE** last.
+
+Within one tier:
+
+```text
+if superseded_by links a → b → rank b above a
+else if same nat_key → newer unixepoch(last_seen)
+else rel_i = homogeneous: min(1, bm25_best/bm25_i) or negated-strength ratio;
+     mixed-sign pool: min(1, 1 / (1 + max(0, bm25_i - bm25_best)))
+     if |rel_a - rel_b| < epsilon → rank newer first
+     else score = w * 0.5^((t_newest - t)/7d) + (1-w) * rel
+```
+
+**Unrelated keys** with no `superseded_by` link are ordered by blended relevance and recency only — there is no stem/family heuristic.
+
+**Known limitation:** when relevance differs by more than ε, a stronger BM25 match can outrank a newer sibling row. Operators who need the fresh row on top should record an explicit **`superseded_by`** (or admit/replace at write time); ε recency is a tie-break, not a freshness override.
+
+- **LIKE** rows: fixed low relevance (0.15); tier 3 always below FTS.
+- **AND → OR → LIKE**: only when AND yields fewer than `limit` rows (or AND syntax error on multi-token input).
+
+## CI gates (kernel tests)
+
+- `EXPLAIN QUERY PLAN` on the prefix range query must not `SCAN` `memory_traces`.
+- Prefix latency ratio `100k / 1k` rows `< 5×` (generous; catches substr regressions).
+- Recall@5/10 and fresh-first accuracy vs embedded baseline (slice 1a compatible).

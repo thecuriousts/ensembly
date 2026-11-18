@@ -94,12 +94,12 @@ fn populate_pulse(path: &Path, size: usize, queries: &QuerySet, rng: &mut StdRng
         let key = format!("bench/filler/{i:06}");
         let snippet = format!("filler note {} noise {}", i, rng.gen::<u32>());
         let t = (base + Duration::seconds(i as i64)).to_rfc3339();
-        insert_trace(&tx, &key, &snippet, &t, &t)?;
+        insert_trace(&tx, &key, &snippet, &t, &t, None)?;
     }
     for q in &queries.unique {
         let snippet = format!("planted unique token {}", q.query);
         let t = (base + Duration::days(10)).to_rfc3339();
-        insert_trace(&tx, &q.expect_key, &snippet, &t, &t)?;
+        insert_trace(&tx, &q.expect_key, &snippet, &t, &t, None)?;
     }
     for q in &queries.natural_phrase {
         let anchor = q
@@ -109,20 +109,20 @@ fn populate_pulse(path: &Path, size: usize, queries: &QuerySet, rng: &mut StdRng
             .unwrap_or("anchor-nl-00");
         let snippet = format!("operator note about {anchor} on laptop-1 desk");
         let t = (base + Duration::days(11)).to_rfc3339();
-        insert_trace(&tx, &q.expect_key, &snippet, &t, &t)?;
+        insert_trace(&tx, &q.expect_key, &snippet, &t, &t, None)?;
     }
     for q in &queries.paraphrase_extra {
         let topic = q.query.split_whitespace().next().unwrap_or("para-topic-00");
         let snippet = format!("{topic} certref stored for bench");
         let t = (base + Duration::days(12)).to_rfc3339();
-        insert_trace(&tx, &q.expect_key, &snippet, &t, &t)?;
+        insert_trace(&tx, &q.expect_key, &snippet, &t, &t, None)?;
     }
     for q in &queries.fts_zero_hit {
         let parts: Vec<_> = q.query.split_whitespace().collect();
         let topic = parts.get(1).copied().unwrap_or("topic-00");
         let snippet = format!("ftszero {topic} only in corpus");
         let t = (base + Duration::days(13)).to_rfc3339();
-        insert_trace(&tx, &q.expect_key, &snippet, &t, &t)?;
+        insert_trace(&tx, &q.expect_key, &snippet, &t, &t, None)?;
     }
     for (i, pair) in queries.fresh_pairs.iter().enumerate() {
         let old_dt = base + Duration::days(20) + Duration::hours(i as i64);
@@ -131,24 +131,32 @@ fn populate_pulse(path: &Path, size: usize, queries: &QuerySet, rng: &mut StdRng
         let new_ls = format_last_seen(new_dt, &pair.tz_style);
         let snippet_old = format!("shared term {} variant old", pair.query);
         let snippet_new = format!("shared term {} variant new", pair.query);
-        insert_trace(&tx, &pair.old_key, &snippet_old, &old_ls, &old_ls)?;
-        insert_trace(&tx, &pair.new_key, &snippet_new, &new_ls, &new_ls)?;
+        insert_trace(
+            &tx,
+            &pair.old_key,
+            &snippet_old,
+            &old_ls,
+            &old_ls,
+            Some(&pair.new_key),
+        )?;
+        insert_trace(&tx, &pair.new_key, &snippet_new, &new_ls, &new_ls, None)?;
     }
     for p in &queries.prefixes {
         let t = (base + Duration::days(5)).to_rfc3339();
         let key = p.expect_keys[0].clone();
         let snippet = format!("prefix leaf for {}", p.prefix);
-        insert_trace(&tx, &key, &snippet, &t, &t)?;
+        insert_trace(&tx, &key, &snippet, &t, &t, None)?;
     }
     insert_trace(
         &tx,
-        "bench/dangle/old",
+        "bench/dangle/stale",
         "dangling supersession sample",
         &base.to_rfc3339(),
         &base.to_rfc3339(),
+        None,
     )?;
     tx.execute(
-        "UPDATE memory_traces SET superseded_by = 'bench/dangle/missing' WHERE nat_key = 'bench/dangle/old'",
+        "UPDATE memory_traces SET superseded_by = 'bench/dangle/missing' WHERE nat_key = 'bench/dangle/stale'",
         [],
     )?;
     tx.commit()?;
@@ -178,11 +186,12 @@ fn insert_trace(
     snippet: &str,
     time: &str,
     last_seen: &str,
+    superseded_by: Option<&str>,
 ) -> Result<()> {
     conn.execute(
-        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, first_seen, last_seen)
-         VALUES (?1, ?2, 'bench-fixture', ?3, 'user-stated', 'memory', ?3, ?4)",
-        params![key, snippet, time, last_seen],
+        "INSERT INTO memory_traces (nat_key, snippet, source, time, status, kind, first_seen, last_seen, superseded_by)
+         VALUES (?1, ?2, 'bench-fixture', ?3, 'user-stated', 'memory', ?3, ?4, ?5)",
+        params![key, snippet, time, last_seen, superseded_by],
     )?;
     let id = conn.last_insert_rowid();
     conn.execute(

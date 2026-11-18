@@ -77,9 +77,9 @@ impl QuerySet {
                 let token = format!("sharedpair-{i:04}");
                 FreshPairQuery {
                     query: token.clone(),
-                    expect_first_key: format!("bench/pair/{i:04}/new"),
-                    old_key: format!("bench/pair/{i:04}/old"),
-                    new_key: format!("bench/pair/{i:04}/new"),
+                    expect_first_key: format!("bench/pair/{i:04}/current"),
+                    old_key: format!("bench/pair/{i:04}/stale"),
+                    new_key: format!("bench/pair/{i:04}/current"),
                     tz_style: TZ_STYLES[i % TZ_STYLES.len()].to_string(),
                 }
             })

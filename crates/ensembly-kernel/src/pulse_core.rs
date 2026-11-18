@@ -383,63 +383,448 @@ fn trace_row(r: &rusqlite::Row) -> rusqlite::Result<TraceRow> {
     })
 }
 
+/// Blend weight for recency vs relevance in [`read_search`] (both normalized to `[0, 1]`).
+/// Spec: `docs/spec/PULSE-READ.md`.
+pub const PULSE_SEARCH_RECENCY_WEIGHT: f64 = 0.35;
+
+/// Half-life for exponential recency decay in [`read_search`] (days).
+pub const PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS: f64 = 7.0;
+
+/// Within one match tier, if normalised relevance differs by less than this, rank newer first.
+pub const PULSE_SEARCH_RELEVANCE_TIE_EPSILON: f64 = 0.2;
+
+/// Fixed relevance for LIKE fallback rows (below FTS matches on the normalized scale).
+const LIKE_RELEVANCE_SCORE: f64 = 0.15;
+
+const FTS_FETCH_CAP: usize = 256;
+
+/// Exclusive upper bound for a byte-wise `nat_key` prefix range (`>= prefix AND < upper`).
+/// `None` when the prefix is empty (no upper) or when no finite exclusive upper exists
+/// (prefix is all `0xFF` bytes); callers use a lower bound only in that case.
+pub fn nat_key_prefix_upper_bound(prefix: &str) -> Option<String> {
+    if prefix.is_empty() {
+        return None;
+    }
+    let mut bytes = prefix.as_bytes().to_vec();
+    if bytes.last() == Some(&0xFF) {
+        return None;
+    }
+    while let Some(last) = bytes.last_mut() {
+        if *last < 0xFF {
+            *last += 1;
+            return Some(String::from_utf8_lossy(&bytes).into_owned());
+        }
+        bytes.pop();
+    }
+    None
+}
+
 /// Traces whose `nat_key` starts with `prefix` (literal match, no wildcards).
 pub fn read_prefix(conn: &Connection, prefix: &str, limit: usize) -> Result<Vec<TraceRow>> {
+    let upper = nat_key_prefix_upper_bound(prefix);
+    let sql = match (&prefix.is_empty(), &upper) {
+        (true, _) => {
+            format!("SELECT {TRACE_COLS} FROM memory_traces ORDER BY nat_key LIMIT ?1")
+        }
+        (false, Some(_)) => format!(
+            "SELECT {TRACE_COLS} FROM memory_traces WHERE nat_key >= ?1 AND nat_key < ?2 \
+             ORDER BY nat_key LIMIT ?3"
+        ),
+        (false, None) => format!(
+            "SELECT {TRACE_COLS} FROM memory_traces WHERE nat_key >= ?1 ORDER BY nat_key LIMIT ?2"
+        ),
+    };
+    let mut st = conn.prepare(&sql)?;
+    let rows = match (&prefix.is_empty(), &upper) {
+        (true, _) => st
+            .query_map(params![limit as i64], trace_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?,
+        (false, Some(ub)) => st
+            .query_map(params![prefix, ub, limit as i64], trace_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?,
+        (false, None) => st
+            .query_map(params![prefix, limit as i64], trace_row)?
+            .collect::<std::result::Result<Vec<_>, _>>()?,
+    };
+    Ok(rows)
+}
+
+/// Small fixed English list; stripped from FTS (and LIKE) when at least one other token remains.
+pub const FTS_STOPWORDS: &[&str] = &[
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "did", "do", "for", "from", "had",
+    "has", "have", "he", "her", "him", "his", "how", "i", "if", "in", "into", "is", "it", "its",
+    "me", "my", "of", "on", "or", "she", "that", "the", "their", "them", "there", "they", "this",
+    "to", "was", "we", "were", "what", "when", "where", "which", "who", "why", "will", "with",
+    "you", "your",
+];
+
+/// Split query text on non-alphanumerics, lowercase. Close to FTS5 **unicode61** on indexed
+/// text; query-side we use Rust [`char::is_alphanumeric`] (includes `_`), while unicode61
+/// keeps `_` inside tokens — a narrow mismatch only for underscore-heavy queries.
+pub fn search_content_tokens(text: &str) -> Vec<String> {
+    let raw: Vec<String> = text
+        .split(|c: char| !c.is_alphanumeric())
+        .map(str::to_lowercase)
+        .filter(|w| !w.is_empty())
+        .collect();
+    let content: Vec<String> = raw
+        .iter()
+        .filter(|w| !FTS_STOPWORDS.contains(&w.as_str()))
+        .cloned()
+        .collect();
+    if content.is_empty() {
+        raw
+    } else {
+        content
+    }
+}
+
+fn fts_quote_tokens(tokens: &[String]) -> String {
+    tokens
+        .iter()
+        .map(|w| format!("\"{}\"", w.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Integration tests include this token in the query to force an invalid FTS AND `MATCH`
+/// (unbalanced paren). Omitted in release builds; otherwise treated as a normal term.
+#[cfg(debug_assertions)]
+pub const FTS_AND_ERR_PROBE: &str = "ftsanderrprobe";
+
+#[cfg(debug_assertions)]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[cfg(debug_assertions)]
+static SEARCH_AND_FTS_ERR_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// Reset/read how many times multi-token FTS AND returned `Err` (debug test hook).
+#[cfg(debug_assertions)]
+pub fn take_search_and_fts_err_count() -> usize {
+    SEARCH_AND_FTS_ERR_COUNT.swap(0, Ordering::SeqCst)
+}
+
+fn fts_and_query(tokens: &[String]) -> String {
+    #[cfg(debug_assertions)]
+    if tokens.iter().any(|t| t == FTS_AND_ERR_PROBE) {
+        return format!("\"{FTS_AND_ERR_PROBE}\" (");
+    }
+    fts_quote_tokens(tokens)
+}
+
+fn fts_or_query(tokens: &[String]) -> String {
+    tokens
+        .iter()
+        .map(|w| format!("\"{}\"", w.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum SearchTier {
+    /// FTS AND (every content token).
+    AllTerms = 0,
+    /// FTS OR widen only.
+    OrWiden = 1,
+    /// Literal LIKE fallback.
+    Like = 2,
+}
+
+struct SearchHit {
+    row: TraceRow,
+    /// FTS5 bm25 (smaller is a better match). `None` for LIKE-sourced rows.
+    bm25: Option<f64>,
+    instant: f64,
+    tier: SearchTier,
+}
+
+fn trace_row_scored(r: &rusqlite::Row) -> rusqlite::Result<SearchHit> {
+    Ok(SearchHit {
+        row: trace_row(r)?,
+        bm25: Some(r.get::<_, f64>("_bm25")?),
+        instant: r.get::<_, f64>("_inst")?,
+        tier: SearchTier::AllTerms,
+    })
+}
+
+fn trace_row_instant(r: &rusqlite::Row) -> rusqlite::Result<SearchHit> {
+    Ok(SearchHit {
+        row: trace_row(r)?,
+        bm25: None,
+        instant: r.get::<_, f64>("_inst")?,
+        tier: SearchTier::Like,
+    })
+}
+
+fn fts_fetch_limit(limit: usize) -> usize {
+    limit.saturating_mul(8).clamp(limit, FTS_FETCH_CAP)
+}
+
+fn read_search_fts_candidates(
+    conn: &Connection,
+    fts_q: &str,
+    fetch: usize,
+) -> Result<Vec<SearchHit>> {
+    let cols = TRACE_COLS
+        .split(", ")
+        .map(|c| format!("t.{c}"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let sql = format!(
-        "SELECT {TRACE_COLS} FROM memory_traces WHERE substr(nat_key, 1, length(?1)) = ?1 \
-         ORDER BY nat_key LIMIT ?2"
+        "SELECT {cols}, bm25(memory_fts) AS _bm25, \
+         COALESCE(unixepoch(t.last_seen, 'subsec'), 0) AS _inst \
+         FROM memory_traces t JOIN memory_fts f ON f.rowid = t.id \
+         WHERE memory_fts MATCH ?1 ORDER BY bm25(memory_fts) LIMIT ?2"
     );
     let mut st = conn.prepare(&sql)?;
     let rows = st
-        .query_map(params![prefix, limit as i64], trace_row)?
+        .query_map(params![fts_q, fetch as i64], trace_row_scored)?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     Ok(rows)
 }
 
-/// Full-text search (FTS5, every word must match), falling back to a literal
-/// substring match when the FTS query is rejected or the index is missing.
-pub fn read_search(conn: &Connection, text: &str, limit: usize) -> Result<Vec<TraceRow>> {
-    let fts_q: String = text
-        .split_whitespace()
-        .map(|w| format!("\"{}\"", w.replace('"', "")))
-        .collect::<Vec<_>>()
-        .join(" ");
-    if !fts_q.is_empty() {
-        let sql = format!(
-            "SELECT {} FROM memory_traces t JOIN memory_fts f ON f.rowid = t.id \
-             WHERE memory_fts MATCH ?1 ORDER BY t.last_seen DESC LIMIT ?2",
-            TRACE_COLS
-                .split(", ")
-                .map(|c| format!("t.{c}"))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        let attempt = (|| -> rusqlite::Result<Vec<TraceRow>> {
-            let mut st = conn.prepare(&sql)?;
-            let v = st
-                .query_map(params![fts_q, limit as i64], trace_row)?
-                .collect::<std::result::Result<Vec<_>, _>>()?;
-            Ok(v)
-        })();
-        if let Ok(v) = attempt {
-            return Ok(v);
+fn absorb_fts_hits(pool: &mut BTreeMap<String, SearchHit>, hits: Vec<SearchHit>, tier: SearchTier) {
+    for mut hit in hits {
+        hit.tier = tier;
+        let key = hit.row.nat_key.clone();
+        match pool.get_mut(&key) {
+            Some(existing) => {
+                use std::cmp::Ordering;
+                match tier.cmp(&existing.tier) {
+                    Ordering::Less => *existing = hit,
+                    Ordering::Equal => {
+                        if hit.bm25.unwrap_or(f64::INFINITY)
+                            < existing.bm25.unwrap_or(f64::INFINITY)
+                        {
+                            *existing = hit;
+                        }
+                    }
+                    Ordering::Greater => {}
+                }
+            }
+            None => {
+                pool.insert(key, hit);
+            }
         }
     }
-    let like = format!(
-        "%{}%",
-        text.replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
-    );
+}
+
+/// Prefer the non-superseded row when one trace lists the other in `superseded_by`.
+fn supersession_cmp(a: &TraceRow, b: &TraceRow) -> Option<std::cmp::Ordering> {
+    use std::cmp::Ordering;
+    let a_succ = a
+        .superseded_by
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .is_some_and(|k| k == b.nat_key);
+    let b_succ = b
+        .superseded_by
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .is_some_and(|k| k == a.nat_key);
+    match (a_succ, b_succ) {
+        (true, false) => Some(Ordering::Greater),
+        (false, true) => Some(Ordering::Less),
+        _ => None,
+    }
+}
+
+fn bm25_pool_has_mixed_sign(hits: &[SearchHit]) -> bool {
+    let mut positive = false;
+    let mut negative = false;
+    for h in hits {
+        if let Some(b) = h.bm25 {
+            if b > 0.0 {
+                positive = true;
+            } else if b < 0.0 {
+                negative = true;
+            }
+        }
+    }
+    positive && negative
+}
+
+/// Scale-free FTS relevance in `(0, 1]`. FTS5 lower `bm25` is better.
+///
+/// Homogeneous pool: positive `bm25_best / bm25`, else negated strength ratio on `-bm25`.
+/// Mixed-sign pool: `1 / (1 + max(0, bm25 - bm25_best))` so one scale covers unlike signs.
+pub fn fts_relevance_ratio(bm25: f64, best_bm25: f64, mixed_sign_pool: bool) -> f64 {
+    if !bm25.is_finite() || !best_bm25.is_finite() || (bm25 - best_bm25).abs() < 1e-12 {
+        return 1.0;
+    }
+    if mixed_sign_pool {
+        let delta = (bm25 - best_bm25).max(0.0);
+        return (1.0 / (1.0 + delta)).min(1.0);
+    }
+    if best_bm25 > 0.0 && bm25 > 0.0 {
+        return (best_bm25 / bm25).min(1.0);
+    }
+    let strength_best = -best_bm25;
+    let strength = -bm25;
+    if strength_best <= 0.0 {
+        return 1.0;
+    }
+    (strength / strength_best).min(1.0)
+}
+
+fn recency_score(instant: f64, newest_instant: f64, half_life_secs: f64) -> f64 {
+    let age = (newest_instant - instant).max(0.0);
+    if half_life_secs <= 0.0 {
+        return 1.0;
+    }
+    0.5_f64.powf(age / half_life_secs)
+}
+
+fn rank_search_hits(mut hits: Vec<SearchHit>, limit: usize, recency_weight: f64) -> Vec<TraceRow> {
+    if hits.is_empty() {
+        return Vec::new();
+    }
+    let newest = hits
+        .iter()
+        .map(|h| h.instant)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let half_life_secs = PULSE_SEARCH_RECENCY_HALF_LIFE_DAYS * 86_400.0;
+    let best_bm25 = hits
+        .iter()
+        .filter_map(|h| h.bm25)
+        .fold(f64::INFINITY, f64::min);
+    let mixed_sign_pool = bm25_pool_has_mixed_sign(&hits);
+
+    hits.sort_by(|a, b| {
+        a.tier.cmp(&b.tier).then_with(|| {
+            if let Some(ord) = supersession_cmp(&a.row, &b.row) {
+                return ord;
+            }
+            if a.row.nat_key == b.row.nat_key {
+                return b
+                    .instant
+                    .partial_cmp(&a.instant)
+                    .unwrap_or(std::cmp::Ordering::Equal);
+            }
+            let rel_a = a.bm25.map_or(LIKE_RELEVANCE_SCORE, |b| {
+                fts_relevance_ratio(b, best_bm25, mixed_sign_pool)
+            });
+            let rel_b = b.bm25.map_or(LIKE_RELEVANCE_SCORE, |b| {
+                fts_relevance_ratio(b, best_bm25, mixed_sign_pool)
+            });
+            if (rel_a - rel_b).abs() < PULSE_SEARCH_RELEVANCE_TIE_EPSILON {
+                b.instant
+                    .partial_cmp(&a.instant)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            } else {
+                let score_a = recency_weight * recency_score(a.instant, newest, half_life_secs)
+                    + (1.0 - recency_weight) * rel_a;
+                let score_b = recency_weight * recency_score(b.instant, newest, half_life_secs)
+                    + (1.0 - recency_weight) * rel_b;
+                score_b
+                    .partial_cmp(&score_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            }
+        })
+    });
+    hits.into_iter().take(limit).map(|h| h.row).collect()
+}
+
+fn escape_like(term: &str) -> String {
+    term.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+fn read_search_like_candidates(
+    conn: &Connection,
+    tokens: &[String],
+    fetch: usize,
+) -> Result<Vec<SearchHit>> {
+    if tokens.is_empty() {
+        return Ok(Vec::new());
+    }
+    let preds: Vec<String> = tokens
+        .iter()
+        .map(|_| "(nat_key LIKE ? ESCAPE '\\' OR snippet LIKE ? ESCAPE '\\')".to_string())
+        .collect();
     let sql = format!(
-        "SELECT {TRACE_COLS} FROM memory_traces WHERE nat_key LIKE ?1 ESCAPE '\\' OR snippet LIKE ?1 ESCAPE '\\' \
-         ORDER BY last_seen DESC LIMIT ?2"
+        "SELECT {TRACE_COLS}, COALESCE(unixepoch(last_seen, 'subsec'), 0) AS _inst \
+         FROM memory_traces WHERE {} LIMIT ?",
+        preds.join(" AND ")
     );
     let mut st = conn.prepare(&sql)?;
+    let mut values: Vec<rusqlite::types::Value> = Vec::new();
+    for t in tokens {
+        let like = format!("%{}%", escape_like(t));
+        values.push(like.clone().into());
+        values.push(like.into());
+    }
+    values.push((fetch as i64).into());
     let rows = st
-        .query_map(params![like, limit as i64], trace_row)?
+        .query_map(rusqlite::params_from_iter(values), trace_row_instant)?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     Ok(rows)
+}
+
+fn absorb_like_hits(pool: &mut BTreeMap<String, SearchHit>, hits: Vec<SearchHit>) {
+    for mut hit in hits {
+        hit.tier = SearchTier::Like;
+        let key = hit.row.nat_key.clone();
+        match pool.get(&key) {
+            Some(existing) if existing.tier < SearchTier::Like => {}
+            _ => {
+                pool.insert(key, hit);
+            }
+        }
+    }
+}
+
+fn collect_search_pool(
+    conn: &Connection,
+    tokens: &[String],
+    min_hits: usize,
+) -> Result<BTreeMap<String, SearchHit>> {
+    let fetch = fts_fetch_limit(min_hits);
+    let mut pool: BTreeMap<String, SearchHit> = BTreeMap::new();
+    let and_q = fts_and_query(tokens);
+    match read_search_fts_candidates(conn, &and_q, fetch) {
+        Ok(hits) => absorb_fts_hits(&mut pool, hits, SearchTier::AllTerms),
+        Err(_) if tokens.len() == 1 => {}
+        Err(_) => {
+            #[cfg(debug_assertions)]
+            SEARCH_AND_FTS_ERR_COUNT.fetch_add(1, Ordering::SeqCst);
+            let or_q = fts_or_query(tokens);
+            if let Ok(hits) = read_search_fts_candidates(conn, &or_q, fetch) {
+                absorb_fts_hits(&mut pool, hits, SearchTier::OrWiden);
+            }
+            if pool.len() < min_hits {
+                absorb_like_hits(&mut pool, read_search_like_candidates(conn, tokens, fetch)?);
+            }
+            return Ok(pool);
+        }
+    }
+    if pool.len() < min_hits && tokens.len() > 1 {
+        let or_q = fts_or_query(tokens);
+        if let Ok(hits) = read_search_fts_candidates(conn, &or_q, fetch) {
+            absorb_fts_hits(&mut pool, hits, SearchTier::OrWiden);
+        }
+    }
+    if pool.len() < min_hits {
+        absorb_like_hits(&mut pool, read_search_like_candidates(conn, tokens, fetch)?);
+    }
+    Ok(pool)
+}
+
+/// Full-text search: FTS5 AND on content tokens (stopwords dropped when possible), ranked by
+/// normalized bm25 + exponential recency within the candidate set. If fewer than `limit` AND
+/// hits, OR then token AND-LIKE as last resort.
+pub fn read_search(conn: &Connection, text: &str, limit: usize) -> Result<Vec<TraceRow>> {
+    let tokens = search_content_tokens(text);
+    if tokens.is_empty() {
+        return Ok(Vec::new());
+    }
+    let pool = collect_search_pool(conn, &tokens, limit)?;
+    Ok(rank_search_hits(
+        pool.into_values().collect(),
+        limit,
+        PULSE_SEARCH_RECENCY_WEIGHT,
+    ))
 }
 
 // -------------------------------------------------------------------- premflow
