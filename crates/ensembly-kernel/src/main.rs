@@ -1069,7 +1069,10 @@ fn pulse_index_cmd(cfg: &pc::PulseCfg, sub: PulseIndexCmd) -> Result<()> {
     }
 }
 
-fn emit_index_apply(report: &ensembly_kernel::pulse_index::IndexApplyReport, json: bool) -> Result<()> {
+fn emit_index_apply(
+    report: &ensembly_kernel::pulse_index::IndexApplyReport,
+    json: bool,
+) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(report)?);
     } else if report.dry_run {
@@ -1084,7 +1087,10 @@ fn emit_index_apply(report: &ensembly_kernel::pulse_index::IndexApplyReport, jso
     Ok(())
 }
 
-fn emit_index_revert(report: &ensembly_kernel::pulse_index::IndexRevertReport, json: bool) -> Result<()> {
+fn emit_index_revert(
+    report: &ensembly_kernel::pulse_index::IndexRevertReport,
+    json: bool,
+) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string_pretty(report)?);
     } else if report.dry_run {

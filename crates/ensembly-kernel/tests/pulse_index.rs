@@ -41,9 +41,7 @@ fn fresh_db() -> (TempDir, std::path::PathBuf) {
 }
 
 fn explain_uses_index(conn: &Connection, sql: &str, index_name: &str) -> bool {
-    let mut stmt = conn
-        .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
-        .unwrap();
+    let mut stmt = conn.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
     let rows = stmt
         .query_map([], |r| r.get::<_, String>(3))
         .unwrap()
@@ -90,7 +88,14 @@ fn revert_drops_only_managed_indexes() {
     let report = pi::revert(&path, w, false).unwrap();
     assert_eq!(report.dropped.len(), 3);
     let conn = Connection::open(&path).unwrap();
-    assert_eq!(pi::status(&conn).unwrap().iter().filter(|r| r.present).count(), 0);
+    assert_eq!(
+        pi::status(&conn)
+            .unwrap()
+            .iter()
+            .filter(|r| r.present)
+            .count(),
+        0
+    );
     let foreign: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name IN ('not_ours', 'ensembly_custom')",
@@ -119,7 +124,7 @@ fn status_reflects_indexes() {
 fn dangling_superseded_matches_legacy_on_random_graphs() {
     let (_dir, path) = fresh_db();
     let conn = Connection::open(&path).unwrap();
-  for seed in 0u64..32 {
+    for seed in 0u64..32 {
         conn.execute_batch("DELETE FROM memory_traces").unwrap();
         let mut keys = Vec::new();
         for i in 0..40 {

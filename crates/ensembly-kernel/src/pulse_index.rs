@@ -12,11 +12,7 @@ pub const INDEX_LAST_SEEN: &str = "ensembly_memory_traces_last_seen";
 pub const INDEX_LIVE_LIST: &str = "ensembly_memory_traces_live_list";
 pub const INDEX_SUPERSEDED_BY: &str = "ensembly_memory_traces_superseded_by";
 
-pub const MANAGED_INDEXES: &[&str] = &[
-    INDEX_LAST_SEEN,
-    INDEX_LIVE_LIST,
-    INDEX_SUPERSEDED_BY,
-];
+pub const MANAGED_INDEXES: &[&str] = &[INDEX_LAST_SEEN, INDEX_LIVE_LIST, INDEX_SUPERSEDED_BY];
 
 const AUDIT_TABLE: &str = "ensembly_audit";
 
@@ -81,11 +77,7 @@ pub fn status(conn: &Connection) -> Result<Vec<IndexStatusRow>> {
     Ok(out)
 }
 
-pub fn apply(
-    path: &Path,
-    writer: &str,
-    dry_run: bool,
-) -> Result<IndexApplyReport> {
+pub fn apply(path: &Path, writer: &str, dry_run: bool) -> Result<IndexApplyReport> {
     let mut report = IndexApplyReport {
         applied: Vec::new(),
         already_present: Vec::new(),
