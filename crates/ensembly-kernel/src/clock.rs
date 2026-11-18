@@ -7,8 +7,9 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -122,6 +123,9 @@ pub struct SampleOpts<'a> {
     pub force_refresh: bool,
     /// When false, skip chronyc/sntp subprocesses (unit tests).
     pub platform_probe: bool,
+    /// Shared with the background sampler; set on outer timeout (tests may supply).
+    #[doc(hidden)]
+    pub worker_cancel: Option<Arc<AtomicBool>>,
 }
 
 impl Default for SampleOpts<'_> {
@@ -136,6 +140,7 @@ impl Default for SampleOpts<'_> {
             transport: None,
             force_refresh: false,
             platform_probe: true,
+            worker_cancel: None,
         }
     }
 }
@@ -178,16 +183,73 @@ impl PeerClockTransport for UnwiredPeerTransport {
     }
 }
 
-pub fn resolve_clock_cache_path(root: &Path, config_data: Option<&Path>) -> PathBuf {
-    if let Some(dir) = config_data.filter(|p| p.is_dir()) {
-        return dir.join(DEFAULT_CLOCK_CACHE_NAME);
+const LOCAL_CACHE_REL: &str = "data/local/clock/sample.json";
+
+fn cache_rel_path() -> &'static Path {
+    Path::new(DEFAULT_CLOCK_CACHE_NAME)
+}
+
+fn reject_unsafe_relative(rel: &Path) -> io::Result<()> {
+    for comp in rel.components() {
+        match comp {
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "clock cache path must stay relative to base",
+                ));
+            }
+            Component::CurDir | Component::Normal(_) => {}
+        }
     }
-    root.join("data/local").join(DEFAULT_CLOCK_CACHE_NAME)
+    Ok(())
+}
+
+/// Join `rel` under canonical `base` without `..` or absolute escapes.
+fn join_contained(base: &Path, rel: &Path) -> io::Result<PathBuf> {
+    reject_unsafe_relative(rel)?;
+    let base = base.canonicalize().map_err(|e| {
+        io::Error::new(
+            e.kind(),
+            format!("clock cache base {}: {e}", base.display()),
+        )
+    })?;
+    let mut acc = base.clone();
+    for comp in rel.components() {
+        if let Component::Normal(p) = comp {
+            acc.push(p);
+        }
+    }
+    if !acc.starts_with(&base) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "clock cache path escapes config data dir",
+        ));
+    }
+    Ok(acc)
+}
+
+fn local_cache_under_root(root: &Path) -> io::Result<PathBuf> {
+    let rel = Path::new(LOCAL_CACHE_REL);
+    reject_unsafe_relative(rel)?;
+    if root.as_os_str().is_empty() {
+        return Ok(root.join(LOCAL_CACHE_REL));
+    }
+    if root.is_dir() {
+        return join_contained(root, rel);
+    }
+    Ok(root.join(LOCAL_CACHE_REL))
+}
+
+pub fn resolve_clock_cache_path(root: &Path, config_data: Option<&Path>) -> io::Result<PathBuf> {
+    if let Some(dir) = config_data.filter(|p| p.is_dir()) {
+        return join_contained(dir, cache_rel_path());
+    }
+    local_cache_under_root(root)
 }
 
 /// Returns the latest sample, refreshing the on-disk cache when stale (see `SampleOpts`).
 pub fn sample_latest(opts: &SampleOpts<'_>) -> io::Result<ClockSample> {
-    let cache_path = resolve_clock_cache_path(opts.root, opts.config_data_dir);
+    let cache_path = resolve_clock_cache_path(opts.root, opts.config_data_dir)?;
     let cached = read_cache(&cache_path)?;
     let cache_age = cached
         .as_ref()
@@ -221,7 +283,7 @@ pub fn sample_latest(opts: &SampleOpts<'_>) -> io::Result<ClockSample> {
 }
 
 pub fn clock_status(root: &Path, config_data: Option<&Path>) -> io::Result<ClockStatusReport> {
-    let cache_path = resolve_clock_cache_path(root, config_data);
+    let cache_path = resolve_clock_cache_path(root, config_data)?;
     let cached = read_cache(&cache_path)?;
     let sample = cached.as_ref().map(|c| {
         let age = age_seconds_from_rfc3339(&c.sampled_at).unwrap_or(0);
@@ -468,6 +530,7 @@ struct OwnedSampleJob {
     peer: Option<String>,
     platform_probe: bool,
     transport: Option<Arc<dyn PeerClockTransport>>,
+    cancel: Arc<AtomicBool>,
 }
 
 impl OwnedSampleJob {
@@ -482,11 +545,16 @@ impl OwnedSampleJob {
             transport: self.transport.clone(),
             force_refresh: true,
             platform_probe: self.platform_probe,
+            worker_cancel: Some(Arc::clone(&self.cancel)),
         }
     }
 }
 
 fn sample_within_timeout(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'static str> {
+    let cancel = opts
+        .worker_cancel
+        .clone()
+        .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
     let job = OwnedSampleJob {
         root: opts.root.to_path_buf(),
         config: opts.config_data_dir.map(|p| p.to_path_buf()),
@@ -494,35 +562,58 @@ fn sample_within_timeout(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'st
         peer: opts.peer.map(str::to_string),
         platform_probe: opts.platform_probe,
         transport: opts.transport.clone(),
+        cancel: Arc::clone(&cancel),
     };
     let timeout = opts.timeout;
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     std::thread::spawn(move || {
         let inner = job.sample_opts();
-        let _ = tx.send(sample_now(&inner));
+        let _ = tx.send(sample_now(&inner, &job.cancel));
     });
     match rx.recv_timeout(timeout) {
         Ok(r) => r,
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err("timeout"),
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err("timeout"),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            cancel.store(true, Ordering::Release);
+            Err("timeout")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            cancel.store(true, Ordering::Release);
+            Err("timeout")
+        }
     }
 }
 
+fn sample_cancelled(cancel: &AtomicBool) -> bool {
+    cancel.load(Ordering::Acquire)
+}
+
 #[allow(clippy::collapsible_if)]
-fn sample_now(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'static str> {
+fn sample_now(opts: &SampleOpts<'_>, cancel: &AtomicBool) -> Result<ClockCacheRecord, &'static str> {
+    if sample_cancelled(cancel) {
+        return Err("cancelled");
+    }
     if let Some(alias) = opts.peer {
         if !validate_peer_alias(alias) {
             return Err("invalid peer alias");
         }
         let transport = opts.transport.clone().ok_or("peer transport missing")?;
+        if sample_cancelled(cancel) {
+            return Err("cancelled");
+        }
         let ex = transport
             .round_trip()
             .map_err(|_| "peer transport failed")?;
+        if sample_cancelled(cancel) {
+            return Err("cancelled");
+        }
         let (off_us, err_us) = peer_offset_and_err(&ex);
         return Ok(new_record(off_us, err_us, peer_src_token(alias)));
     }
     if opts.platform_probe {
-        if let Some(parsed) = sample_chrony() {
+        if sample_cancelled(cancel) {
+            return Err("cancelled");
+        }
+        if let Some(parsed) = sample_chrony(cancel) {
             return Ok(new_record(
                 parsed.off_us,
                 parsed.err_us,
@@ -531,7 +622,10 @@ fn sample_now(opts: &SampleOpts<'_>) -> Result<ClockCacheRecord, &'static str> {
         }
     }
     if opts.platform_probe && cfg!(target_os = "macos") && validate_ntp_hostname(opts.sntp_server) {
-        if let Some(parsed) = sample_sntp(opts.sntp_server) {
+        if sample_cancelled(cancel) {
+            return Err("cancelled");
+        }
+        if let Some(parsed) = sample_sntp(opts.sntp_server, cancel) {
             return Ok(new_record(
                 parsed.off_us,
                 parsed.err_us,
@@ -551,20 +645,20 @@ fn new_record(off_us: i64, err_us: u64, src: String) -> ClockCacheRecord {
     }
 }
 
-fn sample_chrony() -> Option<ParsedClockOffset> {
+fn sample_chrony(cancel: &AtomicBool) -> Option<ParsedClockOffset> {
     let bin = chronyc_bin()?;
     let mut cmd = Command::new(&bin);
     cmd.args(["-c", "tracking"]);
-    let output = output_within(cmd, DEFAULT_CLOCK_SAMPLE_TIMEOUT)?;
+    let output = output_within(cmd, DEFAULT_CLOCK_SAMPLE_TIMEOUT, cancel)?;
     let line = output.lines().next()?;
     parse_chronyc_tracking_csv(line)
 }
 
-fn sample_sntp(server: &str) -> Option<ParsedClockOffset> {
+fn sample_sntp(server: &str, cancel: &AtomicBool) -> Option<ParsedClockOffset> {
     let bin = sntp_bin()?;
     let mut cmd = Command::new(&bin);
     cmd.args(["-t", "2", server]);
-    let output = output_within(cmd, DEFAULT_CLOCK_SAMPLE_TIMEOUT)?;
+    let output = output_within(cmd, DEFAULT_CLOCK_SAMPLE_TIMEOUT, cancel)?;
     parse_sntp_output(&output)
 }
 
@@ -587,13 +681,18 @@ fn resolve_on_path(name: &str) -> Option<PathBuf> {
     None
 }
 
-fn output_within(mut cmd: Command, limit: Duration) -> Option<String> {
+fn output_within(mut cmd: Command, limit: Duration, cancel: &AtomicBool) -> Option<String> {
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = cmd.spawn().ok()?;
     let start = Instant::now();
     loop {
+        if sample_cancelled(cancel) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
         match child.try_wait() {
             Ok(Some(status)) if status.success() => {
                 let out = child.wait_with_output().ok()?;
@@ -747,7 +846,7 @@ mod tests {
     #[test]
     fn cache_reader_never_sees_partial_file() {
         let dir = tempfile::tempdir().unwrap();
-        let path = resolve_clock_cache_path(dir.path(), None);
+        let path = resolve_clock_cache_path(dir.path(), None).unwrap();
         let good = ClockCacheRecord {
             sampled_at: "2020-01-01T00:00:00Z".into(),
             off_us: 99,
@@ -766,7 +865,7 @@ mod tests {
     #[test]
     fn cache_staleness_returns_old_sample_when_refresh_misses() {
         let dir = tempfile::tempdir().unwrap();
-        let cache = resolve_clock_cache_path(dir.path(), None);
+        let cache = resolve_clock_cache_path(dir.path(), None).unwrap();
         let old = ClockCacheRecord {
             sampled_at: "2000-01-01T00:00:00Z".into(),
             off_us: 7,
@@ -784,6 +883,7 @@ mod tests {
             transport: None,
             force_refresh: false,
             platform_probe: false,
+            worker_cancel: None,
         };
         let sample = sample_latest(&opts).unwrap();
         assert_eq!(sample.off_us, 7);
@@ -801,11 +901,20 @@ mod tests {
         }
     }
 
-    struct SlowTransport;
+    struct SlowTransport {
+        cancel: Arc<AtomicBool>,
+        finished: Arc<AtomicBool>,
+    }
 
     impl PeerClockTransport for SlowTransport {
         fn round_trip(&self) -> Result<PeerExchange, PeerTransportError> {
-            std::thread::sleep(Duration::from_secs(3));
+            for _ in 0..400 {
+                if self.cancel.load(Ordering::Acquire) {
+                    return Err(PeerTransportError("cancelled"));
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            self.finished.store(true, Ordering::SeqCst);
             Ok(PeerExchange {
                 t1_us: 0,
                 t2_us: 1,
@@ -840,6 +949,7 @@ mod tests {
             transport: Some(transport),
             force_refresh: true,
             platform_probe: true,
+            worker_cancel: None,
         };
         let sample = sample_latest(&opts).unwrap();
         assert_eq!(sample.src, "peer:laptop-1");
@@ -849,7 +959,12 @@ mod tests {
     #[test]
     fn peer_sample_hits_outer_timeout() {
         let dir = tempfile::tempdir().unwrap();
-        let transport = Arc::new(SlowTransport);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let finished = Arc::new(AtomicBool::new(false));
+        let transport = Arc::new(SlowTransport {
+            cancel: Arc::clone(&cancel),
+            finished: Arc::clone(&finished),
+        });
         let opts = SampleOpts {
             root: dir.path(),
             config_data_dir: None,
@@ -860,16 +975,49 @@ mod tests {
             transport: Some(transport),
             force_refresh: true,
             platform_probe: false,
+            worker_cancel: Some(cancel),
         };
         let sample = sample_latest(&opts).unwrap();
         assert_eq!(sample.src, "none");
         assert_eq!(sample.err_us, CLOCK_UNKNOWN_ERR_US);
+        std::thread::sleep(Duration::from_millis(150));
+        assert!(
+            !finished.load(Ordering::SeqCst),
+            "background sampler should stop after outer timeout"
+        );
+    }
+
+    #[test]
+    fn config_data_dir_cache_stays_under_canonical_base() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("a").join("..").join("b");
+        fs::create_dir_all(&nested).unwrap();
+        let path = resolve_clock_cache_path(Path::new(""), Some(&nested)).unwrap();
+        let base = nested.canonicalize().unwrap();
+        assert!(path.starts_with(&base));
+        assert_eq!(
+            path,
+            base.join("clock").join("sample.json"),
+            "cache must live under config data_dir"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn config_data_dir_rejects_symlink_escape() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let link = dir.path().join("escape");
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        let resolved = resolve_clock_cache_path(Path::new(""), Some(&link)).unwrap();
+        let base = link.canonicalize().unwrap();
+        assert!(resolved.starts_with(&base));
     }
 
     #[test]
     fn timeout_returns_last_cache() {
         let dir = tempfile::tempdir().unwrap();
-        let cache_path = resolve_clock_cache_path(dir.path(), None);
+        let cache_path = resolve_clock_cache_path(dir.path(), None).unwrap();
         let record = ClockCacheRecord {
             sampled_at: Utc::now().to_rfc3339(),
             off_us: 42,
@@ -887,6 +1035,7 @@ mod tests {
             transport: None,
             force_refresh: true,
             platform_probe: false,
+            worker_cancel: None,
         };
         let sample = sample_latest(&opts).unwrap();
         assert_eq!(sample.off_us, 42);
@@ -905,7 +1054,7 @@ mod tests {
     #[test]
     fn cache_accepts_unknown_future_src_token() {
         let dir = tempfile::tempdir().unwrap();
-        let path = resolve_clock_cache_path(dir.path(), None);
+        let path = resolve_clock_cache_path(dir.path(), None).unwrap();
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let body = r#"{
   "sampled_at": "2026-01-01T00:00:00Z",
